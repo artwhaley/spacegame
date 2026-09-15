@@ -82,7 +82,10 @@ namespace AsteroidColony
                     break;
 
                 case TransportExecutionState.Unloading:
-                    if (CurrentContract.type != TransportContractType.Freight || TryUnloadFreight())
+                    bool unloaded = CurrentContract.type == TransportContractType.Freight
+                        ? TryUnloadFreight()
+                        : passengerCarrier != null && passengerCarrier.TryUnboardPassengers(CurrentContract.destinationLocation);
+                    if (unloaded)
                         CompleteCurrentContract();
                     break;
             }
