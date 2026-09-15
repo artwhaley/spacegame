@@ -150,7 +150,7 @@ PrefabInstance:
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: classes.Array.data[0]
       value: 
-      objectReference: {fileID: 11400000, guid: b2b3c4d5e6f708192a3b4c5d6e7f809, type: 2}
+      objectReference: {fileID: 11400000, guid: b2b3c4d5e6f708192a3b4c5d6e7f8090, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Farmer 2
@@ -237,7 +237,7 @@ PrefabInstance:
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: classes.Array.data[0]
       value: 
-      objectReference: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d, type: 2}
+      objectReference: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d0, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Pilot 2
@@ -744,12 +744,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
     onHand: 12
     reserved: 0
     capacity: 40
     available: 12
-  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     onHand: 16
     reserved: 0
     capacity: 40
@@ -763,7 +763,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 973986971}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7f8091a2b3c4d5e6f708192a3b4c5d7, type: 3}
+  m_Script: {fileID: 11500000, guid: 7f8091a2b3c4d5e6f708192a3b4c5d70, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   location: {fileID: 400000201}
@@ -777,18 +777,18 @@ MonoBehaviour:
   m_GameObject: {fileID: 973986971}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8091a2b3c4d5e6f708192a3b4c5d6e7, type: 3}
+  m_Script: {fileID: 11500000, guid: 8091a2b3c4d5e6f708192a3b4c5d6e70, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   habitation: {fileID: 400000203}
   inventory: {fileID: 400000202}
   entries:
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
     amountPerResidentPerGameHour: 0.1
     shortageActive: 0
     requestedLastTick: 0
     consumedLastTick: 0
-  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     amountPerResidentPerGameHour: 0.1
     shortageActive: 0
     requestedLastTick: 0
@@ -802,13 +802,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 973986971}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b4, type: 3}
+  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b40, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   location: {fileID: 400000201}
   inventory: {fileID: 400000202}
   entries:
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
     normalDemandEnabled: 1
     reorderThreshold: 8
     targetStock: 20
@@ -820,7 +820,7 @@ MonoBehaviour:
     backgroundPriority: 1
     exportEnabled: 0
     retainStock: 0
-  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     normalDemandEnabled: 1
     reorderThreshold: 8
     targetStock: 16
@@ -858,12 +858,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
     onHand: 0
     reserved: 0
     capacity: 40
     available: 0
-  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     onHand: 0
     reserved: 0
     capacity: 16
@@ -877,7 +877,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 512056865}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6e7f8091a2b3c4d5e6f708192a3b4c5, type: 3}
+  m_Script: {fileID: 11500000, guid: 6e7f8091a2b3c4d5e6f708192a3b4c50, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   workplace: {fileID: 400000211}
@@ -898,7 +898,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 512056865}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5a6b7c8d9e0f1a2b3c4d5e6f708192a, type: 3}
+  m_Script: {fileID: 11500000, guid: 5a6b7c8d9e0f1a2b3c4d5e6f708192a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   workplace: {fileID: 400000211}
@@ -914,14 +914,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 512056865}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4c5d6e7f8091a2b3c4d5e6f708192a3, type: 3}
+  m_Script: {fileID: 11500000, guid: 4c5d6e7f8091a2b3c4d5e6f708192a30, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   inventory: {fileID: 400000212}
   staffing: {fileID: 400000214}
   availableRecipes:
-  - {fileID: 11400000, guid: 8a91b2c3d4e5f60718293a4b5c6d7e8, type: 2}
-  activeRecipe: {fileID: 11400000, guid: 8a91b2c3d4e5f60718293a4b5c6d7e8, type: 2}
+  - {fileID: 11400000, guid: 8a91b2c3d4e5f60718293a4b5c6d7e80, type: 2}
+  activeRecipe: {fileID: 11400000, guid: 8a91b2c3d4e5f60718293a4b5c6d7e80, type: 2}
   operationalEnabled: 1
   state: 0
   progress: 0
@@ -936,13 +936,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 512056865}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b4, type: 3}
+  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b40, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   location: {fileID: 400000211}
   inventory: {fileID: 400000212}
   entries:
-  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     normalDemandEnabled: 1
     reorderThreshold: 3
     targetStock: 8
@@ -954,7 +954,7 @@ MonoBehaviour:
     backgroundPriority: 1
     exportEnabled: 0
     retainStock: 0
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
     normalDemandEnabled: 0
     reorderThreshold: 0
     targetStock: 0
@@ -992,12 +992,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
     onHand: 0
     reserved: 0
     capacity: 12
     available: 0
-  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     onHand: 0
     reserved: 0
     capacity: 12
@@ -1017,7 +1017,7 @@ MonoBehaviour:
   displayName: Shuttle 1
   operationalEnabled: 1
   assignedPilot: {fileID: 400000304}
-  requiredPilotClass: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d, type: 2}
+  requiredPilotClass: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d0, type: 2}
 --- !u!114 &400000225
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1230,7 +1230,7 @@ PrefabInstance:
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: classes.Array.data[0]
       value: 
-      objectReference: {fileID: 11400000, guid: b2b3c4d5e6f708192a3b4c5d6e7f809, type: 2}
+      objectReference: {fileID: 11400000, guid: b2b3c4d5e6f708192a3b4c5d6e7f8090, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Farmer 1
@@ -1654,7 +1654,7 @@ PrefabInstance:
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: classes.Array.data[0]
       value: 
-      objectReference: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d, type: 2}
+      objectReference: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d0, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Pilot 1
@@ -2355,12 +2355,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
+  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f7080, type: 2}
     onHand: 0
     reserved: 0
     capacity: 48
     available: 0
-  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     onHand: 0
     reserved: 0
     capacity: 40
@@ -2374,13 +2374,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 210000001}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4c5d6e7f8091a2b3c4d5e6f708192a3, type: 3}
+  m_Script: {fileID: 11500000, guid: 4c5d6e7f8091a2b3c4d5e6f708192a30, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   inventory: {fileID: 210000004}
   availableRecipes:
-  - {fileID: 11400000, guid: 9b2c3d4e5f60718293a4b5c6d7e8f90, type: 2}
-  activeRecipe: {fileID: 11400000, guid: 9b2c3d4e5f60718293a4b5c6d7e8f90, type: 2}
+  - {fileID: 11400000, guid: 9b2c3d4e5f60718293a4b5c6d7e8f900, type: 2}
+  activeRecipe: {fileID: 11400000, guid: 9b2c3d4e5f60718293a4b5c6d7e8f900, type: 2}
   operationalEnabled: 1
   state: 0
   progress: 0
@@ -2395,13 +2395,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 210000001}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b4, type: 3}
+  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b40, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   location: {fileID: 210000003}
   inventory: {fileID: 210000004}
   entries:
-  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
+  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f7080, type: 2}
     normalDemandEnabled: 0
     reorderThreshold: 0
     targetStock: 24
@@ -2413,7 +2413,7 @@ MonoBehaviour:
     backgroundPriority: 1
     exportEnabled: 0
     retainStock: 0
-  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     normalDemandEnabled: 0
     reorderThreshold: 0
     targetStock: 0
@@ -2540,7 +2540,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   displayName: Ice Asteroid 1
-  resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
+  resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f7080, type: 2}
   startingQuantity: 500
   remainingQuantity: 500
   extractionEnabled: 1
@@ -2664,7 +2664,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
+  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f7080, type: 2}
     onHand: 0
     reserved: 0
     capacity: 24
@@ -2684,7 +2684,7 @@ MonoBehaviour:
   displayName: Mining Ship 1
   operationalEnabled: 1
   assignedPilot: {fileID: 400000309}
-  requiredPilotClass: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d, type: 2}
+  requiredPilotClass: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d0, type: 2}
 --- !u!114 &210000031
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2710,7 +2710,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a2b3c4d5e6f708192a3b4c5d6e7f8091, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  collectableResource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
+  collectableResource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f7080, type: 2}
   extractionRatePerGameHour: 6
   destinationCargo: {fileID: 210000024}
   discreteExtractionAccumulator: 0
