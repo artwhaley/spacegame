@@ -21,6 +21,8 @@ namespace AsteroidColony
     {
         public LocationAnchor farmLocation;
         public InventoryComponent farmInventory;
+        public ResourceDefinition foodResource;
+        public ResourceDefinition waterResource;
         public List<ColonistAgent> assignedFarmers = new List<ColonistAgent>();
         public float workDurationHours = 8f;
         public float restDurationHours = 8f;
@@ -89,7 +91,7 @@ namespace AsteroidColony
             {
                 waterDemandId = LogisticsManager.Instance.RegisterFreightDemand(
                     "Farm Water",
-                    ResourceType.Water,
+                    waterResource,
                     farmLocation,
                     farmInventory,
                     waterResupplyPriority,
@@ -143,7 +145,7 @@ namespace AsteroidColony
             float requestedWater = presentWorkingFarmers * waterConsumptionPerFarmerPerHour * deltaGameHours;
             float waterUsed = 0f;
             if (requestedWater > 0f && farmInventory != null)
-                waterUsed = farmInventory.Remove(ResourceType.Water, requestedWater);
+                waterUsed = farmInventory.Remove(waterResource, requestedWater);
 
             bool blocked = requestedWater > 0f && waterUsed < requestedWater - 0.0001f;
             if (blocked)
@@ -163,7 +165,7 @@ namespace AsteroidColony
 
             float produced = currentProductionRate * deltaGameHours;
             if (produced > 0f && farmInventory != null)
-                farmInventory.Add(ResourceType.Food, produced);
+                farmInventory.Add(foodResource, produced);
 
             workHoursAccumulated += deltaGameHours;
             shiftTimeRemaining = Mathf.Max(0f, workDurationHours - workHoursAccumulated);
@@ -296,8 +298,8 @@ namespace AsteroidColony
 
         private void RefreshWaterObservability()
         {
-            waterOnHand = farmInventory != null ? farmInventory.GetOnHand(ResourceType.Water) : 0f;
-            waterReserved = farmInventory != null ? farmInventory.GetReserved(ResourceType.Water) : 0f;
+            waterOnHand = farmInventory != null ? farmInventory.GetOnHand(waterResource) : 0f;
+            waterReserved = farmInventory != null ? farmInventory.GetReserved(waterResource) : 0f;
             waterIncoming = ContractManager.Instance != null && waterDemandId > 0
                 ? ContractManager.Instance.GetActiveFreightQuantityForDemand(waterDemandId)
                 : 0f;
@@ -311,7 +313,7 @@ namespace AsteroidColony
                 return;
             }
 
-            float onHand = farmInventory.GetOnHand(ResourceType.Water);
+            float onHand = farmInventory.GetOnHand(waterResource);
             float desired = onHand < waterReorderThreshold
                 ? Mathf.Max(0f, waterTargetStock - onHand)
                 : 0f;

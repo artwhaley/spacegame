@@ -14,6 +14,8 @@ namespace AsteroidColony.Tests
         {
             depositObject = new GameObject("Deposit Test");
             deposit = depositObject.AddComponent<ResourceDeposit>();
+            deposit.resource = ScriptableObject.CreateInstance<ResourceDefinition>();
+            deposit.resource.name = "Ice Test";
             deposit.displayName = "Test Deposit";
             deposit.startingQuantity = 5f;
             FieldInfo remaining = typeof(ResourceDeposit).GetField(
@@ -25,6 +27,7 @@ namespace AsteroidColony.Tests
         public void TearDown()
         {
             Object.DestroyImmediate(depositObject);
+            Object.DestroyImmediate(deposit.resource);
         }
 
         [Test]
@@ -42,6 +45,16 @@ namespace AsteroidColony.Tests
             Assert.That(deposit.Extract(4.25f), Is.EqualTo(4.25f));
             Assert.That(deposit.Extract(4.25f), Is.EqualTo(0.75f));
             Assert.That(deposit.RemainingQuantity, Is.GreaterThanOrEqualTo(0f));
+        }
+
+        [Test]
+        public void DiscreteDepositNeverReturnsFractionalStock()
+        {
+            deposit.resource.quantityMode = ResourceQuantityMode.Discrete;
+            Assert.That(deposit.Extract(0.5f), Is.EqualTo(0f));
+            Assert.That(deposit.Extract(2f), Is.EqualTo(2f));
+            Assert.That(deposit.Extract(5f), Is.EqualTo(3f));
+            Assert.That(deposit.RemainingQuantity, Is.EqualTo(0f));
         }
     }
 }

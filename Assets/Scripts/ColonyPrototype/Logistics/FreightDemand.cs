@@ -11,7 +11,7 @@ namespace AsteroidColony
     {
         public int demandId;
         public string displayName;
-        public ResourceType resourceType;
+        public ResourceDefinition resource;
         public LocationAnchor destinationLocation;
         public InventoryComponent destinationInventory;
         public int priority;
@@ -62,7 +62,7 @@ namespace AsteroidColony
     {
         public int supplyId;
         public string displayName;
-        public ResourceType resourceType;
+        public ResourceDefinition resource;
         public LocationAnchor location;
         public InventoryComponent inventory;
         public bool active = true;

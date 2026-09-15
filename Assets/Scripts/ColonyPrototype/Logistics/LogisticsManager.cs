@@ -67,7 +67,7 @@ namespace AsteroidColony
         /// </summary>
         public int RegisterFreightDemand(
             string displayName,
-            ResourceType resource,
+            ResourceDefinition resource,
             LocationAnchor destinationLocation,
             InventoryComponent destinationInventory,
             int priority,
@@ -81,7 +81,7 @@ namespace AsteroidColony
             {
                 demandId = nextDemandId++,
                 displayName = displayName,
-                resourceType = resource,
+                resource = resource,
                 destinationLocation = destinationLocation,
                 destinationInventory = destinationInventory,
                 priority = priority,
@@ -124,7 +124,7 @@ namespace AsteroidColony
         /// </summary>
         public int RegisterFreightSupply(
             string displayName,
-            ResourceType resource,
+            ResourceDefinition resource,
             LocationAnchor location,
             InventoryComponent inventory)
         {
@@ -135,7 +135,7 @@ namespace AsteroidColony
             {
                 FreightSupply existing = supplies[i];
                 if (existing != null && existing.location == location &&
-                    existing.inventory == inventory && existing.resourceType == resource)
+                    existing.inventory == inventory && existing.resource == resource)
                 {
                     existing.active = true;
                     return existing.supplyId;
@@ -146,7 +146,7 @@ namespace AsteroidColony
             {
                 supplyId = nextSupplyId++,
                 displayName = displayName,
-                resourceType = resource,
+                resource = resource,
                 location = location,
                 inventory = inventory,
                 active = true
@@ -238,7 +238,7 @@ namespace AsteroidColony
             float uncovered = Mathf.Max(0f, demand.DesiredQuantity - inbound);
             float destinationFree = Mathf.Max(
                 0f,
-                demand.destinationInventory.GetFreeCapacity(demand.resourceType) - inbound);
+                demand.destinationInventory.GetFreeCapacity(demand.resource) - inbound);
             demand.SetPlanningState(inbound, uncovered, destinationFree, "Evaluating");
 
             if (uncovered <= QuantityEpsilon)
@@ -254,21 +254,21 @@ namespace AsteroidColony
                 return;
             }
 
-            FreightSupply supply = FindBestSupply(demand.resourceType);
+            FreightSupply supply = FindBestSupply(demand.resource);
             if (supply == null)
             {
                 demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for source");
                 return;
             }
 
-            float sourceAvailable = supply.inventory.GetAvailable(demand.resourceType);
+            float sourceAvailable = supply.inventory.GetAvailable(demand.resource);
             if (sourceAvailable <= QuantityEpsilon)
             {
                 demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for source stock");
                 return;
             }
 
-            ShuttleController shuttle = FindAvailableShuttle(demand.resourceType);
+            ShuttleController shuttle = FindAvailableShuttle(demand.resource);
             if (shuttle == null)
             {
                 demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for shuttle");
@@ -280,7 +280,7 @@ namespace AsteroidColony
                 : float.MaxValue;
             float quantity = Mathf.Min(
                 Mathf.Min(uncovered, destinationFree),
-                Mathf.Min(sourceAvailable, Mathf.Min(shuttle.GetFreeCargoCapacity(demand.resourceType), maximumShipment)));
+                Mathf.Min(sourceAvailable, Mathf.Min(shuttle.GetFreeCargoCapacity(demand.resource), maximumShipment)));
 
             if (quantity < minimumShipment - QuantityEpsilon)
             {
@@ -290,7 +290,7 @@ namespace AsteroidColony
 
             TransportContract contract = ContractManager.Instance.CreateAssignedFreightContract(
                 demand.demandId,
-                demand.resourceType,
+                demand.resource,
                 quantity,
                 supply.inventory,
                 demand.destinationInventory,
@@ -310,7 +310,7 @@ namespace AsteroidColony
             demand.SetPlanningState(
                 updatedInbound,
                 Mathf.Max(0f, demand.DesiredQuantity - updatedInbound),
-                Mathf.Max(0f, demand.destinationInventory.GetFreeCapacity(demand.resourceType) - updatedInbound),
+                Mathf.Max(0f, demand.destinationInventory.GetFreeCapacity(demand.resource) - updatedInbound),
                 "Contract in transit");
         }
 
@@ -322,7 +322,7 @@ namespace AsteroidColony
             return null;
         }
 
-        private FreightSupply FindBestSupply(ResourceType resource)
+        private FreightSupply FindBestSupply(ResourceDefinition resource)
         {
             FreightSupply best = null;
             float bestAvailable = 0f;
@@ -330,7 +330,7 @@ namespace AsteroidColony
             {
                 FreightSupply candidate = supplies[i];
                 if (candidate == null || !candidate.active || candidate.location == null ||
-                    candidate.inventory == null || candidate.resourceType != resource)
+                    candidate.inventory == null || candidate.resource != resource)
                     continue;
 
                 float available = candidate.inventory.GetAvailable(resource);
@@ -414,7 +414,7 @@ namespace AsteroidColony
             return null;
         }
 
-        private ShuttleController FindAvailableShuttle(ResourceType resource)
+        private ShuttleController FindAvailableShuttle(ResourceDefinition resource)
         {
             for (int i = 0; i < shuttles.Count; i++)
             {

@@ -25,6 +25,9 @@ namespace AsteroidColony
         public int passengerCapacity = 4;
         public float cargoCapacity = 12f;
         public float movementSpeed = 12f;
+        public ResourceDefinition foodResource;
+        public ResourceDefinition iceResource;
+        public ResourceDefinition waterResource;
 
         /// <summary>
         /// The contract this shuttle is currently executing. Runtime-only: a job is
@@ -38,7 +41,7 @@ namespace AsteroidColony
         [SerializeField] private int aboardPassengers;
         [SerializeField] private int currentContractId;
         [SerializeField] private TransportContractType currentContractType;
-        [SerializeField] private ResourceType currentContractResource;
+        [SerializeField] private ResourceDefinition currentContractResource;
         [SerializeField] private float currentContractQuantity;
         [SerializeField] private LocationAnchor currentContractSource;
         [SerializeField] private LocationAnchor currentContractDestination;
@@ -131,7 +134,7 @@ namespace AsteroidColony
         /// InventoryComponent capacity is the authoritative limit; cargoCapacity
         /// remains the vehicle-level cap used by the prototype.
         /// </summary>
-        public float GetFreeCargoCapacity(ResourceType resource)
+        public float GetFreeCargoCapacity(ResourceDefinition resource)
         {
             float vehicleFree = Mathf.Max(0f, cargoCapacity);
             if (cargoInventory == null)
@@ -229,18 +232,18 @@ namespace AsteroidColony
         {
             float requested = currentContract.quantity;
             float withdrawn = currentContract.sourceInventory != null
-                ? currentContract.sourceInventory.WithdrawReserved(currentContract.resourceType, requested)
+                ? currentContract.sourceInventory.WithdrawReserved(currentContract.resource, requested)
                 : 0f;
             float loaded = cargoInventory != null
-                ? cargoInventory.Add(currentContract.resourceType, withdrawn)
+                ? cargoInventory.Add(currentContract.resource, withdrawn)
                 : 0f;
             if (loaded < withdrawn - 0.0001f && currentContract.sourceInventory != null)
-                currentContract.sourceInventory.Add(currentContract.resourceType, withdrawn - loaded);
+                currentContract.sourceInventory.Add(currentContract.resource, withdrawn - loaded);
 
             currentContract.loadedQuantity = loaded;
             if (loaded < requested - 0.0001f)
                 currentContract.quantity = loaded;
-            SimulationLog.Log($"{displayName} loaded {loaded} {currentContract.resourceType} at {currentContract.sourceLocation.displayName}");
+            SimulationLog.Log($"{displayName} loaded {loaded} {currentContract.resource} at {currentContract.sourceLocation.displayName}");
         }
 
         private void LoadPassengers()
@@ -303,26 +306,26 @@ namespace AsteroidColony
             if (cargoInventory == null || currentContract.destinationInventory == null)
                 return false;
 
-            float cargo = cargoInventory.GetOnHand(currentContract.resourceType);
+            float cargo = cargoInventory.GetOnHand(currentContract.resource);
             if (cargo <= 0.0001f)
                 return true;
 
             float amount = Mathf.Min(cargo,
-                currentContract.destinationInventory.GetFreeCapacity(currentContract.resourceType));
+                currentContract.destinationInventory.GetFreeCapacity(currentContract.resource));
             if (amount <= 0.0001f)
                 return false;
 
-            float removed = cargoInventory.Remove(currentContract.resourceType, amount);
-            float added = currentContract.destinationInventory.Add(currentContract.resourceType, removed);
+            float removed = cargoInventory.Remove(currentContract.resource, amount);
+            float added = currentContract.destinationInventory.Add(currentContract.resource, removed);
             if (added < removed - 0.0001f)
-                cargoInventory.Add(currentContract.resourceType, removed - added);
+                cargoInventory.Add(currentContract.resource, removed - added);
             if (added > 0f)
             {
                 currentContract.deliveredQuantity += added;
-                SimulationLog.Log($"{displayName} delivered {added} {currentContract.resourceType} to {currentContract.destinationLocation.displayName}");
+                SimulationLog.Log($"{displayName} delivered {added} {currentContract.resource} to {currentContract.destinationLocation.displayName}");
             }
 
-            return cargoInventory.GetOnHand(currentContract.resourceType) <= 0.0001f;
+            return cargoInventory.GetOnHand(currentContract.resource) <= 0.0001f;
         }
 
         private void UnloadPassengers()
@@ -346,17 +349,17 @@ namespace AsteroidColony
                 ? currentContract.type
                 : TransportContractType.Freight;
             currentContractResource = currentContract != null
-                ? currentContract.resourceType
-                : ResourceType.Food;
+                ? currentContract.resource
+                : foodResource;
             currentContractQuantity = currentContract != null ? currentContract.RemainingQuantity : 0f;
             currentContractSource = currentContract != null ? currentContract.sourceLocation : null;
             currentContractDestination = currentContract != null ? currentContract.destinationLocation : null;
             currentContractState = currentContract != null
                 ? currentContract.state
                 : TransportContractState.Completed;
-            foodCargo = cargoInventory != null ? cargoInventory.GetOnHand(ResourceType.Food) : 0f;
-            iceCargo = cargoInventory != null ? cargoInventory.GetOnHand(ResourceType.Ice) : 0f;
-            waterCargo = cargoInventory != null ? cargoInventory.GetOnHand(ResourceType.Water) : 0f;
+            foodCargo = cargoInventory != null ? cargoInventory.GetOnHand(foodResource) : 0f;
+            iceCargo = cargoInventory != null ? cargoInventory.GetOnHand(iceResource) : 0f;
+            waterCargo = cargoInventory != null ? cargoInventory.GetOnHand(waterResource) : 0f;
         }
     }
 }

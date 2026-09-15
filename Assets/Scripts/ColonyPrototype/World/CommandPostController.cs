@@ -14,6 +14,8 @@ namespace AsteroidColony
         public LocationAnchor commandPostLocation;
         public InventoryComponent commandPostInventory;
         public LocationAnchor foodSourceFarm;
+        public ResourceDefinition foodResource;
+        public ResourceDefinition waterResource;
         public float consumptionPerResidentPerHour = 0.1f;
         public float reorderThreshold = 8f;
         public float targetFoodStock = 20f;
@@ -73,7 +75,7 @@ namespace AsteroidColony
             {
                 waterDemandId = LogisticsManager.Instance.RegisterFreightDemand(
                     "Command Post Water",
-                    ResourceType.Water,
+                    waterResource,
                     commandPostLocation,
                     commandPostInventory,
                     waterResupplyPriority,
@@ -112,7 +114,7 @@ namespace AsteroidColony
                 return;
 
             float removed = commandPostInventory != null
-                ? commandPostInventory.Remove(ResourceType.Food, requested)
+                ? commandPostInventory.Remove(foodResource, requested)
                 : 0f;
 
             bool shortageNow = removed < requested - 0.0001f;
@@ -140,7 +142,7 @@ namespace AsteroidColony
                 return;
 
             float removed = commandPostInventory != null
-                ? commandPostInventory.Remove(ResourceType.Water, requested)
+                ? commandPostInventory.Remove(waterResource, requested)
                 : 0f;
             bool shortageNow = removed < requested - 0.0001f;
             if (shortageNow && !waterShortageActive)
@@ -163,22 +165,22 @@ namespace AsteroidColony
                 return;
             }
 
-            float onHand = commandPostInventory.GetOnHand(ResourceType.Food);
+            float onHand = commandPostInventory.GetOnHand(foodResource);
             if (onHand >= reorderThreshold)
                 return;
 
             // Only one active Command Post food-resupply contract at a time.
-            if (ContractManager.Instance.HasActiveFreightTo(commandPostLocation, ResourceType.Food))
+            if (ContractManager.Instance.HasActiveFreightTo(commandPostLocation, foodResource))
                 return;
 
             float desired = Mathf.Min(targetFoodStock - onHand, maximumOrderSize);
-            float farmAvailable = foodSourceInventory.GetAvailable(ResourceType.Food);
+            float farmAvailable = foodSourceInventory.GetAvailable(foodResource);
             float quantity = Mathf.Min(desired, farmAvailable);
             if (quantity <= 0f)
                 return;
 
             ContractManager.Instance.CreateFreightContract(
-                ResourceType.Food, quantity,
+                foodResource, quantity,
                 foodSourceInventory, commandPostInventory,
                 foodSourceFarm, commandPostLocation);
         }
@@ -191,7 +193,7 @@ namespace AsteroidColony
                 return;
             }
 
-            float onHand = commandPostInventory.GetOnHand(ResourceType.Water);
+            float onHand = commandPostInventory.GetOnHand(waterResource);
             float desired = onHand < waterReorderThreshold
                 ? Mathf.Max(0f, waterTargetStock - onHand)
                 : 0f;
@@ -201,7 +203,7 @@ namespace AsteroidColony
         private void RefreshWaterObservability()
         {
             waterOnHand = commandPostInventory != null
-                ? commandPostInventory.GetOnHand(ResourceType.Water)
+                ? commandPostInventory.GetOnHand(waterResource)
                 : 0f;
             waterIncoming = ContractManager.Instance != null && waterDemandId > 0
                 ? ContractManager.Instance.GetActiveFreightQuantityForDemand(waterDemandId)

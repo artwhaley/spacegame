@@ -731,12 +731,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: 0
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
     onHand: 12
     reserved: 0
     capacity: 40
     available: 12
-  - resource: 2
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
     onHand: 16
     reserved: 0
     capacity: 40
@@ -756,6 +756,8 @@ MonoBehaviour:
   commandPostLocation: {fileID: 400000201}
   commandPostInventory: {fileID: 400000202}
   foodSourceFarm: {fileID: 400000211}
+  foodResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  waterResource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
   consumptionPerResidentPerHour: 0.1
   reorderThreshold: 8
   targetFoodStock: 20
@@ -799,12 +801,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: 0
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
     onHand: 0
     reserved: 0
     capacity: 40
     available: 0
-  - resource: 2
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
     onHand: 0
     reserved: 0
     capacity: 16
@@ -823,6 +825,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   farmLocation: {fileID: 400000211}
   farmInventory: {fileID: 400000212}
+  foodResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  waterResource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
   assignedFarmers:
   - {fileID: 400000307}
   - {fileID: 400000308}
@@ -870,12 +874,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: 0
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
     onHand: 0
     reserved: 0
     capacity: 12
     available: 0
-  - resource: 2
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
     onHand: 0
     reserved: 0
     capacity: 12
@@ -895,6 +899,9 @@ MonoBehaviour:
   displayName: Shuttle 1
   operationalEnabled: 1
   assignedPilot: {fileID: 400000304}
+  foodResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+  iceResource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
+  waterResource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
   currentDock: {fileID: 400000201}
   currentContract: {fileID: 0}
   passengerCapacity: 4
@@ -904,7 +911,7 @@ MonoBehaviour:
   aboardPassengers: 0
   currentContractId: 0
   currentContractType: 0
-  currentContractResource: 0
+  currentContractResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
   currentContractQuantity: 0
   currentContractSource: {fileID: 0}
   currentContractDestination: {fileID: 0}
@@ -2189,12 +2196,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: 1
+  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
     onHand: 0
     reserved: 0
     capacity: 48
     available: 0
-  - resource: 2
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
     onHand: 0
     reserved: 0
     capacity: 40
@@ -2341,7 +2348,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   displayName: Ice Asteroid 1
-  resourceType: 1
+  resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
   startingQuantity: 500
   remainingQuantity: 500
   extractionEnabled: 1
@@ -2462,7 +2469,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
-  - resource: 1
+  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
     onHand: 0
     reserved: 0
     capacity: 24
@@ -2482,6 +2489,7 @@ MonoBehaviour:
   displayName: Mining Ship 1
   operationalEnabled: 1
   assignedPilot: {fileID: 400000308}
+  collectableResource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
   targetDeposit: {fileID: 210000014}
   homeUnloadLocation: {fileID: 210000003}
   destinationInventory: {fileID: 210000004}

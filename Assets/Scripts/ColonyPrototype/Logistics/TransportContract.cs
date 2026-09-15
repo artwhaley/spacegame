@@ -38,7 +38,7 @@ namespace AsteroidColony
         public int demandId;
 
         // Freight data
-        public ResourceType resourceType;
+        public ResourceDefinition resource;
         public float quantity;
         public float loadedQuantity;
         public float deliveredQuantity;

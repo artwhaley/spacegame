@@ -20,6 +20,7 @@ namespace AsteroidColony
         public string displayName = "Mining Ship 1";
         public bool operationalEnabled = true;
         public ColonistAgent assignedPilot;
+        public ResourceDefinition collectableResource;
         public ResourceDeposit targetDeposit;
         public LocationAnchor homeUnloadLocation;
         public InventoryComponent destinationInventory;
@@ -42,7 +43,7 @@ namespace AsteroidColony
         public MiningShipState State => state;
         public float CurrentMissionTargetQuantity => missionTargetQuantity;
         public float CurrentCargoQuantity => cargoInventory != null
-            ? cargoInventory.GetOnHand(ResourceType.Ice)
+            ? cargoInventory.GetOnHand(collectableResource)
             : 0f;
         public float CargoCapacity => cargoCapacity;
 
@@ -118,16 +119,16 @@ namespace AsteroidColony
         private void TryBeginMission()
         {
             if (assignedPilot == null || targetDeposit == null || destinationInventory == null ||
-                targetDeposit.resourceType != ResourceType.Ice ||
+                targetDeposit.resource != collectableResource ||
                 targetDeposit.RemainingQuantity <= QuantityEpsilon || cargoInventory == null)
             {
                 return;
             }
 
-            float destinationOnHand = destinationInventory.GetOnHand(ResourceType.Ice);
+            float destinationOnHand = destinationInventory.GetOnHand(collectableResource);
             float iceNeeded = desiredDestinationIceStock - destinationOnHand - CurrentCargoQuantity;
             float freeCargo = Mathf.Max(0f, cargoCapacity - CurrentCargoQuantity);
-            float freeDestination = destinationInventory.GetFreeCapacity(ResourceType.Ice);
+            float freeDestination = destinationInventory.GetFreeCapacity(collectableResource);
             float missionQuantity = Mathf.Min(
                 iceNeeded,
                 Mathf.Min(freeCargo, Mathf.Min(freeDestination, targetDeposit.RemainingQuantity)));
@@ -151,7 +152,7 @@ namespace AsteroidColony
 
             float remainingMission = missionTargetQuantity - missionCollectedQuantity;
             float freeCargo = Mathf.Max(0f, cargoCapacity - CurrentCargoQuantity);
-            float freeDestination = destinationInventory.GetFreeCapacity(ResourceType.Ice);
+            float freeDestination = destinationInventory.GetFreeCapacity(collectableResource);
             float requested = Mathf.Min(
                 miningRate * deltaGameHours,
                 Mathf.Min(remainingMission, Mathf.Min(freeCargo, freeDestination)));
@@ -165,14 +166,14 @@ namespace AsteroidColony
             float extracted = targetDeposit.Extract(requested);
             if (extracted > QuantityEpsilon)
             {
-                float loaded = cargoInventory.Add(ResourceType.Ice, extracted);
+                float loaded = cargoInventory.Add(collectableResource, extracted);
                 missionCollectedQuantity += loaded;
             }
 
             if (missionCollectedQuantity + QuantityEpsilon >= missionTargetQuantity ||
                 CurrentCargoQuantity + QuantityEpsilon >= cargoCapacity ||
                 targetDeposit.RemainingQuantity <= QuantityEpsilon ||
-                destinationInventory.GetFreeCapacity(ResourceType.Ice) <= QuantityEpsilon)
+                destinationInventory.GetFreeCapacity(collectableResource) <= QuantityEpsilon)
             {
                 FinishMiningTrip();
             }
@@ -202,7 +203,7 @@ namespace AsteroidColony
                 return;
 
             float cargo = CurrentCargoQuantity;
-            float freeDestination = destinationInventory.GetFreeCapacity(ResourceType.Ice);
+            float freeDestination = destinationInventory.GetFreeCapacity(collectableResource);
             if (cargo <= QuantityEpsilon)
             {
                 state = MiningShipState.Idle;
@@ -215,10 +216,10 @@ namespace AsteroidColony
             if (amount <= QuantityEpsilon)
                 return;
 
-            float removed = cargoInventory.Remove(ResourceType.Ice, amount);
-            float added = destinationInventory.Add(ResourceType.Ice, removed);
+            float removed = cargoInventory.Remove(collectableResource, amount);
+            float added = destinationInventory.Add(collectableResource, removed);
             if (added < removed - QuantityEpsilon)
-                cargoInventory.Add(ResourceType.Ice, removed - added);
+                cargoInventory.Add(collectableResource, removed - added);
 
             if (added > QuantityEpsilon)
                 SimulationLog.Log($"{displayName} unloaded {added:0.##} Ice");
@@ -255,7 +256,7 @@ namespace AsteroidColony
         private void RefreshObservability()
         {
             currentCargoQuantity = cargoInventory != null
-                ? cargoInventory.GetOnHand(ResourceType.Ice)
+                ? cargoInventory.GetOnHand(collectableResource)
                 : 0f;
         }
     }

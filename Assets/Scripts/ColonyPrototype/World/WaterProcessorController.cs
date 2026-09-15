@@ -8,6 +8,8 @@ namespace AsteroidColony
     public class WaterProcessorController : MonoBehaviour, ISimulationTickable
     {
         public InventoryComponent inventory;
+        public ResourceDefinition iceResource;
+        public ResourceDefinition waterResource;
         public bool operationalEnabled = true;
         public float iceInputTarget = 24f;
         public float iceConsumptionRate = 2f;
@@ -34,13 +36,13 @@ namespace AsteroidColony
         public bool CurrentlyProcessing => currentlyProcessing;
         public bool InputStarved => inputStarved;
         public bool OutputBlocked => outputBlocked;
-        public float IceOnHand => inventory != null ? inventory.GetOnHand(ResourceType.Ice) : 0f;
-        public float IceAvailable => inventory != null ? inventory.GetAvailable(ResourceType.Ice) : 0f;
-        public float IceStorageFreeCapacity => inventory != null ? inventory.GetFreeCapacity(ResourceType.Ice) : 0f;
-        public float WaterOnHand => inventory != null ? inventory.GetOnHand(ResourceType.Water) : 0f;
-        public float WaterReserved => inventory != null ? inventory.GetReserved(ResourceType.Water) : 0f;
-        public float WaterAvailable => inventory != null ? inventory.GetAvailable(ResourceType.Water) : 0f;
-        public float WaterCapacity => inventory != null ? inventory.GetCapacity(ResourceType.Water) : 0f;
+        public float IceOnHand => inventory != null ? inventory.GetOnHand(iceResource) : 0f;
+        public float IceAvailable => inventory != null ? inventory.GetAvailable(iceResource) : 0f;
+        public float IceStorageFreeCapacity => inventory != null ? inventory.GetFreeCapacity(iceResource) : 0f;
+        public float WaterOnHand => inventory != null ? inventory.GetOnHand(waterResource) : 0f;
+        public float WaterReserved => inventory != null ? inventory.GetReserved(waterResource) : 0f;
+        public float WaterAvailable => inventory != null ? inventory.GetAvailable(waterResource) : 0f;
+        public float WaterCapacity => inventory != null ? inventory.GetCapacity(waterResource) : 0f;
 
         private void Awake()
         {
@@ -77,7 +79,7 @@ namespace AsteroidColony
             {
                 waterSupplyId = LogisticsManager.Instance.RegisterFreightSupply(
                     "Water Processor",
-                    ResourceType.Water,
+                    waterResource,
                     GetComponent<LocationAnchor>(),
                     inventory);
             }
@@ -89,7 +91,7 @@ namespace AsteroidColony
                 return;
 
             float ice = IceOnHand;
-            float waterFree = inventory.GetFreeCapacity(ResourceType.Water);
+            float waterFree = inventory.GetFreeCapacity(waterResource);
             float ratio = waterProductionRate > 0f && iceConsumptionRate > 0f
                 ? waterProductionRate / iceConsumptionRate
                 : 0f;
@@ -104,13 +106,13 @@ namespace AsteroidColony
                 float maxByOutput = waterFree / ratio;
                 float amount = Mathf.Min(iceConsumptionRate * deltaGameHours,
                     Mathf.Min(ice, maxByOutput));
-                float consumed = inventory.Remove(ResourceType.Ice, amount);
-                float produced = inventory.Add(ResourceType.Water, consumed * ratio);
+                float consumed = inventory.Remove(iceResource, amount);
+                float produced = inventory.Add(waterResource, consumed * ratio);
 
                 // The amount was capped by free output capacity. This guard keeps
                 // conservation exact if a future caller changes inventory behavior.
                 if (produced < consumed * ratio - QuantityEpsilon)
-                    inventory.Add(ResourceType.Ice, (consumed * ratio - produced) / ratio);
+                    inventory.Add(iceResource, (consumed * ratio - produced) / ratio);
 
                 currentlyProcessing = consumed > QuantityEpsilon && produced > QuantityEpsilon;
             }
@@ -141,13 +143,13 @@ namespace AsteroidColony
 
         private void RefreshObservability()
         {
-            iceOnHand = inventory != null ? inventory.GetOnHand(ResourceType.Ice) : 0f;
-            iceAvailable = inventory != null ? inventory.GetAvailable(ResourceType.Ice) : 0f;
-            iceCapacity = inventory != null ? inventory.GetCapacity(ResourceType.Ice) : 0f;
-            waterOnHand = inventory != null ? inventory.GetOnHand(ResourceType.Water) : 0f;
-            waterReserved = inventory != null ? inventory.GetReserved(ResourceType.Water) : 0f;
-            waterAvailable = inventory != null ? inventory.GetAvailable(ResourceType.Water) : 0f;
-            waterCapacity = inventory != null ? inventory.GetCapacity(ResourceType.Water) : 0f;
+            iceOnHand = inventory != null ? inventory.GetOnHand(iceResource) : 0f;
+            iceAvailable = inventory != null ? inventory.GetAvailable(iceResource) : 0f;
+            iceCapacity = inventory != null ? inventory.GetCapacity(iceResource) : 0f;
+            waterOnHand = inventory != null ? inventory.GetOnHand(waterResource) : 0f;
+            waterReserved = inventory != null ? inventory.GetReserved(waterResource) : 0f;
+            waterAvailable = inventory != null ? inventory.GetAvailable(waterResource) : 0f;
+            waterCapacity = inventory != null ? inventory.GetCapacity(waterResource) : 0f;
         }
     }
 }

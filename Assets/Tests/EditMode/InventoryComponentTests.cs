@@ -9,18 +9,30 @@ namespace AsteroidColony.Tests
     {
         private GameObject inventoryObject;
         private InventoryComponent inventory;
+        private ResourceDefinition food;
+        private ResourceDefinition discrete;
 
         [SetUp]
         public void SetUp()
         {
             inventoryObject = new GameObject("Inventory Test");
             inventory = inventoryObject.AddComponent<InventoryComponent>();
+            food = ScriptableObject.CreateInstance<ResourceDefinition>();
+            food.name = "Food Test";
+            discrete = ScriptableObject.CreateInstance<ResourceDefinition>();
+            discrete.name = "Discrete Test";
+            discrete.quantityMode = ResourceQuantityMode.Discrete;
             FieldInfo entriesField = typeof(InventoryComponent).GetField(
                 "entries", BindingFlags.Instance | BindingFlags.NonPublic);
             var entries = (List<InventoryEntry>)entriesField.GetValue(inventory);
             entries.Add(new InventoryEntry
             {
-                resource = ResourceType.Food,
+                resource = food,
+                capacity = 10f
+            });
+            entries.Add(new InventoryEntry
+            {
+                resource = discrete,
                 capacity = 10f
             });
         }
@@ -29,55 +41,65 @@ namespace AsteroidColony.Tests
         public void TearDown()
         {
             Object.DestroyImmediate(inventoryObject);
+            Object.DestroyImmediate(food);
+            Object.DestroyImmediate(discrete);
         }
 
         [Test]
         public void AddRespectsCapacity()
         {
-            Assert.That(inventory.Add(ResourceType.Food, 12f), Is.EqualTo(10f));
-            Assert.That(inventory.GetOnHand(ResourceType.Food), Is.EqualTo(10f));
-            Assert.That(inventory.GetAvailable(ResourceType.Food), Is.EqualTo(10f));
+            Assert.That(inventory.Add(food, 12f), Is.EqualTo(10f));
+            Assert.That(inventory.GetOnHand(food), Is.EqualTo(10f));
+            Assert.That(inventory.GetAvailable(food), Is.EqualTo(10f));
         }
 
         [Test]
         public void ReserveCannotExceedAvailable()
         {
-            inventory.Add(ResourceType.Food, 5f);
-            Assert.That(inventory.Reserve(ResourceType.Food, 6f), Is.False);
-            Assert.That(inventory.GetReserved(ResourceType.Food), Is.EqualTo(0f));
-            Assert.That(inventory.Reserve(ResourceType.Food, 3f), Is.True);
-            Assert.That(inventory.GetAvailable(ResourceType.Food), Is.EqualTo(2f));
+            inventory.Add(food, 5f);
+            Assert.That(inventory.Reserve(food, 6f), Is.False);
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(0f));
+            Assert.That(inventory.Reserve(food, 3f), Is.True);
+            Assert.That(inventory.GetAvailable(food), Is.EqualTo(2f));
         }
 
         [Test]
         public void WithdrawReservedDecreasesOnHandAndReservation()
         {
-            inventory.Add(ResourceType.Food, 5f);
-            Assert.That(inventory.Reserve(ResourceType.Food, 3f), Is.True);
-            Assert.That(inventory.WithdrawReserved(ResourceType.Food, 2f), Is.EqualTo(2f));
-            Assert.That(inventory.GetOnHand(ResourceType.Food), Is.EqualTo(3f));
-            Assert.That(inventory.GetReserved(ResourceType.Food), Is.EqualTo(1f));
+            inventory.Add(food, 5f);
+            Assert.That(inventory.Reserve(food, 3f), Is.True);
+            Assert.That(inventory.WithdrawReserved(food, 2f), Is.EqualTo(2f));
+            Assert.That(inventory.GetOnHand(food), Is.EqualTo(3f));
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(1f));
         }
 
         [Test]
         public void ReleaseReservationRestoresAvailability()
         {
-            inventory.Add(ResourceType.Food, 5f);
-            inventory.Reserve(ResourceType.Food, 3f);
-            inventory.ReleaseReservation(ResourceType.Food, 2f);
-            Assert.That(inventory.GetOnHand(ResourceType.Food), Is.EqualTo(5f));
-            Assert.That(inventory.GetReserved(ResourceType.Food), Is.EqualTo(1f));
-            Assert.That(inventory.GetAvailable(ResourceType.Food), Is.EqualTo(4f));
+            inventory.Add(food, 5f);
+            inventory.Reserve(food, 3f);
+            inventory.ReleaseReservation(food, 2f);
+            Assert.That(inventory.GetOnHand(food), Is.EqualTo(5f));
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(1f));
+            Assert.That(inventory.GetAvailable(food), Is.EqualTo(4f));
         }
 
         [Test]
         public void InventoryNeverBecomesNegative()
         {
-            Assert.That(inventory.Remove(ResourceType.Food, 2f), Is.EqualTo(0f));
-            inventory.Add(ResourceType.Food, 1f);
-            Assert.That(inventory.Remove(ResourceType.Food, 2f), Is.EqualTo(1f));
-            Assert.That(inventory.GetOnHand(ResourceType.Food), Is.EqualTo(0f));
-            Assert.That(inventory.GetReserved(ResourceType.Food), Is.EqualTo(0f));
+            Assert.That(inventory.Remove(food, 2f), Is.EqualTo(0f));
+            inventory.Add(food, 1f);
+            Assert.That(inventory.Remove(food, 2f), Is.EqualTo(1f));
+            Assert.That(inventory.GetOnHand(food), Is.EqualTo(0f));
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void DiscreteInventoryRejectsFractionalRuntimeMutation()
+        {
+            Assert.That(inventory.Add(discrete, 0.2f), Is.EqualTo(0f));
+            Assert.That(inventory.GetOnHand(discrete), Is.EqualTo(0f));
+            Assert.That(inventory.Add(discrete, 2.00001f), Is.EqualTo(2f));
         }
     }
 }

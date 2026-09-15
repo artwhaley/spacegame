@@ -42,7 +42,7 @@ namespace AsteroidColony
             return best;
         }
 
-        public bool HasActiveFreightTo(LocationAnchor destination, ResourceType resource)
+        public bool HasActiveFreightTo(LocationAnchor destination, ResourceDefinition resource)
         {
             return GetActiveFreightQuantityTo(destination, resource) > 0f;
         }
@@ -52,7 +52,7 @@ namespace AsteroidColony
         /// destination. This keeps demand accounting physical without duplicating
         /// stock in a consumer's inventory before the shuttle unloads it.
         /// </summary>
-        public float GetActiveFreightQuantityTo(LocationAnchor destination, ResourceType resource)
+        public float GetActiveFreightQuantityTo(LocationAnchor destination, ResourceDefinition resource)
         {
             float quantity = 0f;
             for (int i = 0; i < contracts.Count; i++)
@@ -60,7 +60,7 @@ namespace AsteroidColony
                 TransportContract c = contracts[i];
                 if (c.IsActive &&
                     c.type == TransportContractType.Freight &&
-                    c.resourceType == resource &&
+                    c.resource == resource &&
                     c.destinationLocation == destination)
                 {
                     quantity += c.RemainingQuantity;
@@ -121,7 +121,7 @@ namespace AsteroidColony
         /// available amount. If zero is available, no contract is created.
         /// </summary>
         public TransportContract CreateFreightContract(
-            ResourceType resource, float quantity,
+            ResourceDefinition resource, float quantity,
             InventoryComponent sourceInventory, InventoryComponent destinationInventory,
             LocationAnchor sourceLocation, LocationAnchor destinationLocation,
             int priority = 50)
@@ -140,7 +140,7 @@ namespace AsteroidColony
         /// </summary>
         public TransportContract CreateAssignedFreightContract(
             int demandId,
-            ResourceType resource, float quantity,
+            ResourceDefinition resource, float quantity,
             InventoryComponent sourceInventory, InventoryComponent destinationInventory,
             LocationAnchor sourceLocation, LocationAnchor destinationLocation,
             ShuttleController shuttle, int priority, float minimumShipment)
@@ -178,7 +178,7 @@ namespace AsteroidColony
 
         private TransportContract CreateFreightContractInternal(
             int demandId,
-            ResourceType resource, float quantity,
+            ResourceDefinition resource, float quantity,
             InventoryComponent sourceInventory, InventoryComponent destinationInventory,
             LocationAnchor sourceLocation, LocationAnchor destinationLocation,
             int priority, bool notifyLogistics)
@@ -205,7 +205,7 @@ namespace AsteroidColony
                 state = TransportContractState.Open,
                 creationTime = SimulationManager.Instance != null ? SimulationManager.Instance.CurrentGameHour : 0f,
                 demandId = demandId,
-                resourceType = resource,
+                resource = resource,
                 quantity = toReserve,
                 sourceInventory = sourceInventory,
                 destinationInventory = destinationInventory
@@ -274,7 +274,7 @@ namespace AsteroidColony
                 return;
 
             if (contract.type == TransportContractType.Freight &&
-                contract.quantity > shuttle.GetFreeCargoCapacity(contract.resourceType) + 0.0001f)
+                contract.quantity > shuttle.GetFreeCargoCapacity(contract.resource) + 0.0001f)
                 return;
 
             contract.state = TransportContractState.Assigned;
@@ -307,7 +307,7 @@ namespace AsteroidColony
             if (contract.type == TransportContractType.Freight && contract.sourceInventory != null)
             {
                 float stillReserved = Mathf.Max(0f, contract.quantity - contract.loadedQuantity);
-                contract.sourceInventory.ReleaseReservation(contract.resourceType, stillReserved);
+                contract.sourceInventory.ReleaseReservation(contract.resource, stillReserved);
             }
 
             contract.state = TransportContractState.Cancelled;
