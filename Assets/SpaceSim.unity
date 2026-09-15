@@ -758,31 +758,85 @@ MonoBehaviour:
   m_GameObject: {fileID: 973986971}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5da4b5c6d7e8f90a1b2c3d4e5f607182, type: 3}
+  m_Script: {fileID: 11500000, guid: 7f8091a2b3c4d5e6f708192a3b4c5d7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  commandPostLocation: {fileID: 400000201}
-  commandPostInventory: {fileID: 400000202}
-  foodSourceFarm: {fileID: 400000211}
-  foodResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
-  waterResource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
-  consumptionPerResidentPerHour: 0.1
-  reorderThreshold: 8
-  targetFoodStock: 20
-  maximumOrderSize: 12
-  waterConsumptionPerResidentPerHour: 0.1
-  waterReorderThreshold: 8
-  waterTargetStock: 16
-  waterMinimumShipment: 4
-  waterMaximumOrderSize: 12
-  waterResupplyPriority: 90
-  foodShortageActive: 0
-  waterShortageActive: 0
-  residents: 0
-  currentConsumptionRate: 0
-  currentWaterConsumptionRate: 0
-  waterOnHand: 16
-  waterIncoming: 0
+  location: {fileID: 400000201}
+  capacity: 8
+--- !u!114 &400000204
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 973986971}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8091a2b3c4d5e6f708192a3b4c5d6e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  habitation: {fileID: 400000203}
+  inventory: {fileID: 400000202}
+  entries:
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+    amountPerResidentPerGameHour: 0.1
+    shortageActive: 0
+    requestedLastTick: 0
+    consumedLastTick: 0
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+    amountPerResidentPerGameHour: 0.1
+    shortageActive: 0
+    requestedLastTick: 0
+    consumedLastTick: 0
+--- !u!114 &400000205
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 973986971}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  location: {fileID: 400000201}
+  inventory: {fileID: 400000202}
+  entries:
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+    importDemandClass: 0
+    importPriority: 5
+    importReorderThreshold: 8
+    importTargetStock: 20
+    importMinimumShipment: 0
+    importMaximumShipment: 12
+    exportEnabled: 0
+    exportPriority: 1
+    exportRetainStock: 0
+    backgroundImportEnabled: 0
+    backgroundImportPriority: 1
+    backgroundImportMinimumShipment: 0
+    backgroundImportMaximumShipment: 12
+    foregroundDemandId: 0
+    backgroundDemandId: 0
+    supplyId: 0
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+    importDemandClass: 0
+    importPriority: 9
+    importReorderThreshold: 8
+    importTargetStock: 16
+    importMinimumShipment: 4
+    importMaximumShipment: 12
+    exportEnabled: 0
+    exportPriority: 1
+    exportRetainStock: 0
+    backgroundImportEnabled: 0
+    backgroundImportPriority: 1
+    backgroundImportMinimumShipment: 0
+    backgroundImportMaximumShipment: 12
+    foregroundDemandId: 0
+    backgroundDemandId: 0
+    supplyId: 0
 --- !u!114 &400000211
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1448,6 +1502,8 @@ GameObject:
   - component: {fileID: 400000201}
   - component: {fileID: 400000202}
   - component: {fileID: 400000203}
+  - component: {fileID: 400000204}
+  - component: {fileID: 400000205}
   m_Layer: 0
   m_Name: CommandPod
   m_TagString: Untagged
