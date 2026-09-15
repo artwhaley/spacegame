@@ -137,7 +137,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   displayName: 
-  role: 0
   home: {fileID: 0}
   currentLocation: {fileID: 0}
   assignedWorkplace: {fileID: 0}

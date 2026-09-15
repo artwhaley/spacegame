@@ -132,10 +132,6 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 400000201}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: role
-      value: 3
-      objectReference: {fileID: 0}
-    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: displayName
       value: Farmer 2
       objectReference: {fileID: 0}
@@ -226,10 +222,6 @@ PrefabInstance:
       propertyPath: home
       value: 
       objectReference: {fileID: 400000201}
-    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: role
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: displayName
       value: Pilot 2
@@ -1220,10 +1212,6 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 400000201}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: role
-      value: 3
-      objectReference: {fileID: 0}
-    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: displayName
       value: Farmer 1
       objectReference: {fileID: 0}
@@ -1315,10 +1303,6 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 400000201}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: role
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: displayName
       value: Bridge Crew 3
       objectReference: {fileID: 0}
@@ -1392,10 +1376,6 @@ PrefabInstance:
       propertyPath: home
       value: 
       objectReference: {fileID: 400000201}
-    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: role
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: displayName
       value: Bridge Crew 1
@@ -1586,10 +1566,6 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 400000201}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: role
-      value: 2
-      objectReference: {fileID: 0}
-    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: displayName
       value: Maintenance
       objectReference: {fileID: 0}
@@ -1663,10 +1639,6 @@ PrefabInstance:
       propertyPath: home
       value: 
       objectReference: {fileID: 400000201}
-    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: role
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: displayName
       value: Pilot 1
@@ -2098,10 +2070,6 @@ PrefabInstance:
       propertyPath: home
       value: 
       objectReference: {fileID: 400000201}
-    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: role
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: displayName
       value: Bridge Crew 2

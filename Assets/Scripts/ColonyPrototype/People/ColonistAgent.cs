@@ -3,14 +3,6 @@ using UnityEngine;
 
 namespace AsteroidColony
 {
-    public enum ColonistRole
-    {
-        BridgeCrew,
-        ShuttlePilot,
-        Maintenance,
-        Farmer
-    }
-
     public enum ColonistActivity
     {
         Idle,
@@ -28,7 +20,6 @@ namespace AsteroidColony
     public class ColonistAgent : MonoBehaviour
     {
         public string displayName;
-        public ColonistRole role;
         public LocationAnchor home;
         public LocationAnchor currentLocation;
         public LocationAnchor assignedWorkplace;
