@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AsteroidColony
@@ -32,6 +33,41 @@ namespace AsteroidColony
         public LocationAnchor currentLocation;
         public LocationAnchor assignedWorkplace;
         public ColonistActivity activity;
+        public List<WorkerClassDefinition> classes = new List<WorkerClassDefinition>();
+        public List<SkillRating> skills = new List<SkillRating>();
+
+        public bool HasClass(WorkerClassDefinition requiredClass)
+        {
+            if (requiredClass == null)
+                return false;
+            for (int i = 0; i < classes.Count; i++)
+                if (classes[i] == requiredClass)
+                    return true;
+            return false;
+        }
+
+        public float GetSkill(SkillDefinition requestedSkill)
+        {
+            if (requestedSkill == null)
+                return 0f;
+            for (int i = 0; i < skills.Count; i++)
+            {
+                SkillRating rating = skills[i];
+                if (rating != null && rating.skill == requestedSkill)
+                {
+                    rating.Clamp();
+                    return rating.proficiency;
+                }
+            }
+            return 0f;
+        }
+
+        private void OnValidate()
+        {
+            for (int i = 0; i < skills.Count; i++)
+                if (skills[i] != null)
+                    skills[i].Clamp();
+        }
 
         private void Start()
         {
