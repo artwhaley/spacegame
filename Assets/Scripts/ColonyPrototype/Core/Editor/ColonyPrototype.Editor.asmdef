@@ -1,6 +1,6 @@
 {
-    "name": "ColonyPrototype.Tests",
-    "rootNamespace": "AsteroidColony.Tests",
+    "name": "ColonyPrototype.Editor",
+    "rootNamespace": "AsteroidColony.Editor",
     "references": [
         "ColonyPrototype.Runtime"
     ],
@@ -10,13 +10,9 @@
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
-    "precompiledReferences": [
-        "nunit.framework.dll"
-    ],
-    "autoReferenced": false,
-    "defineConstraints": [
-        "UNITY_INCLUDE_TESTS"
-    ],
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
 }
