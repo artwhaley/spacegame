@@ -2229,6 +2229,7 @@ GameObject:
   - component: {fileID: 210000003}
   - component: {fileID: 210000004}
   - component: {fileID: 210000005}
+  - component: {fileID: 210000006}
   m_Layer: 0
   m_Name: Water Processor
   m_TagString: Untagged
@@ -2295,24 +2296,57 @@ MonoBehaviour:
   m_GameObject: {fileID: 210000001}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c3d4e5f60718293a4b5c6d7e8f901a2b, type: 3}
+  m_Script: {fileID: 11500000, guid: 4c5d6e7f8091a2b3c4d5e6f708192a3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   inventory: {fileID: 210000004}
+  availableRecipes:
+  - {fileID: 11400000, guid: 9b2c3d4e5f60718293a4b5c6d7e8f90, type: 2}
+  activeRecipe: {fileID: 11400000, guid: 9b2c3d4e5f60718293a4b5c6d7e8f90, type: 2}
   operationalEnabled: 1
-  iceInputTarget: 24
-  iceConsumptionRate: 2
-  waterProductionRate: 2
-  currentlyProcessing: 0
-  inputStarved: 1
-  outputBlocked: 0
-  iceOnHand: 0
-  iceAvailable: 0
-  iceCapacity: 48
-  waterOnHand: 0
-  waterReserved: 0
-  waterAvailable: 0
-  waterCapacity: 40
+  state: 0
+  progress: 0
+  throughputMultiplier: 1
+  blockedReason: 
+--- !u!114 &210000006
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 210000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  location: {fileID: 210000003}
+  inventory: {fileID: 210000004}
+  entries:
+  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
+    normalDemandEnabled: 0
+    reorderThreshold: 0
+    targetStock: 24
+    priority: 5
+    minimumShipment: 0
+    maximumShipment: 0
+    backgroundFillEnabled: 0
+    backgroundTargetStock: 0
+    backgroundPriority: 1
+    exportEnabled: 0
+    retainStock: 0
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+    normalDemandEnabled: 0
+    reorderThreshold: 0
+    targetStock: 0
+    priority: 5
+    minimumShipment: 0
+    maximumShipment: 0
+    backgroundFillEnabled: 0
+    backgroundTargetStock: 0
+    backgroundPriority: 1
+    exportEnabled: 1
+    retainStock: 0
 --- !u!23 &210000008
 MeshRenderer:
   m_ObjectHideFlags: 0

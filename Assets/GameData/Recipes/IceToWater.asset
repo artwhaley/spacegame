@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a3b4c5d6e7f8091a2b3c4d5e6f70819, type: 3}
+  m_Name: IceToWater
+  m_EditorClassIdentifier: 
+  stableId: ice-to-water
+  displayName: Ice to Water
+  description: Melts Ice into Water.
+  executionMode: 0
+  durationHours: 1
+  inputs:
+  - resource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
+    amount: 2
+  outputs:
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+    amount: 2
+  staffingRule:
+    minimumWorkers: 0
+    maximumEffectiveWorkers: 0
+    requiredClass: {fileID: 0}
+    preferredSkill: {fileID: 0}
+    additionalWorkerBonus: 0
+    maxPreferredSkillBonus: 0
+  valid: 1
+  validationError: 
