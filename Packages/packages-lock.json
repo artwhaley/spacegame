@@ -37,7 +37,7 @@
     },
     "com.unity.ext.nunit": {
       "version": "2.1.0",
-      "depth": 2,
+      "depth": 1,
       "source": "builtin",
       "dependencies": {}
     },
