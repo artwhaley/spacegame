@@ -147,6 +147,14 @@ PrefabInstance:
       propertyPath: assignedWorkplace
       value: 
       objectReference: {fileID: 400000211}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.data[0]
+      value: 
+      objectReference: {fileID: 11400000, guid: b2b3c4d5e6f708192a3b4c5d6e7f809, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Farmer 2
@@ -820,34 +828,95 @@ MonoBehaviour:
   m_GameObject: {fileID: 512056865}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6eb5c6d7e8f90a1b2c3d4e5f60718293, type: 3}
+  m_Script: {fileID: 11500000, guid: 6e7f8091a2b3c4d5e6f708192a3b4c5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  farmLocation: {fileID: 400000211}
-  farmInventory: {fileID: 400000212}
-  foodResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
-  waterResource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
-  assignedFarmers:
-  - {fileID: 400000307}
-  - {fileID: 400000308}
+  workplace: {fileID: 400000211}
+  home: {fileID: 400000201}
+  staffing: {fileID: 400000214}
   workDurationHours: 8
   restDurationHours: 8
-  foodProductionPerFarmerPerHour: 1
-  waterConsumptionPerFarmerPerHour: 0.5
-  waterReorderThreshold: 3
-  waterTargetStock: 8
-  waterMinimumShipment: 4
-  waterMaximumOrderSize: 8
-  waterResupplyPriority: 60
-  shiftState: 0
+  passengerPriority: 10
+  state: 3
   shiftTimeRemaining: 0
-  presentWorkingFarmers: 0
-  currentProductionRate: 0
-  productionBlocked: 0
-  productionBlockedReason: 
-  waterOnHand: 0
-  waterReserved: 0
-  waterIncoming: 0
+  presentWorkingWorkers: 0
+--- !u!114 &400000214
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 512056865}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a6b7c8d9e0f1a2b3c4d5e6f708192a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  workplace: {fileID: 400000211}
+  assignedWorkers:
+  - {fileID: 400000307}
+  - {fileID: 400000308}
+--- !u!114 &400000215
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 512056865}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c5d6e7f8091a2b3c4d5e6f708192a3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  inventory: {fileID: 400000212}
+  staffing: {fileID: 400000214}
+  availableRecipes:
+  - {fileID: 11400000, guid: 8a91b2c3d4e5f60718293a4b5c6d7e8, type: 2}
+  activeRecipe: {fileID: 11400000, guid: 8a91b2c3d4e5f60718293a4b5c6d7e8, type: 2}
+  operationalEnabled: 1
+  state: 0
+  progress: 0
+  throughputMultiplier: 1
+  blockedReason: 
+--- !u!114 &400000216
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 512056865}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d6e7f8091a2b3c4d5e6f708192a3b4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  location: {fileID: 400000211}
+  inventory: {fileID: 400000212}
+  entries:
+  - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
+    normalDemandEnabled: 1
+    reorderThreshold: 3
+    targetStock: 8
+    priority: 6
+    minimumShipment: 4
+    maximumShipment: 8
+    backgroundFillEnabled: 0
+    backgroundTargetStock: 0
+    backgroundPriority: 1
+    exportEnabled: 0
+    retainStock: 0
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
+    normalDemandEnabled: 0
+    reorderThreshold: 0
+    targetStock: 0
+    priority: 5
+    minimumShipment: 0
+    maximumShipment: 0
+    backgroundFillEnabled: 0
+    backgroundTargetStock: 0
+    backgroundPriority: 1
+    exportEnabled: 1
+    retainStock: 0
 --- !u!114 &400000221
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -980,6 +1049,9 @@ GameObject:
   - component: {fileID: 400000211}
   - component: {fileID: 400000212}
   - component: {fileID: 400000213}
+  - component: {fileID: 400000214}
+  - component: {fileID: 400000215}
+  - component: {fileID: 400000216}
   m_Layer: 0
   m_Name: Farm
   m_TagString: Untagged
@@ -1067,6 +1139,14 @@ PrefabInstance:
       propertyPath: assignedWorkplace
       value: 
       objectReference: {fileID: 400000211}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.data[0]
+      value: 
+      objectReference: {fileID: 11400000, guid: b2b3c4d5e6f708192a3b4c5d6e7f809, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Farmer 1
