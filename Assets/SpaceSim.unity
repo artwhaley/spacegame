@@ -1019,29 +1019,83 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fc6d7e8f90a1b2c3d4e5f60718293a4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ship: {fileID: 400000224}
+  vehicle: {fileID: 400000227}
+  executor: {fileID: 400000228}
+--- !u!114 &400000224
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 909724429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1a2b3c4d5e6f708192a3b4c5d6e7f809, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
   displayName: Shuttle 1
   operationalEnabled: 1
   assignedPilot: {fileID: 400000304}
-  foodResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
-  iceResource: {fileID: 11400000, guid: d8495a6b7c8d9e0f1a2b3c4d5e6f708, type: 2}
-  waterResource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
-  currentDock: {fileID: 400000201}
-  currentContract: {fileID: 0}
-  passengerCapacity: 4
-  cargoCapacity: 12
+  requiredPilotClass: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d, type: 2}
+--- !u!114 &400000225
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 909724429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b3c4d5e6f708192a3b4c5d6e7f8091a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
   movementSpeed: 12
-  state: 0
-  aboardPassengers: 0
-  currentContractId: 0
-  currentContractType: 0
-  currentContractResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
-  currentContractQuantity: 0
-  currentContractSource: {fileID: 0}
-  currentContractDestination: {fileID: 0}
-  currentContractState: 6
-  foodCargo: 0
-  iceCargo: 0
-  waterCargo: 0
+--- !u!114 &400000226
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 909724429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3c4d5e6f708192a3b4c5d6e7f8091a2b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  passengerCapacity: 4
+  ship: {fileID: 400000224}
+  currentPassengers: []
+--- !u!114 &400000227
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 909724429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d5e6f708192a3b4c5d6e7f8091a2b3c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ship: {fileID: 400000224}
+  cargoInventory: {fileID: 400000222}
+  passengerCarrier: {fileID: 400000226}
+  disposition: 0
+  freightEnabled: 1
+  personnelEnabled: 1
+--- !u!114 &400000228
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 909724429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5e6f708192a3b4c5d6e7f8091a2b3c4d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &432432459
 GameObject:
   m_ObjectHideFlags: 0
@@ -1428,6 +1482,11 @@ GameObject:
   - component: {fileID: 400000221}
   - component: {fileID: 400000222}
   - component: {fileID: 400000223}
+  - component: {fileID: 400000224}
+  - component: {fileID: 400000225}
+  - component: {fileID: 400000226}
+  - component: {fileID: 400000227}
+  - component: {fileID: 400000228}
   m_Layer: 0
   m_Name: Shuttle
   m_TagString: Untagged
@@ -1629,6 +1688,14 @@ PrefabInstance:
       propertyPath: currentLocation
       value: 
       objectReference: {fileID: 400000201}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.data[0]
+      value: 
+      objectReference: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Pilot 1
