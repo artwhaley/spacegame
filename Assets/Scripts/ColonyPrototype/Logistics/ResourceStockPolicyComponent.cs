@@ -10,10 +10,14 @@ namespace AsteroidColony
 
         [Header("Foreground import")]
         public bool normalDemandEnabled;
+        [Tooltip("Foreground demand activates at or below this local stock.")]
         public float reorderThreshold;
+        [Tooltip("Desired local stock, including any inbound freight.")]
         public float targetStock;
         [Range(1, 10)] public int priority = 5;
+        [Tooltip("Planner will not dispatch less than this amount.")]
         public float minimumShipment;
+        [Tooltip("Planner will cap each delivery at this amount; zero means uncapped.")]
         public float maximumShipment;
 
         [Header("Background buffer fill")]

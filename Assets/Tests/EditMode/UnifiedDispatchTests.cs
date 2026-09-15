@@ -142,6 +142,17 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void BackgroundFillUsesIdleVehicleWhenNoForegroundWorkExists()
+        {
+            FreightDemand background = CreateFreight(1, FreightDemandClass.Background);
+            TransportVehicleComponent vehicle = CreateVehicle(TransportDisposition.Neutral);
+
+            LogisticsManager.Instance.TryAssignNext();
+
+            Assert.That(vehicle.GetComponent<TransportExecutorComponent>().CurrentContract.demandId, Is.EqualTo(background.demandId));
+        }
+
+        [Test]
         public void OldestEqualCandidateWins()
         {
             FreightDemand oldest = CreateFreight(5, FreightDemandClass.Foreground);
