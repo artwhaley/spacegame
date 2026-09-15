@@ -1,0 +1,1643 @@
+# Asteroid Colony Prototype
+
+## Phase 0 + Phase 1 Execution Specification
+
+**Engine:** Unity 6000.5.9f1
+**Project preset:** HD URP
+**Goal:** Establish the smallest causal colony simulation: eight colonists consume food, two farmers physically commute to a farm, the farm produces food, and a shuttle physically transports that food back to the Command Post.
+
+This is a prototype. Do not build generalized systems merely because they may be useful later.
+
+---
+
+# 0. Scope Guardrails
+
+## Build now
+
+* Simulation clock/tick
+* Simple simulation event log
+* Inspectable colonists
+* Inspectable local inventories
+* Command Post
+* Farm
+* Shuttle
+* Local resource ownership
+* Food production
+* Food consumption
+* Passenger transport contracts
+* Freight transport contracts
+* Resource reservation
+* Shuttle travel between locations
+* Farmer work/rest cycle
+* Automatic food resupply demand
+* Clear runtime state in the Unity Inspector
+
+## Explicitly do NOT build yet
+
+* Command Post ship/initial placement
+* Construction
+* Repair
+* Bridge bonuses
+* Maintenance jobs
+* Pilot fatigue
+* Pilot shift scheduling
+* Crew relief
+* General crew scheduling
+* Shuttle fuel
+* Accidents
+* Combat
+* Death
+* Health
+* Morale
+* Individual meals
+* Food carried by colonists
+* Pathfinding
+* NavMesh
+* Physics
+* Collisions
+* Docking animations
+* Walking animations
+* Orbital mechanics
+* Multiple farms
+* Multiple shuttles
+* Multiple resource types beyond defining the enum
+* Save/load
+* UI beyond Unity Inspector/Console
+* ScriptableObject content database
+* DOTS/ECS
+
+Do not create abstractions specifically for any of the above deferred features.
+
+---
+
+# 1. Prototype Rules
+
+## World
+
+The scene contains:
+
+```text
+Managers
+
+Command Post
+Farm
+Shuttle
+
+Bridge Crew 1
+Bridge Crew 2
+Bridge Crew 3
+
+Pilot 1
+Pilot 2
+
+Maintenance Worker
+
+Farmer 1
+Farmer 2
+```
+
+All visible objects are simple Unity primitives.
+
+Recommended initial positions:
+
+```text
+Command Post   (0, 0, 0)
+Shuttle        (0, 0, 3)
+Farm           (12, 0, 0)
+
+Crew           around Command Post
+```
+
+There are no colliders or rigidbodies required.
+
+The logical location system, not physical overlap/collision, determines where an entity is.
+
+---
+
+# 2. Intentional Prototype Simplifications
+
+These decisions are deliberate.
+
+### Food consumption
+
+All eight Command Post residents consume food from the Command Post inventory regardless of their current physical location.
+
+This is temporary.
+
+Do **not** create personal inventories, packed lunches, meal logistics, or food consumption aboard the shuttle yet.
+
+The purpose of food in Phase 1 is to create a demand that must be replenished through physical freight transport.
+
+### Pilots
+
+Two colonists have the `ShuttlePilot` role.
+
+Only **Pilot 1** is assigned to the shuttle during Phase 1.
+
+Pilot 1 remains with the shuttle.
+
+Pilot 2 currently does nothing except consume food.
+
+Do not implement pilot shifts yet.
+
+A shuttle with no assigned pilot is unavailable for contracts.
+
+### Farmers
+
+The two farmers share the same simple shift cycle.
+
+They physically travel:
+
+```text
+Command Post
+→ Farm
+→ Command Post
+```
+
+They produce food only while physically present at the Farm and in their working phase.
+
+### Shuttle movement
+
+Movement is direct transform movement between locations.
+
+No physics.
+
+No pathfinding.
+
+No docking.
+
+The shuttle may remain wherever its previous contract ended.
+
+When assigned another contract elsewhere, it may travel empty to the pickup location.
+
+---
+
+# 3. Folder Structure
+
+Create:
+
+```text
+Assets/
+└── Scripts/
+    └── ColonyPrototype/
+        ├── Core/
+        │   ├── SimulationManager.cs
+        │   ├── SimulationLog.cs
+        │   └── LocationAnchor.cs
+        │
+        ├── Economy/
+        │   ├── ResourceType.cs
+        │   └── InventoryComponent.cs
+        │
+        ├── People/
+        │   ├── ColonistAgent.cs
+        │   └── PopulationManager.cs
+        │
+        ├── Logistics/
+        │   ├── TransportContract.cs
+        │   ├── ContractManager.cs
+        │   └── LogisticsManager.cs
+        │
+        ├── World/
+        │   ├── CommandPostController.cs
+        │   └── FarmController.cs
+        │
+        └── Vehicles/
+            └── ShuttleController.cs
+```
+
+Use namespace:
+
+```csharp
+AsteroidColony
+```
+
+throughout.
+
+---
+
+# PHASE 0
+
+Phase 0 proves that the simulation skeleton exists and that every important game entity can be inspected.
+
+No economic gameplay needs to work yet.
+
+---
+
+# P0-T01 — Simulation Clock and Event Log
+
+## Create
+
+```text
+Core/SimulationManager.cs
+Core/SimulationLog.cs
+```
+
+## SimulationManager responsibilities
+
+`SimulationManager` is a MonoBehaviour attached to `Managers`.
+
+Expose in the Inspector:
+
+```text
+Paused
+Speed Multiplier
+Game Hours Per Real Second
+Tick Interval Seconds
+
+Current Game Hour
+Current Tick
+```
+
+Recommended defaults:
+
+```text
+Paused = false
+Speed Multiplier = 1
+Game Hours Per Real Second = 1
+Tick Interval Seconds = 0.1
+```
+
+Therefore approximately:
+
+```text
+1 real second = 1 game hour
+```
+
+Implement a central simulation tick.
+
+Define:
+
+```csharp
+public interface ISimulationTickable
+{
+    void SimulationTick(float deltaGameHours);
+}
+```
+
+`SimulationManager` maintains registered tickables.
+
+Do not search the scene every tick.
+
+Objects register once and are subsequently ticked by the manager.
+
+Expose methods equivalent to:
+
+```csharp
+Register(ISimulationTickable tickable)
+Unregister(ISimulationTickable tickable)
+```
+
+The simulation manager advances game time and invokes registered tickables.
+
+## SimulationLog responsibilities
+
+Attach `SimulationLog` to `Managers`.
+
+Maintain an Inspector-visible rolling list of recent simulation messages.
+
+Recommended capacity:
+
+```text
+100 entries
+```
+
+Each event should contain game time:
+
+```text
+[03.40h] Shuttle 1 assigned Contract #4
+```
+
+Also send the same message to `Debug.Log`.
+
+Provide a simple public/static logging entry point appropriate for this prototype.
+
+Do not create a generalized telemetry framework.
+
+## Acceptance
+
+Entering Play mode:
+
+* simulation time advances;
+* pausing stops simulation time;
+* changing speed multiplier affects simulation speed;
+* tick counter advances;
+* event log is visible in Inspector;
+* no scene searches occur every tick;
+* no errors appear in Console.
+
+---
+
+# P0-T02 — Location and Inventory Primitives
+
+## Create
+
+```text
+Core/LocationAnchor.cs
+Economy/ResourceType.cs
+Economy/InventoryComponent.cs
+```
+
+---
+
+## ResourceType
+
+For now:
+
+```csharp
+public enum ResourceType
+{
+    Food
+}
+```
+
+Do not add speculative resources.
+
+---
+
+## LocationAnchor
+
+`LocationAnchor` is a MonoBehaviour attached to anything that may logically contain people or cargo.
+
+Phase 1 locations:
+
+```text
+Command Post
+Farm
+Shuttle
+```
+
+Expose:
+
+```text
+Display Name
+```
+
+Its transform represents the logical location position.
+
+Colonists will reference a `LocationAnchor` as their current location.
+
+---
+
+## InventoryComponent
+
+Attach this to:
+
+```text
+Command Post
+Farm
+Shuttle
+```
+
+Use serializable inventory entries.
+
+Each entry must expose:
+
+```text
+Resource
+On Hand
+Reserved
+Available
+Capacity
+```
+
+Where:
+
+```text
+Available = On Hand - Reserved
+```
+
+Implement operations sufficient for Phase 1:
+
+```text
+Add
+Remove
+Reserve
+ReleaseReservation
+WithdrawReserved
+```
+
+Required invariants:
+
+```text
+On Hand >= 0
+Reserved >= 0
+Reserved <= On Hand
+On Hand <= Capacity
+```
+
+No resource may be created or destroyed during transfer except through explicit production or consumption.
+
+The Inspector must visibly show current inventory state during Play mode.
+
+## Acceptance
+
+Manually changing an inventory during Play mode makes the following understandable from the Inspector:
+
+```text
+Food
+On Hand: 20
+Reserved: 8
+Available: 12
+Capacity: 40
+```
+
+Reservation cannot exceed available stock.
+
+---
+
+# P0-T03 — Colonists and Population Registry
+
+## Create
+
+```text
+People/ColonistAgent.cs
+People/PopulationManager.cs
+```
+
+## ColonistAgent
+
+Attach one to each of the eight crew capsule objects.
+
+Define roles:
+
+```text
+BridgeCrew
+ShuttlePilot
+Maintenance
+Farmer
+```
+
+Expose:
+
+```text
+Display Name
+Role
+Home
+Current Location
+Assigned Workplace
+Activity State
+```
+
+Use a small activity-state enum:
+
+```text
+Idle
+WaitingForTransport
+Passenger
+Working
+Resting
+OnDutyCrew
+```
+
+Do not create a generic AI/state-machine framework.
+
+Provide a method for changing logical location.
+
+When location changes, the colonist's transform may simply be moved/parented to the new `LocationAnchor`.
+
+No walking is required.
+
+---
+
+## PopulationManager
+
+Attach to `Managers`.
+
+Colonists register with it.
+
+Expose the current registered population in the Inspector.
+
+Provide simple queries needed later, such as:
+
+```text
+TotalPopulation
+CountResidents(homeLocation)
+```
+
+No employment allocator is required.
+
+Job roles and workplace assignments are manually configured in Inspector.
+
+## Acceptance
+
+Play mode shows:
+
+```text
+Population: 8
+```
+
+and each colonist can be clicked and inspected for:
+
+```text
+Name
+Role
+Home
+Current Location
+Workplace
+Activity
+```
+
+---
+
+# P0-T04 — Phase 0 Scene Wiring
+
+Create the scene objects if not already created.
+
+## Managers
+
+Attach:
+
+```text
+SimulationManager
+SimulationLog
+PopulationManager
+ContractManager       // may initially be empty shell if P1 follows immediately
+LogisticsManager      // may initially be empty shell if P1 follows immediately
+```
+
+Do not create separate manager GameObjects.
+
+---
+
+## Command Post
+
+Use a cube.
+
+Attach:
+
+```text
+LocationAnchor
+InventoryComponent
+CommandPostController
+```
+
+Set:
+
+```text
+LocationAnchor.DisplayName = Command Post
+```
+
+---
+
+## Farm
+
+Use a cube.
+
+Attach:
+
+```text
+LocationAnchor
+InventoryComponent
+FarmController
+```
+
+Set:
+
+```text
+LocationAnchor.DisplayName = Farm 1
+```
+
+Position approximately:
+
+```text
+(12, 0, 0)
+```
+
+---
+
+## Shuttle
+
+Use a small cube.
+
+Attach:
+
+```text
+LocationAnchor
+InventoryComponent
+ShuttleController
+```
+
+Set:
+
+```text
+LocationAnchor.DisplayName = Shuttle 1
+```
+
+Place visually near the Command Post.
+
+---
+
+## Crew
+
+Create eight capsules.
+
+Attach `ColonistAgent`.
+
+Configure:
+
+```text
+Bridge Crew 1    BridgeCrew
+Bridge Crew 2    BridgeCrew
+Bridge Crew 3    BridgeCrew
+
+Pilot 1          ShuttlePilot
+Pilot 2          ShuttlePilot
+
+Maintenance      Maintenance
+
+Farmer 1         Farmer
+Farmer 2         Farmer
+```
+
+For all eight:
+
+```text
+Home = Command Post
+Current Location = Command Post
+```
+
+Set:
+
+```text
+Farmer 1 Workplace = Farm 1
+Farmer 2 Workplace = Farm 1
+```
+
+Other workplaces may remain empty.
+
+## Phase 0 acceptance gate
+
+Do not proceed until:
+
+* scene runs without errors;
+* eight colonists register;
+* all logical locations are visible;
+* all three inventories are inspectable;
+* simulation clock advances;
+* event logging works;
+* no gameplay automation has accidentally been introduced.
+
+---
+
+# PHASE 1
+
+Phase 1 creates the actual microgame.
+
+---
+
+# P1-T01 — Transport Contract Model
+
+## Create
+
+```text
+Logistics/TransportContract.cs
+Logistics/ContractManager.cs
+```
+
+## Contract types
+
+Support exactly:
+
+```text
+Freight
+Passenger
+```
+
+## Contract state
+
+Support:
+
+```text
+Open
+Assigned
+TravelingToPickup
+Loading
+TravelingToDestination
+Unloading
+Completed
+Cancelled
+```
+
+Do not build failure/retry/escalation infrastructure yet.
+
+---
+
+## Common contract data
+
+Every contract contains:
+
+```text
+Contract ID
+Type
+Priority
+Source Location
+Destination Location
+State
+Assigned Shuttle
+Creation Time
+```
+
+---
+
+## Freight contract data
+
+Add:
+
+```text
+Resource Type
+Quantity
+Source Inventory
+Destination Inventory
+```
+
+For Phase 1 the resource is always Food.
+
+Creating a freight contract reserves the requested quantity at the source inventory.
+
+If only part of the requested amount is available, it is acceptable to create a contract for the available amount.
+
+If zero is available, do not create an empty contract.
+
+Only one active Command-Post food-resupply contract should exist at a time.
+
+---
+
+## Passenger contract data
+
+Contain a list of `ColonistAgent` passengers.
+
+Passenger contracts require those colonists to currently be at the source location when created.
+
+For Phase 1, both farmers may travel together on one contract.
+
+---
+
+## ContractManager
+
+Attach to `Managers`.
+
+Responsibilities:
+
+```text
+Generate unique contract IDs
+Own all active/history contracts
+Create freight contracts
+Create passenger contracts
+Expose open contracts
+Mark contracts assigned/completed/cancelled
+Query whether matching active contracts already exist
+```
+
+Keep completed contracts visible in an Inspector list/history for debugging.
+
+Do not delete them immediately.
+
+## Acceptance
+
+From code, creating a freight contract visibly:
+
+* adds a contract to ContractManager;
+* changes food from Available to Reserved at the Farm;
+* does not reduce Farm On Hand yet.
+
+---
+
+# P1-T02 — Logistics Assignment and Shuttle Execution
+
+## Create/complete
+
+```text
+Logistics/LogisticsManager.cs
+Vehicles/ShuttleController.cs
+```
+
+---
+
+## ShuttleController Inspector state
+
+Expose:
+
+```text
+Display Name
+Operational Enabled
+Assigned Pilot
+
+Current Dock/Location
+Current Contract
+
+Passenger Capacity
+Cargo Capacity
+
+Movement Speed
+
+State
+```
+
+Recommended defaults:
+
+```text
+Operational Enabled = true
+Passenger Capacity = 4
+Cargo Capacity = 12
+Movement Speed = 12 world units / game hour
+```
+
+Assign:
+
+```text
+Pilot 1
+```
+
+as the current pilot.
+
+Pilot 1 should become logically located aboard the Shuttle when simulation begins.
+
+Pilot 2 remains at the Command Post.
+
+There is no pilot shift logic.
+
+---
+
+## Shuttle availability
+
+A shuttle is available for new work only when:
+
+```text
+Operational Enabled == true
+Assigned Pilot != null
+Current Contract == null
+```
+
+Nothing more sophisticated is required yet.
+
+---
+
+## LogisticsManager
+
+Attach to `Managers`.
+
+On simulation ticks:
+
+1. Find an idle available shuttle.
+2. Find the highest-priority compatible open contract.
+3. Assign that contract.
+4. Tell the shuttle to execute it.
+
+One shuttle exists, so do not build fleet optimization.
+
+Use simple priority followed by creation order.
+
+Suggested priorities:
+
+```text
+Passenger commute = 100
+Food resupply      = 50
+```
+
+---
+
+## Contract execution
+
+A shuttle executes:
+
+```text
+Current position
+    ↓
+Travel empty to source if necessary
+    ↓
+Pickup/load
+    ↓
+Travel to destination
+    ↓
+Unload
+    ↓
+Contract complete
+    ↓
+Shuttle becomes idle at destination
+```
+
+### Movement
+
+Use direct transform movement.
+
+No physics.
+
+Movement should respond to simulation time/speed.
+
+### Freight loading
+
+At pickup:
+
+```text
+Farm:
+    reserved stock is withdrawn
+
+Shuttle:
+    cargo inventory receives it
+```
+
+At this point the food is physically owned by the Shuttle inventory.
+
+### Freight unloading
+
+At destination:
+
+```text
+Shuttle:
+    cargo decreases
+
+Command Post:
+    food increases
+```
+
+Only after unloading does the Command Post own the food.
+
+### Passenger loading
+
+At pickup:
+
+```text
+Colonist.CurrentLocation = Shuttle
+Activity = Passenger
+```
+
+Move/parent the capsule to the Shuttle anchor.
+
+### Passenger unloading
+
+At destination:
+
+```text
+Colonist.CurrentLocation = Destination
+```
+
+Move/parent the capsule there.
+
+The shuttle pilot remains aboard.
+
+---
+
+## Logging
+
+Log important transitions:
+
+```text
+Contract #1 assigned to Shuttle 1
+Shuttle 1 traveling to Farm 1
+Farmer 1 boarded Shuttle 1
+Farmer 2 boarded Shuttle 1
+Shuttle 1 departed Farm 1
+Shuttle 1 arrived Command Post
+Contract #1 completed
+```
+
+Do not log every movement tick.
+
+---
+
+# P1-T03 — Farmer Work/Rest Cycle and Farm Production
+
+## Complete
+
+```text
+World/FarmController.cs
+```
+
+## Inspector fields
+
+Expose:
+
+```text
+Farm Location
+Farm Inventory
+
+Assigned Farmers
+
+Work Duration Hours
+Rest Duration Hours
+Food Production Per Farmer Per Hour
+
+Current Shift State
+Shift Time Remaining
+```
+
+Recommended values:
+
+```text
+Work Duration = 8 game hours
+Rest Duration = 8 game hours
+
+Food Production =
+1 food / farmer / game hour
+```
+
+Assign:
+
+```text
+Farmer 1
+Farmer 2
+```
+
+---
+
+## Initial state
+
+At game start:
+
+```text
+Farmers are at Command Post
+Farmers are rested
+Farm is ready to begin a work shift
+```
+
+FarmController creates:
+
+```text
+Passenger Contract:
+Command Post → Farm
+Passengers:
+    Farmer 1
+    Farmer 2
+```
+
+They do not begin working until physically delivered.
+
+---
+
+## Working
+
+Once present:
+
+```text
+Farmer.Activity = Working
+```
+
+Farm production each simulation tick is:
+
+```text
+present working farmers
+× production rate
+× delta game hours
+```
+
+Food appears only in the Farm inventory.
+
+The Farm stops producing if inventory capacity is reached.
+
+---
+
+## End of work period
+
+After eight game hours of actual work:
+
+```text
+Farmer.Activity = WaitingForTransport
+```
+
+Create:
+
+```text
+Passenger Contract:
+Farm → Command Post
+Passengers:
+    Farmer 1
+    Farmer 2
+```
+
+They remain physically at the Farm while waiting.
+
+---
+
+## Rest
+
+Rest begins only once they physically arrive at the Command Post.
+
+Set:
+
+```text
+Activity = Resting
+```
+
+After eight game hours at home, request transport to work again.
+
+Repeat indefinitely.
+
+No fatigue percentage is needed yet.
+
+No staggered shifts.
+
+No individual farmer scheduling.
+
+---
+
+# P1-T04 — Command Post Consumption and Food Demand
+
+## Complete
+
+```text
+World/CommandPostController.cs
+```
+
+## Inspector fields
+
+Expose:
+
+```text
+Command Post Location
+Command Post Inventory
+Population Manager
+Food Source Farm
+
+Food Consumption Per Resident Per Hour
+
+Reorder Threshold
+Target Food Stock
+Maximum Order Size
+
+Food Shortage Active
+```
+
+Recommended values:
+
+```text
+Starting Food = 12
+Inventory Capacity = 40
+
+Consumption =
+0.1 food / resident / game hour
+
+Reorder Threshold = 8
+Target Food Stock = 20
+Maximum Order Size = 12
+```
+
+With eight residents:
+
+```text
+Total consumption =
+0.8 food / game hour
+```
+
+---
+
+## Consumption rule
+
+Every simulation tick:
+
+```text
+resident count
+× consumption rate
+× delta game hours
+```
+
+is removed from Command Post food.
+
+For Phase 1, all eight residents count even when temporarily away.
+
+This simplification must be commented in code so nobody later mistakes it for the intended final design.
+
+---
+
+## Shortage
+
+If consumption requires more food than exists:
+
+```text
+Food inventory reaches 0
+FoodShortageActive = true
+```
+
+Log the shortage.
+
+Do not kill colonists.
+
+Do not create health consequences.
+
+When food becomes available again:
+
+```text
+FoodShortageActive = false
+```
+
+Log recovery.
+
+---
+
+## Resupply demand
+
+When:
+
+```text
+Food On Hand < Reorder Threshold
+```
+
+and there is no existing active incoming Food contract:
+
+```text
+Desired =
+Target Food Stock - current food
+```
+
+Limit by:
+
+```text
+Maximum Order Size
+Farm available unreserved food
+```
+
+If the result is greater than zero, create:
+
+```text
+Freight Contract
+Farm 1 → Command Post
+Resource = Food
+```
+
+The Farm food becomes reserved immediately.
+
+The Command Post receives nothing until the Shuttle actually unloads.
+
+---
+
+# P1-T05 — Final Scene Configuration
+
+Configure the scene exactly enough to make the loop run.
+
+## Command Post
+
+```text
+Position: (0,0,0)
+
+Inventory:
+    Food
+    On Hand: 12
+    Reserved: 0
+    Capacity: 40
+
+Consumption: 0.1/resident/hour
+
+Reorder: 8
+Target: 20
+Max order: 12
+
+Food Source Farm:
+    Farm 1
+```
+
+---
+
+## Farm
+
+```text
+Position: (12,0,0)
+
+Inventory:
+    Food
+    On Hand: 0
+    Reserved: 0
+    Capacity: 40
+
+Farmers:
+    Farmer 1
+    Farmer 2
+
+Production:
+    1 food / farmer / hour
+
+Work:
+    8h
+
+Rest:
+    8h
+```
+
+---
+
+## Shuttle
+
+```text
+Starting position:
+    Command Post
+
+Starting logical dock:
+    Command Post
+
+Pilot:
+    Pilot 1
+
+Cargo:
+    Food = 0
+    Capacity = 12
+
+Passenger capacity:
+    4
+
+Movement speed:
+    12 world units / game hour
+```
+
+---
+
+## Population
+
+All eight:
+
+```text
+Home = Command Post
+Current Location = Command Post
+```
+
+Specific roles:
+
+```text
+3 BridgeCrew
+2 ShuttlePilot
+1 Maintenance
+2 Farmer
+```
+
+Farmers:
+
+```text
+Assigned Workplace = Farm 1
+```
+
+Pilot 1 is transferred aboard Shuttle 1 during initialization.
+
+---
+
+# P1-T06 — End-to-End Acceptance Test
+
+Do not expand scope until all of these behaviors work.
+
+## Test A — Initial commute
+
+Start Play mode.
+
+Expected:
+
+```text
+Farmers are initially at Command Post.
+
+Passenger contract is generated.
+
+Shuttle accepts it.
+
+Shuttle carries both farmers to Farm.
+
+Farmers unload.
+
+Farmers begin working.
+```
+
+---
+
+## Test B — Food production
+
+While both farmers are working:
+
+```text
+Farm inventory increases.
+```
+
+Command Post inventory does not magically increase.
+
+Stopping farmer presence must stop production.
+
+---
+
+## Test C — Food consumption
+
+Throughout simulation:
+
+```text
+Command Post food decreases.
+```
+
+The decrease is based on all eight residents.
+
+---
+
+## Test D — Freight demand
+
+When Command Post food falls below threshold:
+
+```text
+Command Post creates food freight contract.
+```
+
+Farm stock becomes reserved.
+
+Command Post stock remains unchanged.
+
+---
+
+## Test E — Physical freight transfer
+
+Expected ownership sequence:
+
+```text
+Farm On Hand
+    ↓ load
+
+Shuttle Cargo
+    ↓ travel
+
+Command Post On Hand
+```
+
+At no point should the food simultaneously belong to both source and destination.
+
+---
+
+## Test F — Farmer return
+
+After eight hours of actual farm work:
+
+```text
+Farmers stop working.
+Passenger contract Farm → Command Post created.
+Shuttle retrieves them.
+Farmers return home.
+Rest begins only after arrival.
+```
+
+After eight hours of rest:
+
+```text
+new commute contract generated
+```
+
+and the cycle repeats.
+
+---
+
+## Test G — Shuttle failure experiment
+
+While running normally:
+
+```text
+ShuttleController.OperationalEnabled = false
+```
+
+Expected:
+
+```text
+open contracts remain waiting;
+nothing teleports;
+farm food may accumulate;
+Command Post food continues declining;
+eventually FoodShortageActive becomes true.
+```
+
+Restore:
+
+```text
+OperationalEnabled = true
+```
+
+Expected:
+
+```text
+waiting logistics resumes;
+food eventually reaches Command Post;
+food-shortage state clears.
+```
+
+This is the most important Phase 1 test.
+
+---
+
+# 4. Required Inspector Observability
+
+No custom editor is required.
+
+However, runtime state must be inspectable.
+
+## Clicking Command Post should reveal approximately
+
+```text
+Food:
+    On Hand
+    Reserved
+    Available
+
+Residents: 8
+
+Food Consumption Rate
+
+Reorder Threshold
+Target Stock
+
+Food Shortage Active
+```
+
+## Clicking Farm
+
+```text
+Food inventory
+
+Assigned Farmers
+
+Current Shift State
+Shift Time Remaining
+
+Present Working Farmers
+Current Production Rate
+```
+
+## Clicking Shuttle
+
+```text
+Pilot
+
+Operational
+Current Contract
+Current State
+
+Current Destination
+
+Passengers
+
+Cargo
+```
+
+## Clicking a farmer
+
+```text
+Role: Farmer
+
+Home: Command Post
+Workplace: Farm 1
+
+Current Location
+
+Activity:
+    WaitingForTransport
+    Passenger
+    Working
+    Resting
+```
+
+## Clicking Managers
+
+Must expose:
+
+```text
+Simulation time
+
+Registered population
+
+Contracts
+
+Logistics state
+
+Recent simulation log
+```
+
+---
+
+# 5. Phase 1 Completion Definition
+
+Phase 1 is complete when the following closed loop can continue indefinitely without manual intervention:
+
+```text
+Farmers wake/rest complete
+        ↓
+transport requested
+        ↓
+shuttle carries farmers to Farm
+        ↓
+farm produces Food
+        ↓
+Command Post consumes Food
+        ↓
+Command Post requests resupply
+        ↓
+Farm Food reserved
+        ↓
+shuttle picks up Food
+        ↓
+Food exists aboard shuttle
+        ↓
+shuttle physically returns
+        ↓
+Command Post receives Food
+        ↓
+farmers finish work
+        ↓
+transport home requested
+        ↓
+farmers return
+        ↓
+farmers rest
+        ↓
+cycle repeats
+```
+
+The simulation must also fail causally when the shuttle is disabled.
+
+That is the complete Phase 0/1 prototype.
+
+Do not proceed to construction, additional buildings, new resources, richer crew management, or presentation polish until this loop behaves correctly and is understandable through the Inspector.

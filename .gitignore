@@ -1,0 +1,39 @@
+# Unity-generated caches and local state
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Bb]uild/
+[Bb]uilds/
+MemoryCaptures/
+Recordings/
+
+# Unity/editor-generated project files
+*.csproj
+*.sln
+*.slnx
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# IDE and local tooling state
+.vs/
+.idea/
+.consulo/
+.freebuff/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Build/developer artifacts
+*.log
+*.tmp
+*.bak
