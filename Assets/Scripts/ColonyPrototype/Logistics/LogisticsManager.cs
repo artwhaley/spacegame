@@ -4,23 +4,19 @@ using UnityEngine;
 namespace AsteroidColony
 {
     /// <summary>
-    /// Publishes and reconciles freight demand, then assigns the highest-priority
-    /// open legacy contract to an idle available shuttle. One shuttle exists, so
-    /// no fleet optimization is attempted.
-    ///
-    /// Demand reconciliation creates a contract only after source stock and an idle
-    /// compatible shuttle have been found. Legacy callers may still create open
-    /// contracts, which are assigned immediately or from the normal tick.
+    /// Chooses ordinary passenger and freight work through one deterministic
+    /// arbitration path. Freight is materialized only after a vehicle has won.
     /// </summary>
     public class LogisticsManager : MonoBehaviour, ISimulationTickable
     {
         public static LogisticsManager Instance { get; private set; }
 
-        [SerializeField] private List<ShuttleController> shuttles = new List<ShuttleController>();
+        [SerializeField] private List<TransportVehicleComponent> transportVehicles =
+            new List<TransportVehicleComponent>();
         [SerializeField] private List<FreightDemand> demands = new List<FreightDemand>();
         [SerializeField] private List<FreightSupply> supplies = new List<FreightSupply>();
 
-        public IReadOnlyList<ShuttleController> Shuttles => shuttles;
+        public IReadOnlyList<TransportVehicleComponent> TransportVehicles => transportVehicles;
         public IReadOnlyList<FreightDemand> Demands => demands;
         public IReadOnlyList<FreightSupply> Supplies => supplies;
 
@@ -49,22 +45,18 @@ namespace AsteroidColony
                 SimulationManager.Instance.Unregister(this);
         }
 
-        public void RegisterShuttle(ShuttleController shuttle)
+        public void RegisterTransportVehicle(TransportVehicleComponent vehicle)
         {
-            if (shuttle != null && !shuttles.Contains(shuttle))
-                shuttles.Add(shuttle);
+            if (vehicle != null && !transportVehicles.Contains(vehicle))
+                transportVehicles.Add(vehicle);
         }
 
-        public void UnregisterShuttle(ShuttleController shuttle)
+        public void UnregisterTransportVehicle(TransportVehicleComponent vehicle)
         {
-            if (shuttle != null)
-                shuttles.Remove(shuttle);
+            if (vehicle != null)
+                transportVehicles.Remove(vehicle);
         }
 
-        /// <summary>
-        /// Registers one replaceable freight demand. The returned ID is the stable
-        /// identity a consumer uses when publishing new demand snapshots.
-        /// </summary>
         public int RegisterFreightDemand(
             string displayName,
             ResourceDefinition resource,
@@ -75,7 +67,7 @@ namespace AsteroidColony
             float maximumShipment,
             FreightDemandClass demandClass = FreightDemandClass.Foreground)
         {
-            if (destinationLocation == null || destinationInventory == null)
+            if (destinationLocation == null || destinationInventory == null || resource == null)
                 return 0;
 
             FreightDemand demand = new FreightDemand
@@ -85,7 +77,7 @@ namespace AsteroidColony
                 resource = resource,
                 destinationLocation = destinationLocation,
                 destinationInventory = destinationInventory,
-                priority = priority,
+                priority = TransportPriorityRules.Clamp(priority),
                 minimumShipment = Mathf.Max(0f, minimumShipment),
                 maximumShipment = Mathf.Max(0f, maximumShipment),
                 demandClass = demandClass,
@@ -95,7 +87,6 @@ namespace AsteroidColony
             return demand.demandId;
         }
 
-        /// <summary>Replaces the current desired delivery quantity for a demand.</summary>
         public void UpdateFreightDemand(int demandId, float desiredQuantity)
         {
             FreightDemand demand = FindDemand(demandId);
@@ -108,22 +99,30 @@ namespace AsteroidColony
             demand.Update(desiredQuantity, tick);
         }
 
+        public void UpdateFreightDemandPolicy(
+            int demandId, int priority, float minimumShipment, float maximumShipment,
+            FreightDemandClass demandClass)
+        {
+            FreightDemand demand = FindDemand(demandId);
+            if (demand == null)
+                return;
+
+            demand.priority = TransportPriorityRules.Clamp(priority);
+            demand.minimumShipment = Mathf.Max(0f, minimumShipment);
+            demand.maximumShipment = Mathf.Max(0f, maximumShipment);
+            demand.demandClass = demandClass;
+        }
+
         public void UnregisterFreightDemand(int demandId)
         {
             for (int i = demands.Count - 1; i >= 0; i--)
-            {
                 if (demands[i] != null && demands[i].demandId == demandId)
                 {
                     demands.RemoveAt(i);
                     return;
                 }
-            }
         }
 
-        /// <summary>
-        /// Registers a live source for one resource. The source inventory remains
-        /// authoritative for on-hand, reserved, and available quantities.
-        /// </summary>
         public int RegisterFreightSupply(
             string displayName,
             ResourceDefinition resource,
@@ -131,7 +130,7 @@ namespace AsteroidColony
             InventoryComponent inventory,
             float retainStock = 0f)
         {
-            if (location == null || inventory == null)
+            if (location == null || inventory == null || resource == null)
                 return 0;
 
             for (int i = 0; i < supplies.Count; i++)
@@ -140,6 +139,7 @@ namespace AsteroidColony
                 if (existing != null && existing.location == location &&
                     existing.inventory == inventory && existing.resource == resource)
                 {
+                    existing.retainStock = Mathf.Max(0f, retainStock);
                     existing.active = true;
                     return existing.supplyId;
                 }
@@ -162,13 +162,11 @@ namespace AsteroidColony
         public void UnregisterFreightSupply(int supplyId)
         {
             for (int i = supplies.Count - 1; i >= 0; i--)
-            {
                 if (supplies[i] != null && supplies[i].supplyId == supplyId)
                 {
                     supplies.RemoveAt(i);
                     return;
                 }
-            }
         }
 
         public float GetExportableQuantity(FreightSupply supply)
@@ -180,149 +178,226 @@ namespace AsteroidColony
 
         public void SimulationTick(float deltaGameHours)
         {
-            ReconcileFreightDemands();
+            UpdatePlanningStates();
+            TryAssignNext(reportBlocked: true);
 
             if (!startupReported)
             {
                 startupReported = true;
                 bool hasOpen = ContractManager.Instance != null &&
-                               ContractManager.Instance.FindBestOpenContract() != null;
-                SimulationLog.Log($"LogisticsManager first tick: {shuttles.Count} shuttle(s) registered, open contract waiting: {hasOpen}");
+                    ContractManager.Instance.FindBestOpenContract() != null;
+                SimulationLog.Log($"LogisticsManager first tick: {transportVehicles.Count} transport vehicle(s) registered, open contract waiting: {hasOpen}");
             }
-
-            TryAssignNext(reportBlocked: true);
         }
 
         /// <summary>
-        /// Converts the latest demand snapshots into at most one new delivery per
-        /// demand per simulation tick. Demand is reconciled against remaining active
-        /// inbound quantities, source reservations, destination capacity, and a
-        /// selected idle shuttle before a contract is created.
+        /// Offers every idle vehicle the best currently eligible candidate. A
+        /// freight candidate becomes a contract only after it wins arbitration.
         /// </summary>
-        private void ReconcileFreightDemands()
+        public void TryAssignNext(bool reportBlocked = false)
         {
             if (ContractManager.Instance == null)
                 return;
 
-            HashSet<int> processed = new HashSet<int>();
-            while (processed.Count < demands.Count)
+            bool assignedAny = false;
+            for (int i = 0; i < transportVehicles.Count; i++)
             {
-                FreightDemand demand = FindHighestPriorityUnprocessedDemand(processed);
-                if (demand == null)
-                    break;
-
-                processed.Add(demand.demandId);
-                ReconcileDemand(demand);
-            }
-        }
-
-        private FreightDemand FindHighestPriorityUnprocessedDemand(HashSet<int> processed)
-        {
-            FreightDemand best = null;
-            for (int i = 0; i < demands.Count; i++)
-            {
-                FreightDemand candidate = demands[i];
-                if (candidate == null || processed.Contains(candidate.demandId))
+                TransportVehicleComponent vehicle = transportVehicles[i];
+                if (vehicle == null || !vehicle.IsAvailable)
                     continue;
 
-                if (best == null || candidate.priority > best.priority ||
-                    (candidate.priority == best.priority && candidate.demandId < best.demandId))
-                {
+                TransportDispatchCandidate candidate = FindBestCandidate(vehicle);
+                if (candidate == null)
+                    continue;
+
+                if (MaterializeAndAssign(candidate, vehicle))
+                    assignedAny = true;
+            }
+
+            if (assignedAny)
+            {
+                lastWaitReason = null;
+                return;
+            }
+
+            if (reportBlocked && HasOpenWork())
+                ReportWaiting(DescribeUnavailableVehicles());
+        }
+
+        private TransportDispatchCandidate FindBestCandidate(TransportVehicleComponent vehicle)
+        {
+            TransportDispatchCandidate best = null;
+            for (int i = 0; i < demands.Count; i++)
+            {
+                FreightDemand demand = demands[i];
+                TransportDispatchCandidate candidate = BuildFreightCandidate(demand, vehicle);
+                if (candidate != null && IsBetterCandidate(candidate, best, vehicle))
                     best = candidate;
+            }
+
+            if (ContractManager.Instance != null)
+            {
+                IReadOnlyList<TransportContract> contracts = ContractManager.Instance.Contracts;
+                for (int i = 0; i < contracts.Count; i++)
+                {
+                    TransportContract contract = contracts[i];
+                    TransportDispatchCandidate candidate = BuildPassengerCandidate(contract, vehicle);
+                    if (candidate != null && IsBetterCandidate(candidate, best, vehicle))
+                        best = candidate;
                 }
             }
             return best;
         }
 
-        private void ReconcileDemand(FreightDemand demand)
+        private TransportDispatchCandidate BuildPassengerCandidate(
+            TransportContract contract, TransportVehicleComponent vehicle)
         {
-            if (demand == null)
-                return;
+            if (contract == null || contract.type != TransportContractType.Passenger ||
+                contract.state != TransportContractState.Open || !vehicle.personnelEnabled ||
+                vehicle.disposition == TransportDisposition.FreightOnly ||
+                vehicle.passengerCarrier == null || contract.sourceLocation == null ||
+                contract.destinationLocation == null ||
+                contract.passengers.Count > vehicle.PassengerCapacity)
+                return null;
+
+            for (int i = 0; i < contract.passengers.Count; i++)
+                if (contract.passengers[i] == null || contract.passengers[i].currentLocation != contract.sourceLocation)
+                    return null;
+
+            return new TransportDispatchCandidate
+            {
+                passengerContract = contract,
+                priority = TransportPriorityRules.Clamp(contract.priority),
+                demandClass = FreightDemandClass.Foreground,
+                age = contract.creationTime,
+                stableId = contract.contractId
+            };
+        }
+
+        private TransportDispatchCandidate BuildFreightCandidate(
+            FreightDemand demand, TransportVehicleComponent vehicle)
+        {
+            if (demand == null || !demand.active || demand.resource == null ||
+                demand.destinationLocation == null || demand.destinationInventory == null ||
+                !vehicle.freightEnabled || vehicle.disposition == TransportDisposition.PersonnelOnly)
+                return null;
 
             float inbound = ContractManager.Instance.GetActiveFreightQuantityForDemand(demand.demandId);
-            if (!demand.active || demand.destinationLocation == null || demand.destinationInventory == null)
-            {
-                demand.SetPlanningState(inbound, 0f, 0f, "Satisfied");
-                return;
-            }
-
             float uncovered = Mathf.Max(0f, demand.DesiredQuantity - inbound);
-            float destinationFree = Mathf.Max(
-                0f,
+            float destinationFree = Mathf.Max(0f,
                 demand.destinationInventory.GetFreeCapacity(demand.resource) - inbound);
-            demand.SetPlanningState(inbound, uncovered, destinationFree, "Evaluating");
-
-            if (uncovered <= QuantityEpsilon)
-            {
-                demand.SetPlanningState(inbound, 0f, destinationFree, "Inbound covers demand");
-                return;
-            }
-
-            float minimumShipment = Mathf.Max(0f, demand.minimumShipment);
-            if (destinationFree <= QuantityEpsilon)
-            {
-                demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for destination capacity");
-                return;
-            }
-
             FreightSupply supply = FindBestSupply(demand.resource);
-            if (supply == null)
-            {
-                demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for source");
-                return;
-            }
+            if (uncovered <= QuantityEpsilon || destinationFree <= QuantityEpsilon || supply == null)
+                return null;
 
-            float sourceAvailable = GetExportableQuantity(supply);
-            if (sourceAvailable <= QuantityEpsilon)
-            {
-                demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for source stock");
-                return;
-            }
-
-            ShuttleController shuttle = FindAvailableShuttle(demand.resource);
-            if (shuttle == null)
-            {
-                demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for shuttle");
-                return;
-            }
-
-            float maximumShipment = demand.maximumShipment > QuantityEpsilon
+            float maximum = demand.maximumShipment > QuantityEpsilon
                 ? demand.maximumShipment
                 : float.MaxValue;
-            float quantity = Mathf.Min(
-                Mathf.Min(uncovered, destinationFree),
-                Mathf.Min(sourceAvailable, Mathf.Min(shuttle.GetFreeCargoCapacity(demand.resource), maximumShipment)));
+            float quantity = Mathf.Min(uncovered,
+                Mathf.Min(destinationFree,
+                    Mathf.Min(GetExportableQuantity(supply),
+                        Mathf.Min(vehicle.GetFreeCargoCapacity(demand.resource), maximum))));
+            if (demand.resource.IsDiscrete)
+                quantity = Mathf.Floor(quantity + ResourceQuantityRules.WholeNumberEpsilon);
+            if (quantity < demand.minimumShipment - QuantityEpsilon)
+                return null;
 
-            if (quantity < minimumShipment - QuantityEpsilon)
+            return new TransportDispatchCandidate
             {
-                demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for minimum shipment");
-                return;
+                freightDemand = demand,
+                freightSupply = supply,
+                legalQuantity = quantity,
+                priority = TransportPriorityRules.Clamp(demand.priority),
+                demandClass = demand.demandClass,
+                age = demand.ActiveSinceGameHour,
+                stableId = demand.demandId
+            };
+        }
+
+        private bool IsBetterCandidate(
+            TransportDispatchCandidate candidate,
+            TransportDispatchCandidate current,
+            TransportVehicleComponent vehicle)
+        {
+            if (current == null)
+                return true;
+
+            if (candidate.demandClass != current.demandClass)
+                return candidate.demandClass == FreightDemandClass.Foreground;
+            if (candidate.priority != current.priority)
+                return candidate.priority > current.priority;
+
+            int candidatePreference = PreferenceRank(candidate, vehicle.disposition);
+            int currentPreference = PreferenceRank(current, vehicle.disposition);
+            if (candidatePreference != currentPreference)
+                return candidatePreference > currentPreference;
+            if (!Mathf.Approximately((float)candidate.age, (float)current.age))
+                return candidate.age < current.age;
+            return candidate.stableId < current.stableId;
+        }
+
+        private static int PreferenceRank(
+            TransportDispatchCandidate candidate, TransportDisposition disposition)
+        {
+            if (disposition == TransportDisposition.PreferFreight)
+                return candidate.IsFreight ? 1 : 0;
+            if (disposition == TransportDisposition.PreferPersonnel)
+                return candidate.IsFreight ? 0 : 1;
+            return 0;
+        }
+
+        private bool MaterializeAndAssign(
+            TransportDispatchCandidate candidate, TransportVehicleComponent vehicle)
+        {
+            TransportContract contract = candidate.passengerContract;
+            if (candidate.IsFreight)
+            {
+                FreightDemand demand = candidate.freightDemand;
+                contract = ContractManager.Instance.CreateDemandFreightContract(
+                    demand.demandId, demand.resource, candidate.legalQuantity,
+                    candidate.freightSupply.inventory, demand.destinationInventory,
+                    candidate.freightSupply.location, demand.destinationLocation,
+                    demand.priority);
+                if (contract == null || contract.quantity < demand.minimumShipment - QuantityEpsilon)
+                {
+                    if (contract != null)
+                        ContractManager.Instance.Cancel(contract);
+                    return false;
+                }
             }
 
-            TransportContract contract = ContractManager.Instance.CreateAssignedFreightContract(
-                demand.demandId,
-                demand.resource,
-                quantity,
-                supply.inventory,
-                demand.destinationInventory,
-                supply.location,
-                demand.destinationLocation,
-                shuttle,
-                demand.priority,
-                minimumShipment);
-
-            if (contract == null)
+            if (!ContractManager.Instance.Assign(contract, vehicle))
             {
-                demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for source or capacity");
-                return;
+                if (candidate.IsFreight)
+                    ContractManager.Instance.Cancel(contract);
+                return false;
             }
+            return true;
+        }
 
-            float updatedInbound = ContractManager.Instance.GetActiveFreightQuantityForDemand(demand.demandId);
-            demand.SetPlanningState(
-                updatedInbound,
-                Mathf.Max(0f, demand.DesiredQuantity - updatedInbound),
-                Mathf.Max(0f, demand.destinationInventory.GetFreeCapacity(demand.resource) - updatedInbound),
-                "Contract in transit");
+        private void UpdatePlanningStates()
+        {
+            for (int i = 0; i < demands.Count; i++)
+            {
+                FreightDemand demand = demands[i];
+                if (demand == null || demand.destinationInventory == null)
+                    continue;
+
+                float inbound = ContractManager.Instance != null
+                    ? ContractManager.Instance.GetActiveFreightQuantityForDemand(demand.demandId)
+                    : 0f;
+                float uncovered = Mathf.Max(0f, demand.DesiredQuantity - inbound);
+                float destinationFree = Mathf.Max(0f,
+                    demand.destinationInventory.GetFreeCapacity(demand.resource) - inbound);
+                string status = !demand.active || uncovered <= QuantityEpsilon
+                    ? "Satisfied"
+                    : destinationFree <= QuantityEpsilon
+                        ? "Waiting for destination capacity"
+                        : FindBestSupply(demand.resource) == null
+                            ? "Waiting for source"
+                            : "Waiting for transport";
+                demand.SetPlanningState(inbound, uncovered, destinationFree, status);
+            }
         }
 
         private FreightDemand FindDemand(int demandId)
@@ -356,87 +431,45 @@ namespace AsteroidColony
             return best;
         }
 
-        /// <summary>
-        /// Assigns the best waiting legacy contract to an idle shuttle, if both exist.
-        /// Safe to call at any time. Only the tick passes reportBlocked: true, so brief
-        /// startup moments (a legacy contract created before shuttles register) stay quiet.
-        /// </summary>
-        public void TryAssignNext(bool reportBlocked = false)
+        private bool HasOpenWork()
         {
-            if (ContractManager.Instance == null)
-                return;
-
-            TransportContract contract = ContractManager.Instance.FindBestOpenContract();
-            if (contract == null)
+            if (ContractManager.Instance != null)
             {
-                lastWaitReason = null;
-                return;
+                IReadOnlyList<TransportContract> contracts = ContractManager.Instance.Contracts;
+                for (int i = 0; i < contracts.Count; i++)
+                    if (contracts[i] != null && contracts[i].state == TransportContractState.Open)
+                        return true;
             }
-
-            ShuttleController shuttle = FindIdleShuttle();
-            if (shuttle == null)
-            {
-                if (reportBlocked)
-                    ReportWaiting(DescribeUnavailableShuttles());
-                return;
-            }
-
-            lastWaitReason = null;
-            ContractManager.Instance.Assign(contract, shuttle);
+            for (int i = 0; i < demands.Count; i++)
+                if (demands[i] != null && demands[i].active && demands[i].UncoveredQuantity > QuantityEpsilon)
+                    return true;
+            return false;
         }
 
-        /// <summary>
-        /// Logs why waiting work is not moving, but only when the reason changes, so a
-        /// stuck shuttle is announced once instead of every tick. Without this, a
-        /// permanently unavailable shuttle silently swallows the whole backlog.
-        /// </summary>
         private void ReportWaiting(string reason)
         {
             if (lastWaitReason == reason)
                 return;
             lastWaitReason = reason;
-            SimulationLog.Log($"LogisticsManager: contract waiting - {reason}");
+            SimulationLog.Log($"LogisticsManager: work waiting - {reason}");
         }
 
-        private string DescribeUnavailableShuttles()
+        private string DescribeUnavailableVehicles()
         {
-            if (shuttles.Count == 0)
-                return "no shuttles registered";
+            if (transportVehicles.Count == 0)
+                return "no transport vehicles registered";
 
-            string description = shuttles.Count == 1
-                ? "1 shuttle, none available"
-                : $"{shuttles.Count} shuttles, none available";
-
-            for (int i = 0; i < shuttles.Count; i++)
+            string description = transportVehicles.Count == 1
+                ? "1 vehicle, none available"
+                : $"{transportVehicles.Count} vehicles, none available";
+            for (int i = 0; i < transportVehicles.Count; i++)
             {
-                ShuttleController shuttle = shuttles[i];
-                description += shuttle == null
-                    ? " [<null shuttle>]"
-                    : $" [{shuttle.displayName}: {shuttle.AvailabilityBlocker()}]";
+                TransportVehicleComponent vehicle = transportVehicles[i];
+                description += vehicle == null
+                    ? " [<null vehicle>]"
+                    : $" [{vehicle.DisplayName}: {vehicle.AvailabilityBlocker()}]";
             }
             return description;
-        }
-
-        private ShuttleController FindIdleShuttle()
-        {
-            for (int i = 0; i < shuttles.Count; i++)
-                if (shuttles[i] != null && shuttles[i].IsAvailable)
-                    return shuttles[i];
-            return null;
-        }
-
-        private ShuttleController FindAvailableShuttle(ResourceDefinition resource)
-        {
-            for (int i = 0; i < shuttles.Count; i++)
-            {
-                ShuttleController shuttle = shuttles[i];
-                if (shuttle != null && shuttle.IsAvailable &&
-                    shuttle.GetFreeCargoCapacity(resource) > QuantityEpsilon)
-                {
-                    return shuttle;
-                }
-            }
-            return null;
         }
     }
 }

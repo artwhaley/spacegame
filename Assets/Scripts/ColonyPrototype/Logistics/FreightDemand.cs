@@ -20,7 +20,7 @@ namespace AsteroidColony
         public ResourceDefinition resource;
         public LocationAnchor destinationLocation;
         public InventoryComponent destinationInventory;
-        public int priority;
+        [Range(1, 10)] public int priority = 5;
         public float minimumShipment;
         public float maximumShipment;
         public FreightDemandClass demandClass = FreightDemandClass.Foreground;
@@ -32,6 +32,8 @@ namespace AsteroidColony
         [SerializeField] private float effectiveDestinationFreeCapacity;
         [SerializeField] private string planningStatus;
         [SerializeField] private long lastUpdatedTick;
+        [SerializeField] private long activeSinceTick;
+        [SerializeField] private double activeSinceGameHour;
 
         public float DesiredQuantity => desiredQuantity;
         public float InboundQuantity => inboundQuantity;
@@ -39,11 +41,21 @@ namespace AsteroidColony
         public float EffectiveDestinationFreeCapacity => effectiveDestinationFreeCapacity;
         public string PlanningStatus => planningStatus;
         public long LastUpdatedTick => lastUpdatedTick;
+        public long ActiveSinceTick => activeSinceTick;
+        public double ActiveSinceGameHour => activeSinceGameHour;
 
         public void Update(float quantity, long tick)
         {
+            bool wasActive = active;
             desiredQuantity = Mathf.Max(0f, quantity);
             active = desiredQuantity > 0.0001f;
+            if (active && !wasActive)
+            {
+                activeSinceTick = tick;
+                activeSinceGameHour = SimulationManager.Instance != null
+                    ? SimulationManager.Instance.CurrentGameHour
+                    : tick;
+            }
             lastUpdatedTick = tick;
         }
 

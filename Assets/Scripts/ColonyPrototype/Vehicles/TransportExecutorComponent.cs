@@ -25,6 +25,10 @@ namespace AsteroidColony
 
         private const float QuantityEpsilon = 0.0001f;
 
+        private TransportVehicleComponent Vehicle => vehicle != null
+            ? vehicle
+            : vehicle = GetComponent<TransportVehicleComponent>();
+
         public int AboardPassengers => passengerCarrier != null ? passengerCarrier.AboardCount : 0;
 
         private void Awake()
@@ -58,7 +62,7 @@ namespace AsteroidColony
                 State = TransportExecutionState.Idle;
             }
 
-            if (CurrentContract == null || vehicle?.ship == null || !vehicle.ship.operationalEnabled)
+            if (CurrentContract == null || Vehicle?.ship == null || !Vehicle.ship.operationalEnabled)
                 return;
 
             switch (State)
@@ -198,7 +202,7 @@ namespace AsteroidColony
 
         private string GetDisplayName()
         {
-            return vehicle != null ? vehicle.DisplayName : name;
+            return Vehicle != null ? Vehicle.DisplayName : name;
         }
     }
 }

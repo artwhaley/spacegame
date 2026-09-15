@@ -103,15 +103,42 @@ namespace AsteroidColony
                         $"{name} {entry.resource.displayName} foreground",
                         entry.resource, location, inventory, Mathf.Clamp(entry.priority, 1, 10),
                         entry.minimumShipment, entry.maximumShipment, FreightDemandClass.Foreground);
+                if (entry.foregroundDemandId > 0)
+                    LogisticsManager.Instance.UpdateFreightDemandPolicy(
+                        entry.foregroundDemandId, entry.priority, entry.minimumShipment,
+                        entry.maximumShipment, FreightDemandClass.Foreground);
+                if (!entry.normalDemandEnabled && entry.foregroundDemandId > 0)
+                {
+                    LogisticsManager.Instance.UnregisterFreightDemand(entry.foregroundDemandId);
+                    entry.foregroundDemandId = 0;
+                }
                 if (entry.backgroundFillEnabled && entry.backgroundDemandId <= 0)
                     entry.backgroundDemandId = LogisticsManager.Instance.RegisterFreightDemand(
                         $"{name} {entry.resource.displayName} background",
                         entry.resource, location, inventory, Mathf.Clamp(entry.backgroundPriority, 1, 10),
                         entry.minimumShipment, entry.maximumShipment, FreightDemandClass.Background);
+                if (entry.backgroundDemandId > 0)
+                    LogisticsManager.Instance.UpdateFreightDemandPolicy(
+                        entry.backgroundDemandId, entry.backgroundPriority, entry.minimumShipment,
+                        entry.maximumShipment, FreightDemandClass.Background);
+                if (!entry.backgroundFillEnabled && entry.backgroundDemandId > 0)
+                {
+                    LogisticsManager.Instance.UnregisterFreightDemand(entry.backgroundDemandId);
+                    entry.backgroundDemandId = 0;
+                }
                 if (entry.exportEnabled && entry.exportSupplyId <= 0)
                     entry.exportSupplyId = LogisticsManager.Instance.RegisterFreightSupply(
                         $"{name} {entry.resource.displayName} export",
                         entry.resource, location, inventory, entry.retainStock);
+                if (entry.exportEnabled && entry.exportSupplyId > 0)
+                    LogisticsManager.Instance.RegisterFreightSupply(
+                        $"{name} {entry.resource.displayName} export",
+                        entry.resource, location, inventory, entry.retainStock);
+                if (!entry.exportEnabled && entry.exportSupplyId > 0)
+                {
+                    LogisticsManager.Instance.UnregisterFreightSupply(entry.exportSupplyId);
+                    entry.exportSupplyId = 0;
+                }
             }
         }
 

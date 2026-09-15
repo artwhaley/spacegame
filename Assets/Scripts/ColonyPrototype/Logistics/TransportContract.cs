@@ -33,7 +33,7 @@ namespace AsteroidColony
         public LocationAnchor sourceLocation;
         public LocationAnchor destinationLocation;
         public TransportContractState state;
-        public ShuttleController assignedShuttle;
+        public TransportVehicleComponent assignedVehicle;
         public float creationTime;
         public int demandId;
 

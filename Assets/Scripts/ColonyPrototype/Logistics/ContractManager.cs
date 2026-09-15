@@ -124,7 +124,7 @@ namespace AsteroidColony
             ResourceDefinition resource, float quantity,
             InventoryComponent sourceInventory, InventoryComponent destinationInventory,
             LocationAnchor sourceLocation, LocationAnchor destinationLocation,
-            int priority = 50)
+            int priority = 5)
         {
             return CreateFreightContractInternal(
                 0, resource, quantity,
@@ -134,46 +134,21 @@ namespace AsteroidColony
         }
 
         /// <summary>
-        /// Creates and assigns one planner-approved freight contract. The planner
-        /// selects the shuttle first so contract quantity can respect its remaining
-        /// cargo capacity and no waiting micro-contract is created.
+        /// Creates a freight contract for a demand after the unified dispatcher has
+        /// selected a vehicle. Source reservation happens here, at materialization.
         /// </summary>
-        public TransportContract CreateAssignedFreightContract(
+        public TransportContract CreateDemandFreightContract(
             int demandId,
             ResourceDefinition resource, float quantity,
             InventoryComponent sourceInventory, InventoryComponent destinationInventory,
             LocationAnchor sourceLocation, LocationAnchor destinationLocation,
-            ShuttleController shuttle, int priority, float minimumShipment)
+            int priority)
         {
-            if (shuttle == null || !shuttle.IsAvailable)
-                return null;
-
-            float shuttleCapacity = shuttle.GetFreeCargoCapacity(resource);
-            float cappedQuantity = Mathf.Min(quantity, shuttleCapacity);
-            if (cappedQuantity < Mathf.Max(0f, minimumShipment) - 0.0001f)
-                return null;
-
-            TransportContract contract = CreateFreightContractInternal(
-                demandId, resource, cappedQuantity,
+            return CreateFreightContractInternal(
+                demandId, resource, quantity,
                 sourceInventory, destinationInventory,
                 sourceLocation, destinationLocation,
                 priority, false);
-            if (contract == null)
-                return null;
-
-            if (contract.quantity < Mathf.Max(0f, minimumShipment) - 0.0001f)
-            {
-                Cancel(contract);
-                return null;
-            }
-
-            Assign(contract, shuttle);
-            if (contract.assignedShuttle != shuttle || contract.state != TransportContractState.Assigned)
-            {
-                Cancel(contract);
-                return null;
-            }
-            return contract;
         }
 
         private TransportContract CreateFreightContractInternal(
@@ -199,7 +174,7 @@ namespace AsteroidColony
             {
                 contractId = nextContractId++,
                 type = TransportContractType.Freight,
-                priority = priority,
+                priority = TransportPriorityRules.Clamp(priority),
                 sourceLocation = sourceLocation,
                 destinationLocation = destinationLocation,
                 state = TransportContractState.Open,
@@ -224,7 +199,7 @@ namespace AsteroidColony
         /// </summary>
         public TransportContract CreatePassengerContract(
             LocationAnchor sourceLocation, LocationAnchor destinationLocation,
-            List<ColonistAgent> passengers, int priority = 100)
+            List<ColonistAgent> passengers, int priority = 10)
         {
             if (passengers == null || passengers.Count == 0 ||
                 sourceLocation == null || destinationLocation == null)
@@ -242,7 +217,7 @@ namespace AsteroidColony
             {
                 contractId = nextContractId++,
                 type = TransportContractType.Passenger,
-                priority = priority,
+                priority = TransportPriorityRules.Clamp(priority),
                 sourceLocation = sourceLocation,
                 destinationLocation = destinationLocation,
                 state = TransportContractState.Open,
@@ -266,21 +241,32 @@ namespace AsteroidColony
                 LogisticsManager.Instance.TryAssignNext();
         }
 
-        public void Assign(TransportContract contract, ShuttleController shuttle)
+        public bool Assign(TransportContract contract, TransportVehicleComponent vehicle)
         {
-            if (contract == null || shuttle == null ||
+            if (contract == null || vehicle == null ||
                 contract.state != TransportContractState.Open ||
-                !shuttle.IsAvailable)
-                return;
+                !vehicle.IsAvailable)
+                return false;
 
             if (contract.type == TransportContractType.Freight &&
-                contract.quantity > shuttle.GetFreeCargoCapacity(contract.resource) + 0.0001f)
-                return;
+                contract.quantity > vehicle.GetFreeCargoCapacity(contract.resource) + 0.0001f)
+                return false;
+
+            if (contract.type == TransportContractType.Freight && !vehicle.freightEnabled)
+                return false;
+            if (contract.type == TransportContractType.Passenger && !vehicle.personnelEnabled)
+                return false;
 
             contract.state = TransportContractState.Assigned;
-            contract.assignedShuttle = shuttle;
-            SimulationLog.Log($"Contract #{contract.contractId} assigned to {shuttle.displayName}");
-            shuttle.StartContract(contract);
+            contract.assignedVehicle = vehicle;
+            SimulationLog.Log($"Contract #{contract.contractId} assigned to {vehicle.DisplayName}");
+            if (!vehicle.StartContract(contract))
+            {
+                contract.assignedVehicle = null;
+                contract.state = TransportContractState.Open;
+                return false;
+            }
+            return true;
         }
 
         public void Complete(TransportContract contract)

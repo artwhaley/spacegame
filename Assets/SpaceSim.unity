@@ -804,39 +804,29 @@ MonoBehaviour:
   inventory: {fileID: 400000202}
   entries:
   - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f7, type: 2}
-    importDemandClass: 0
-    importPriority: 5
-    importReorderThreshold: 8
-    importTargetStock: 20
-    importMinimumShipment: 0
-    importMaximumShipment: 12
+    normalDemandEnabled: 1
+    reorderThreshold: 8
+    targetStock: 20
+    priority: 5
+    minimumShipment: 0
+    maximumShipment: 12
+    backgroundFillEnabled: 0
+    backgroundTargetStock: 0
+    backgroundPriority: 1
     exportEnabled: 0
-    exportPriority: 1
-    exportRetainStock: 0
-    backgroundImportEnabled: 0
-    backgroundImportPriority: 1
-    backgroundImportMinimumShipment: 0
-    backgroundImportMaximumShipment: 12
-    foregroundDemandId: 0
-    backgroundDemandId: 0
-    supplyId: 0
+    retainStock: 0
   - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f70819, type: 2}
-    importDemandClass: 0
-    importPriority: 9
-    importReorderThreshold: 8
-    importTargetStock: 16
-    importMinimumShipment: 4
-    importMaximumShipment: 12
+    normalDemandEnabled: 1
+    reorderThreshold: 8
+    targetStock: 16
+    priority: 9
+    minimumShipment: 4
+    maximumShipment: 12
+    backgroundFillEnabled: 0
+    backgroundTargetStock: 0
+    backgroundPriority: 1
     exportEnabled: 0
-    exportPriority: 1
-    exportRetainStock: 0
-    backgroundImportEnabled: 0
-    backgroundImportPriority: 1
-    backgroundImportMinimumShipment: 0
-    backgroundImportMaximumShipment: 12
-    foregroundDemandId: 0
-    backgroundDemandId: 0
-    supplyId: 0
+    retainStock: 0
 --- !u!114 &400000211
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1007,21 +997,6 @@ MonoBehaviour:
     reserved: 0
     capacity: 12
     available: 0
---- !u!114 &400000223
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 909724429}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7fc6d7e8f90a1b2c3d4e5f60718293a4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  ship: {fileID: 400000224}
-  vehicle: {fileID: 400000227}
-  executor: {fileID: 400000228}
 --- !u!114 &400000224
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1481,7 +1456,6 @@ GameObject:
   - component: {fileID: 909724430}
   - component: {fileID: 400000221}
   - component: {fileID: 400000222}
-  - component: {fileID: 400000223}
   - component: {fileID: 400000224}
   - component: {fileID: 400000225}
   - component: {fileID: 400000226}

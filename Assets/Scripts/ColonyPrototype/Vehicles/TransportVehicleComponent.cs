@@ -22,15 +22,22 @@ namespace AsteroidColony
         public bool personnelEnabled = true;
 
         private TransportExecutorComponent executor;
+        private bool started;
 
         public string DisplayName => ship != null && !string.IsNullOrEmpty(ship.displayName)
             ? ship.displayName
             : name;
 
-        public bool HasActiveWork => executor != null && executor.CurrentContract != null &&
-            executor.CurrentContract.IsActive;
+        private TransportExecutorComponent Executor => executor != null
+            ? executor
+            : executor = GetComponent<TransportExecutorComponent>();
+
+        public bool HasActiveWork => Executor != null && Executor.CurrentContract != null &&
+            Executor.CurrentContract.IsActive;
 
         public bool IsAvailable => ship != null && ship.IsOperationallyCrewed && !HasActiveWork;
+
+        public int PassengerCapacity => passengerCarrier != null ? passengerCarrier.passengerCapacity : 0;
 
         private void Awake()
         {
@@ -41,6 +48,32 @@ namespace AsteroidColony
             if (passengerCarrier == null)
                 passengerCarrier = GetComponent<PassengerCarrierComponent>();
             executor = GetComponent<TransportExecutorComponent>();
+        }
+
+        private void Start()
+        {
+            started = true;
+            RegisterWithLogistics();
+            SimulationLog.Log($"{DisplayName} registered with LogisticsManager");
+        }
+
+        private void OnEnable()
+        {
+            RegisterWithLogistics();
+            if (started && LogisticsManager.Instance != null)
+                LogisticsManager.Instance.TryAssignNext();
+        }
+
+        private void OnDisable()
+        {
+            if (LogisticsManager.Instance != null)
+                LogisticsManager.Instance.UnregisterTransportVehicle(this);
+        }
+
+        private void RegisterWithLogistics()
+        {
+            if (LogisticsManager.Instance != null)
+                LogisticsManager.Instance.RegisterTransportVehicle(this);
         }
 
         public float GetFreeCargoCapacity(ResourceDefinition resource)
@@ -64,8 +97,20 @@ namespace AsteroidColony
             if (location != null && ship.assignedPilot.currentLocation != location)
                 return "pilot not aboard";
             if (HasActiveWork)
-                return $"busy with contract #{executor.CurrentContract.contractId}";
+                return $"busy with contract #{Executor.CurrentContract.contractId}";
             return "available";
+        }
+
+        public bool StartContract(TransportContract contract)
+        {
+            if (Executor == null || contract == null || !IsAvailable)
+                return false;
+            if (contract.type == TransportContractType.Freight && !freightEnabled)
+                return false;
+            if (contract.type == TransportContractType.Passenger && !personnelEnabled)
+                return false;
+            Executor.StartContract(contract);
+            return Executor.CurrentContract == contract;
         }
     }
 }
