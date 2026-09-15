@@ -22,6 +22,7 @@ namespace AsteroidColony
         private PassengerCarrierComponent passengerCarrier;
         private ShipMovementComponent movement;
         private TransportVehicleComponent vehicle;
+        private bool started;
 
         private const float QuantityEpsilon = 0.0001f;
 
@@ -39,6 +40,30 @@ namespace AsteroidColony
             vehicle = GetComponent<TransportVehicleComponent>();
             CurrentContract = null;
             State = TransportExecutionState.Idle;
+        }
+
+        private void Start()
+        {
+            started = true;
+            RegisterWithSimulation();
+        }
+
+        private void OnEnable()
+        {
+            if (started)
+                RegisterWithSimulation();
+        }
+
+        private void OnDisable()
+        {
+            if (SimulationManager.Instance != null)
+                SimulationManager.Instance.Unregister(this);
+        }
+
+        private void RegisterWithSimulation()
+        {
+            if (SimulationManager.Instance != null)
+                SimulationManager.Instance.Register(this);
         }
 
         public void StartContract(TransportContract contract)
