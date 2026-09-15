@@ -72,7 +72,8 @@ namespace AsteroidColony
             InventoryComponent destinationInventory,
             int priority,
             float minimumShipment,
-            float maximumShipment)
+            float maximumShipment,
+            FreightDemandClass demandClass = FreightDemandClass.Foreground)
         {
             if (destinationLocation == null || destinationInventory == null)
                 return 0;
@@ -87,6 +88,7 @@ namespace AsteroidColony
                 priority = priority,
                 minimumShipment = Mathf.Max(0f, minimumShipment),
                 maximumShipment = Mathf.Max(0f, maximumShipment),
+                demandClass = demandClass,
                 active = false
             };
             demands.Add(demand);
@@ -126,7 +128,8 @@ namespace AsteroidColony
             string displayName,
             ResourceDefinition resource,
             LocationAnchor location,
-            InventoryComponent inventory)
+            InventoryComponent inventory,
+            float retainStock = 0f)
         {
             if (location == null || inventory == null)
                 return 0;
@@ -149,6 +152,7 @@ namespace AsteroidColony
                 resource = resource,
                 location = location,
                 inventory = inventory,
+                retainStock = Mathf.Max(0f, retainStock),
                 active = true
             };
             supplies.Add(supply);
@@ -165,6 +169,13 @@ namespace AsteroidColony
                     return;
                 }
             }
+        }
+
+        public float GetExportableQuantity(FreightSupply supply)
+        {
+            if (supply == null || !supply.active || supply.inventory == null || supply.resource == null)
+                return 0f;
+            return Mathf.Max(0f, supply.inventory.GetAvailable(supply.resource) - supply.retainStock);
         }
 
         public void SimulationTick(float deltaGameHours)
@@ -261,7 +272,7 @@ namespace AsteroidColony
                 return;
             }
 
-            float sourceAvailable = supply.inventory.GetAvailable(demand.resource);
+            float sourceAvailable = GetExportableQuantity(supply);
             if (sourceAvailable <= QuantityEpsilon)
             {
                 demand.SetPlanningState(inbound, uncovered, destinationFree, "Waiting for source stock");
@@ -333,7 +344,7 @@ namespace AsteroidColony
                     candidate.inventory == null || candidate.resource != resource)
                     continue;
 
-                float available = candidate.inventory.GetAvailable(resource);
+                float available = GetExportableQuantity(candidate);
                 if (available <= QuantityEpsilon)
                     continue;
                 if (best == null || available > bestAvailable)

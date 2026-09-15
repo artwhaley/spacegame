@@ -2,6 +2,12 @@ using UnityEngine;
 
 namespace AsteroidColony
 {
+    public enum FreightDemandClass
+    {
+        Foreground,
+        Background
+    }
+
     /// <summary>
     /// A replaceable demand snapshot published by a consumer. Updating this record
     /// changes the current demand; it does not create a transport contract.
@@ -17,6 +23,7 @@ namespace AsteroidColony
         public int priority;
         public float minimumShipment;
         public float maximumShipment;
+        public FreightDemandClass demandClass = FreightDemandClass.Foreground;
         public bool active;
 
         [SerializeField] private float desiredQuantity;
@@ -65,6 +72,7 @@ namespace AsteroidColony
         public ResourceDefinition resource;
         public LocationAnchor location;
         public InventoryComponent inventory;
+        public float retainStock;
         public bool active = true;
     }
 }
