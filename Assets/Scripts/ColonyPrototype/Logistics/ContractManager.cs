@@ -20,7 +20,31 @@ namespace AsteroidColony
 
         private void Awake()
         {
+            if (Instance != null && Instance != this)
+            {
+                Debug.LogError("Only one active ContractManager is supported.", this);
+                enabled = false;
+                return;
+            }
             Instance = this;
+        }
+
+        private void OnEnable()
+        {
+            if (Instance == null)
+                Instance = this;
+        }
+
+        private void OnDisable()
+        {
+            if (Instance == this)
+                Instance = null;
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this)
+                Instance = null;
         }
 
         /// <summary>Highest priority first, then earliest creation order.</summary>
@@ -256,6 +280,20 @@ namespace AsteroidColony
                 return false;
             if (contract.type == TransportContractType.Passenger && !vehicle.personnelEnabled)
                 return false;
+
+            if (contract.type == TransportContractType.Passenger && vehicle.passengerCarrier == null)
+                return false;
+
+            if (contract.type == TransportContractType.Passenger)
+            {
+                string boardingReason;
+                if (!vehicle.passengerCarrier.CanBoardPassengers(
+                        contract.passengers, contract.sourceLocation, out boardingReason))
+                {
+                    SimulationLog.Log($"Contract #{contract.contractId} rejected by {vehicle.DisplayName}: {boardingReason}");
+                    return false;
+                }
+            }
 
             contract.state = TransportContractState.Assigned;
             contract.assignedVehicle = vehicle;

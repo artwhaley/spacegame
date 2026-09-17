@@ -12,17 +12,21 @@ namespace AsteroidColony
     }
 
     /// <summary>Executes the physical steps of one transport contract.</summary>
-    public class TransportExecutorComponent : MonoBehaviour, ISimulationTickable
+    public class TransportExecutorComponent : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
-        public TransportContract CurrentContract { get; private set; }
-        public TransportExecutionState State { get; private set; } = TransportExecutionState.Idle;
-        public LocationAnchor CurrentDock { get; private set; }
+        [SerializeField] private TransportContract currentContract;
+        [SerializeField] private TransportExecutionState state = TransportExecutionState.Idle;
+
+        public TransportContract CurrentContract => currentContract;
+        public TransportExecutionState State => state;
+        public LocationAnchor CurrentDock => Vehicle != null && Vehicle.ship != null
+            ? Vehicle.ship.CurrentDock
+            : null;
 
         private InventoryComponent cargoInventory;
         private PassengerCarrierComponent passengerCarrier;
         private ShipMovementComponent movement;
         private TransportVehicleComponent vehicle;
-        private bool started;
 
         private const float QuantityEpsilon = 0.0001f;
 
@@ -31,6 +35,7 @@ namespace AsteroidColony
             : vehicle = GetComponent<TransportVehicleComponent>();
 
         public int AboardPassengers => passengerCarrier != null ? passengerCarrier.AboardCount : 0;
+        public int SimulationTickPriority => 400;
 
         private void Awake()
         {
@@ -38,56 +43,77 @@ namespace AsteroidColony
             passengerCarrier = GetComponent<PassengerCarrierComponent>();
             movement = GetComponent<ShipMovementComponent>();
             vehicle = GetComponent<TransportVehicleComponent>();
-            CurrentContract = null;
-            State = TransportExecutionState.Idle;
-        }
-
-        private void Start()
-        {
-            started = true;
-            RegisterWithSimulation();
+            // Do not clear an active contract here. Components can be disabled and
+            // re-enabled while the scene is being inspected; serialized state is
+            // authoritative and the next simulation tick resumes it.
+            if (currentContract == null || !currentContract.IsAssignedOrInFlight)
+            {
+                currentContract = null;
+                state = TransportExecutionState.Idle;
+            }
+            else
+            {
+                state = StateForContract(currentContract.state);
+            }
         }
 
         private void OnEnable()
         {
-            if (started)
-                RegisterWithSimulation();
+            SimulationManager.RegisterTickable(this);
         }
 
         private void OnDisable()
         {
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Unregister(this);
-        }
-
-        private void RegisterWithSimulation()
-        {
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
+            SimulationManager.UnregisterTickable(this);
         }
 
         public void StartContract(TransportContract contract)
         {
-            if (contract == null || CurrentContract != null)
+            if (contract == null || contract.contractId <= 0 || CurrentContract != null)
                 return;
 
-            CurrentContract = contract;
+            currentContract = contract;
             contract.state = TransportContractState.TravelingToPickup;
-            State = TransportExecutionState.TravelingToPickup;
+            state = TransportExecutionState.TravelingToPickup;
+            if (Vehicle != null && Vehicle.ship != null && !Vehicle.ship.TryClaimMovement(ShipMovementOwner.Transport))
+            {
+                currentContract = null;
+                state = TransportExecutionState.Idle;
+                contract.state = TransportContractState.Open;
+                return;
+            }
+            if (Vehicle != null && Vehicle.ship != null)
+                Vehicle.ship.MarkDeparted();
             if (contract.sourceLocation != null)
                 SimulationLog.Log($"{GetDisplayName()} traveling to {contract.sourceLocation.displayName}");
         }
 
         public void SimulationTick(float deltaGameHours)
         {
-            if (CurrentContract != null && !CurrentContract.IsActive)
+            // A serialized/default TransportContract that was never registered
+            // by ContractManager cannot make progress and would strand the
+            // vehicle forever (the default contractId is zero). Treat it as
+            // stale runtime state and release the transport movement lease.
+            if (CurrentContract != null && CurrentContract.contractId <= 0)
+            {
+                SimulationLog.Log($"{GetDisplayName()} discarded stale transport contract #{CurrentContract.contractId}");
+                currentContract = null;
+                state = TransportExecutionState.Idle;
+                if (Vehicle != null && Vehicle.ship != null)
+                    Vehicle.ship.ReleaseMovement(ShipMovementOwner.Transport);
+            }
+            if (CurrentContract != null && !CurrentContract.IsAssignedOrInFlight)
             {
                 SimulationLog.Log($"{GetDisplayName()} released contract #{CurrentContract.contractId} (no longer active)");
-                CurrentContract = null;
-                State = TransportExecutionState.Idle;
+                currentContract = null;
+                state = TransportExecutionState.Idle;
+                if (Vehicle != null && Vehicle.ship != null)
+                    Vehicle.ship.ReleaseMovement(ShipMovementOwner.Transport);
             }
 
-            if (CurrentContract == null || Vehicle?.ship == null || !Vehicle.ship.operationalEnabled)
+            if (CurrentContract == null || Vehicle == null || !Vehicle.isActiveAndEnabled || Vehicle.ship == null ||
+                !Vehicle.ship.isActiveAndEnabled || !Vehicle.ship.operationalEnabled ||
+                (Vehicle.ship.crewStaffing != null && !Vehicle.ship.crewStaffing.isActiveAndEnabled))
                 return;
 
             switch (State)
@@ -118,8 +144,9 @@ namespace AsteroidColony
 
         private void BeginLoading()
         {
-            CurrentDock = CurrentContract.sourceLocation;
-            State = TransportExecutionState.Loading;
+            if (Vehicle != null && Vehicle.ship != null)
+                Vehicle.ship.SetDock(CurrentContract.sourceLocation);
+            state = TransportExecutionState.Loading;
             CurrentContract.state = TransportContractState.Loading;
             CompleteLoading();
         }
@@ -133,9 +160,31 @@ namespace AsteroidColony
                 ? LoadFreight()
                 : LoadPassengers();
             if (!loaded)
+            {
+                if (CurrentContract.type == TransportContractType.Passenger && passengerCarrier != null)
+                {
+                    string boardingReason;
+                    if (!passengerCarrier.CanBoardPassengers(
+                            CurrentContract.passengers, CurrentContract.sourceLocation, out boardingReason))
+                    {
+                        SimulationLog.Log($"{GetDisplayName()} cancelled contract #{CurrentContract.contractId} before boarding: {boardingReason}");
+                        if (ContractManager.Instance != null)
+                            ContractManager.Instance.Cancel(CurrentContract);
+                        currentContract = null;
+                        state = TransportExecutionState.Idle;
+                        if (Vehicle != null && Vehicle.ship != null)
+                            Vehicle.ship.ReleaseMovement(ShipMovementOwner.Transport);
+                        if (LogisticsManager.Instance != null)
+                            LogisticsManager.Instance.TryAssignNext();
+                    }
+                }
                 return;
+            }
 
-            State = TransportExecutionState.TravelingToDestination;
+            if (Vehicle != null && Vehicle.ship != null)
+                Vehicle.ship.MarkDeparted();
+
+            state = TransportExecutionState.TravelingToDestination;
             CurrentContract.state = TransportContractState.TravelingToDestination;
             SimulationLog.Log($"{GetDisplayName()} departed {CurrentContract.sourceLocation.displayName}");
         }
@@ -176,8 +225,9 @@ namespace AsteroidColony
 
         private void BeginUnloading()
         {
-            CurrentDock = CurrentContract.destinationLocation;
-            State = TransportExecutionState.Unloading;
+            if (Vehicle != null && Vehicle.ship != null)
+                Vehicle.ship.SetDock(CurrentContract.destinationLocation);
+            state = TransportExecutionState.Unloading;
             CurrentContract.state = TransportContractState.Unloading;
 
             bool complete = CurrentContract.type == TransportContractType.Freight
@@ -220,12 +270,32 @@ namespace AsteroidColony
                 return;
 
             TransportContract done = CurrentContract;
-            CurrentContract = null;
-            State = TransportExecutionState.Idle;
+            currentContract = null;
+            state = TransportExecutionState.Idle;
+            if (Vehicle != null && Vehicle.ship != null)
+                Vehicle.ship.ReleaseMovement(ShipMovementOwner.Transport);
             if (ContractManager.Instance != null)
                 ContractManager.Instance.Complete(done);
             if (LogisticsManager.Instance != null)
                 LogisticsManager.Instance.TryAssignNext();
+        }
+
+        private static TransportExecutionState StateForContract(TransportContractState contractState)
+        {
+            switch (contractState)
+            {
+                case TransportContractState.Assigned:
+                case TransportContractState.TravelingToPickup:
+                    return TransportExecutionState.TravelingToPickup;
+                case TransportContractState.Loading:
+                    return TransportExecutionState.Loading;
+                case TransportContractState.TravelingToDestination:
+                    return TransportExecutionState.TravelingToDestination;
+                case TransportContractState.Unloading:
+                    return TransportExecutionState.Unloading;
+                default:
+                    return TransportExecutionState.Idle;
+            }
         }
 
         private string GetDisplayName()

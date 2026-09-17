@@ -140,9 +140,17 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 400000201}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: assignedWorkplace
+      propertyPath: currentEmployment.workplace
       value: 
-      objectReference: {fileID: 400000211}
+      objectReference: {fileID: 400000214}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.role
+      value: 
+      objectReference: {fileID: 11400000, guid: 66667777888899990000111122223333, type: 2}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.shiftId
+      value: A
+      objectReference: {fileID: 0}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: classes.Array.size
       value: 1
@@ -230,6 +238,18 @@ PrefabInstance:
       propertyPath: currentLocation
       value: 
       objectReference: {fileID: 400000201}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.workplace
+      value: 
+      objectReference: {fileID: 210000035}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.role
+      value: 
+      objectReference: {fileID: 11400000, guid: 77778888999900001111222233334444, type: 2}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.shiftId
+      value: A
+      objectReference: {fileID: 0}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: classes.Array.size
       value: 1
@@ -768,6 +788,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   location: {fileID: 400000201}
   capacity: 8
+  restfulnessMultiplier: 1
 --- !u!114 &400000204
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -868,27 +889,6 @@ MonoBehaviour:
     reserved: 0
     capacity: 16
     available: 0
---- !u!114 &400000213
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 512056865}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6e7f8091a2b3c4d5e6f708192a3b4c50, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  workplace: {fileID: 400000211}
-  home: {fileID: 400000201}
-  staffing: {fileID: 400000214}
-  workDurationHours: 8
-  restDurationHours: 8
-  passengerPriority: 10
-  state: 3
-  shiftTimeRemaining: 0
-  presentWorkingWorkers: 0
 --- !u!114 &400000214
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -901,10 +901,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5a6b7c8d9e0f1a2b3c4d5e6f708192a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  workplace: {fileID: 400000211}
-  assignedWorkers:
-  - {fileID: 400000307}
-  - {fileID: 400000308}
+  workplaceLocation: {fileID: 400000211}
+  shiftPattern: {fileID: 11400000, guid: 55556666777788889999000011112222, type: 2}
+  offeredRoles:
+  - {fileID: 11400000, guid: 66667777888899990000111122223333, type: 2}
+  commutePriority: 10
+  debugRows: []
 --- !u!114 &400000215
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -918,7 +920,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   inventory: {fileID: 400000212}
-  staffing: {fileID: 400000214}
+  performance: {fileID: 400000217}
+  productionRateEffect: {fileID: 11400000, guid: 11112222333344445555666677778888, type: 2}
   availableRecipes:
   - {fileID: 11400000, guid: 8a91b2c3d4e5f60718293a4b5c6d7e80, type: 2}
   activeRecipe: {fileID: 11400000, guid: 8a91b2c3d4e5f60718293a4b5c6d7e80, type: 2}
@@ -1016,8 +1019,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   displayName: Shuttle 1
   operationalEnabled: 1
-  assignedPilot: {fileID: 400000304}
-  requiredPilotClass: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d0, type: 2}
+  crewStaffing: {fileID: 400000230}
+  operatingRole: {fileID: 11400000, guid: 77778888999900001111222233334444, type: 2}
+  crewChangeBase: {fileID: 400000201}
+  initialDock: {fileID: 400000201}
 --- !u!114 &400000225
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1031,6 +1036,24 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   movementSpeed: 12
+--- !u!114 &400000230
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 909724429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a6b7c8d9e0f1a2b3c4d5e6f708192a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  workplaceLocation: {fileID: 400000221}
+  shiftPattern: {fileID: 11400000, guid: 55556666777788889999000011112222, type: 2}
+  offeredRoles:
+  - {fileID: 11400000, guid: 77778888999900001111222233334444, type: 2}
+  commutePriority: 10
+  debugRows: []
 --- !u!114 &400000226
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1076,6 +1099,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4c006469b56456b498e3cf783de81b60, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &400000229
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 909724429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88889999000011112222333344445555, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ship: {fileID: 400000224}
+  state: 0
+  returnDestination: {fileID: 0}
+  lastDiagnostic: 
 --- !u!1 &432432459
 GameObject:
   m_ObjectHideFlags: 0
@@ -1125,6 +1164,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &400000217
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 512056865}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e5f60718293a4b5c6d7e8f9012b3c4d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  additionalProviders: []
 --- !u!1 &512056865
 GameObject:
   m_ObjectHideFlags: 0
@@ -1136,10 +1188,10 @@ GameObject:
   - component: {fileID: 512056866}
   - component: {fileID: 400000211}
   - component: {fileID: 400000212}
-  - component: {fileID: 400000213}
   - component: {fileID: 400000214}
   - component: {fileID: 400000215}
   - component: {fileID: 400000216}
+  - component: {fileID: 400000217}
   m_Layer: 0
   m_Name: Farm
   m_TagString: Untagged
@@ -1163,6 +1215,20 @@ Transform:
   - {fileID: 227703779}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &400000106
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 634601154}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f60718293a4b5c6d7e8f9012b3c4d5e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  employedCount: 0
+  lastDiagnostic: 
 --- !u!1 &634601154
 GameObject:
   m_ObjectHideFlags: 0
@@ -1177,6 +1243,7 @@ GameObject:
   - component: {fileID: 400000103}
   - component: {fileID: 400000104}
   - component: {fileID: 400000105}
+  - component: {fileID: 400000106}
   m_Layer: 0
   m_Name: Managers
   m_TagString: Untagged
@@ -1220,9 +1287,17 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 400000201}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
-      propertyPath: assignedWorkplace
+      propertyPath: currentEmployment.workplace
       value: 
-      objectReference: {fileID: 400000211}
+      objectReference: {fileID: 400000214}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.role
+      value: 
+      objectReference: {fileID: 11400000, guid: 66667777888899990000111122223333, type: 2}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.shiftId
+      value: A
+      objectReference: {fileID: 0}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: classes.Array.size
       value: 1
@@ -1310,6 +1385,14 @@ PrefabInstance:
       propertyPath: currentLocation
       value: 
       objectReference: {fileID: 400000201}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.data[0]
+      value: 
+      objectReference: {fileID: 11400000, guid: 9e0f1a2b3c4d5e6f708192a3b4c5d6e0, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Bridge Crew 3
@@ -1384,6 +1467,14 @@ PrefabInstance:
       propertyPath: currentLocation
       value: 
       objectReference: {fileID: 400000201}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.data[0]
+      value: 
+      objectReference: {fileID: 11400000, guid: 9e0f1a2b3c4d5e6f708192a3b4c5d6e0, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Bridge Crew 1
@@ -1454,6 +1545,8 @@ GameObject:
   - component: {fileID: 400000226}
   - component: {fileID: 400000227}
   - component: {fileID: 400000228}
+  - component: {fileID: 400000229}
+  - component: {fileID: 400000230}
   m_Layer: 0
   m_Name: Shuttle
   m_TagString: Untagged
@@ -1514,6 +1607,7 @@ Transform:
   - {fileID: 1531976840}
   - {fileID: 691845923}
   - {fileID: 790328}
+  - {fileID: 300000002}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &973986971
@@ -1573,6 +1667,18 @@ PrefabInstance:
       propertyPath: currentLocation
       value: 
       objectReference: {fileID: 400000201}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.size
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.data[0]
+      value: 
+      objectReference: {fileID: 11400000, guid: af1a2b3c4d5e6f708192a3b4c5d6e7f0, type: 2}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.data[1]
+      value: 
+      objectReference: {fileID: 11400000, guid: c3c4d5e6f708192a3b4c5d6e7f8091a0, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Maintenance
@@ -1647,6 +1753,18 @@ PrefabInstance:
       propertyPath: currentLocation
       value: 
       objectReference: {fileID: 400000201}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.workplace
+      value: 
+      objectReference: {fileID: 400000230}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.role
+      value: 
+      objectReference: {fileID: 11400000, guid: 77778888999900001111222233334444, type: 2}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: currentEmployment.shiftId
+      value: A
+      objectReference: {fileID: 0}
     - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: classes.Array.size
       value: 1
@@ -2078,6 +2196,14 @@ PrefabInstance:
       propertyPath: currentLocation
       value: 
       objectReference: {fileID: 400000201}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4400000001, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
+      propertyPath: classes.Array.data[0]
+      value: 
+      objectReference: {fileID: 11400000, guid: 9e0f1a2b3c4d5e6f708192a3b4c5d6e0, type: 2}
     - target: {fileID: 632752544844219499, guid: 70d04d8e58058044a827fc175888e38f, type: 3}
       propertyPath: m_Name
       value: Bridge Crew 2
@@ -2617,6 +2743,8 @@ GameObject:
   - component: {fileID: 210000031}
   - component: {fileID: 210000032}
   - component: {fileID: 210000033}
+  - component: {fileID: 210000034}
+  - component: {fileID: 210000035}
   m_Layer: 0
   m_Name: Mining Ship 1
   m_TagString: Untagged
@@ -2683,8 +2811,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   displayName: Mining Ship 1
   operationalEnabled: 1
-  assignedPilot: {fileID: 400000309}
-  requiredPilotClass: {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d0, type: 2}
+  crewStaffing: {fileID: 210000035}
+  operatingRole: {fileID: 11400000, guid: 77778888999900001111222233334444, type: 2}
+  crewChangeBase: {fileID: 400000201}
+  initialDock: {fileID: 400000201}
 --- !u!114 &210000031
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2734,6 +2864,40 @@ MonoBehaviour:
   unloadInventory: {fileID: 210000004}
   destinationStockPolicy: {fileID: 210000006}
   fallbackTargetStock: 24
+--- !u!114 &210000034
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 210000021}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88889999000011112222333344445555, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ship: {fileID: 210000030}
+  state: 0
+  returnDestination: {fileID: 0}
+  lastDiagnostic: 
+--- !u!114 &210000035
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 210000021}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a6b7c8d9e0f1a2b3c4d5e6f708192a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  workplaceLocation: {fileID: 210000023}
+  shiftPattern: {fileID: 11400000, guid: 55556666777788889999000011112222, type: 2}
+  offeredRoles:
+  - {fileID: 11400000, guid: 77778888999900001111222233334444, type: 2}
+  commutePriority: 10
+  debugRows: []
 --- !u!23 &210000028
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2789,6 +2953,83 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 210000021}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &300000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 300000002}
+  - component: {fileID: 300000003}
+  - component: {fileID: 300000004}
+  m_Layer: 0
+  m_Name: Pilot 3
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &300000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 300000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 971297965}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &300000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 300000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e5f60718293a4b5c6d7e8f90a1b2c3d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  displayName: Pilot 3
+  home: {fileID: 400000201}
+  currentLocation: {fileID: 400000201}
+  activity: 0
+  classes:
+  - {fileID: 11400000, guid: 8d9e0f1a2b3c4d5e6f708192a3b4c5d0, type: 2}
+  skills: []
+  currentEmployment:
+    workplace: {fileID: 400000230}
+    role: {fileID: 11400000, guid: 77778888999900001111222233334444, type: 2}
+    shiftId: B
+--- !u!114 &300000004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 300000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c4f2d7e6b1a4f5c9d3e7a2b6c8f0e11, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  fatigue: 0
+  workFatiguePerHour: 0.1
+  sleepRecoveryPerHour: 0.1
+  exhaustionThreshold: 0.9
+  recoveredThreshold: 0.2
+  exhausted: 0
+  dutyHistory: []
+  maximumDutyRecords: 32
+  activeDuty: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -12,13 +12,17 @@ namespace AsteroidColony.Tests
         private GameObject passengerObject;
         private ResourceDefinition wrench;
         private WorkerClassDefinition pilotClass;
+        private StaffingRoleDefinition pilotRole;
 
         [SetUp]
         public void SetUp()
         {
             shipObject = new GameObject("Transport");
             shipObject.AddComponent<LocationAnchor>();
+            StaffingComponent roster = shipObject.AddComponent<StaffingComponent>();
+            roster.workplaceLocation = shipObject.GetComponent<LocationAnchor>();
             shipObject.AddComponent<ShipComponent>();
+            shipObject.AddComponent<ShipCrewDutyComponent>();
             shipObject.AddComponent<InventoryComponent>();
             shipObject.AddComponent<TransportVehicleComponent>();
             sourceObject = new GameObject("Source");
@@ -27,12 +31,18 @@ namespace AsteroidColony.Tests
             wrench = ScriptableObject.CreateInstance<ResourceDefinition>();
             wrench.quantityMode = ResourceQuantityMode.Discrete;
             pilotClass = ScriptableObject.CreateInstance<WorkerClassDefinition>();
+            pilotRole = ScriptableObject.CreateInstance<StaffingRoleDefinition>();
+            pilotRole.requiredClass = pilotClass;
+            pilotRole.maximumAssignedPerShift = 1;
+            roster.offeredRoles.Add(pilotRole);
+            shipObject.GetComponent<ShipComponent>().crewStaffing = roster;
         }
 
         [TearDown]
         public void TearDown()
         {
             Object.DestroyImmediate(pilotClass);
+            Object.DestroyImmediate(pilotRole);
             Object.DestroyImmediate(wrench);
             Object.DestroyImmediate(passengerObject);
             Object.DestroyImmediate(sourceObject);
@@ -45,14 +55,14 @@ namespace AsteroidColony.Tests
             ShipComponent ship = shipObject.GetComponent<ShipComponent>();
             ColonistAgent pilot = passengerObject.AddComponent<ColonistAgent>();
             pilot.classes.Add(pilotClass);
-            ship.requiredPilotClass = pilotClass;
-            ship.assignedPilot = pilot;
+            ship.operatingRole = pilotRole;
+            pilot.currentLocation = shipObject.GetComponent<LocationAnchor>();
+            ship.AdoptResponsiblePilot(pilot);
 
             Assert.That(ship.HasQualifiedPilot, Is.True);
             Assert.That(ship.IsOperationallyCrewed, Is.False);
 
-            pilot.currentLocation = shipObject.GetComponent<LocationAnchor>();
-
+            pilot.Status.BeginPilotDuty(ship, pilotRole, "A", 0f);
             Assert.That(ship.IsOperationallyCrewed, Is.True);
         }
 
@@ -70,6 +80,30 @@ namespace AsteroidColony.Tests
             Assert.That(carrier.AboardCount, Is.EqualTo(1));
             Assert.That(carrier.TryUnboardPassengers(source), Is.True);
             Assert.That(passenger.currentLocation, Is.EqualTo(source));
+        }
+
+        [Test]
+        public void CarrierRejectsItsResponsiblePilotButAllowsOtherPassengers()
+        {
+            PassengerCarrierComponent carrier = shipObject.AddComponent<PassengerCarrierComponent>();
+            ShipComponent ship = shipObject.GetComponent<ShipComponent>();
+            LocationAnchor source = sourceObject.GetComponent<LocationAnchor>();
+            ColonistAgent pilot = passengerObject.AddComponent<ColonistAgent>();
+            pilot.currentLocation = source;
+            ship.operatingRole = pilotRole;
+            pilot.currentLocation = shipObject.GetComponent<LocationAnchor>();
+            ship.AdoptResponsiblePilot(pilot);
+            pilot.currentLocation = source;
+
+            string reason;
+            Assert.That(carrier.CanBoardPassengers(new List<ColonistAgent> { pilot }, source, out reason), Is.False);
+            Assert.That(reason, Does.Contain("responsible pilot"));
+
+            GameObject otherObject = new GameObject("Other Passenger");
+            ColonistAgent other = otherObject.AddComponent<ColonistAgent>();
+            other.currentLocation = source;
+            Assert.That(carrier.CanBoardPassengers(new List<ColonistAgent> { other }, source, out reason), Is.True);
+            Object.DestroyImmediate(otherObject);
         }
 
         [Test]

@@ -23,19 +23,67 @@ namespace AsteroidColony
             currentPassengers.Clear();
         }
 
-        public bool TryBoardPassengers(List<ColonistAgent> passengers, LocationAnchor source)
+        public bool CanBoardPassengers(List<ColonistAgent> passengers, LocationAnchor source, out string reason)
         {
-            if (passengers == null || source == null || CarrierLocation == null ||
-                currentPassengers.Count + passengers.Count > passengerCapacity)
+            reason = "available";
+            if (passengers == null || passengers.Count == 0)
+            {
+                reason = "empty passenger manifest";
                 return false;
-
+            }
+            if (source == null || CarrierLocation == null)
+            {
+                reason = "missing source or carrier anchor";
+                return false;
+            }
+            if (currentPassengers.Count + passengers.Count > passengerCapacity)
+            {
+                reason = "passenger capacity exceeded";
+                return false;
+            }
+            HashSet<ColonistAgent> manifestSeen = new HashSet<ColonistAgent>();
             for (int i = 0; i < passengers.Count; i++)
             {
                 ColonistAgent passenger = passengers[i];
-                if (passenger == null || passenger == ship?.assignedPilot ||
-                    passenger.currentLocation != source || currentPassengers.Contains(passenger))
+                if (passenger == null)
+                {
+                    reason = "manifest contains a null passenger";
                     return false;
+                }
+                if (passenger == ship?.ResponsiblePilot)
+                {
+                    reason = "manifest contains the carrier's responsible pilot";
+                    return false;
+                }
+                if (passenger.currentLocation != source)
+                {
+                    reason = $"{passenger.displayName} is not at pickup";
+                    return false;
+                }
+                if (currentPassengers.Contains(passenger))
+                {
+                    reason = $"{passenger.displayName} is already aboard";
+                    return false;
+                }
+                if (!manifestSeen.Add(passenger))
+                {
+                    reason = $"{passenger.displayName} appears more than once";
+                    return false;
+                }
             }
+            return true;
+        }
+
+        public bool CanBoardPassenger(ColonistAgent passenger, LocationAnchor source, out string reason)
+        {
+            return CanBoardPassengers(new List<ColonistAgent> { passenger }, source, out reason);
+        }
+
+        public bool TryBoardPassengers(List<ColonistAgent> passengers, LocationAnchor source)
+        {
+            string reason;
+            if (!CanBoardPassengers(passengers, source, out reason))
+                return false;
 
             for (int i = 0; i < passengers.Count; i++)
             {

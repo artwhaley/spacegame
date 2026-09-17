@@ -12,7 +12,7 @@ namespace AsteroidColony
     }
 
     /// <summary>Orchestrates one extraction trip without ordinary logistics contracts.</summary>
-    public class ExtractionMissionController : MonoBehaviour, ISimulationTickable
+    public class ExtractionMissionController : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         public ShipComponent ship;
         public ShipMovementComponent movement;
@@ -27,10 +27,10 @@ namespace AsteroidColony
         [SerializeField] private float missionTargetQuantity;
         [SerializeField] private float missionCollectedQuantity;
 
-        private bool started;
         private const float QuantityEpsilon = 0.0001f;
 
         public ExtractionMissionState State => state;
+        public int SimulationTickPriority => 400;
         public float CurrentMissionTargetQuantity => missionTargetQuantity;
         public float MissionCollectedQuantity => missionCollectedQuantity;
         public float CurrentCargoQuantity => collector != null && collector.destinationCargo != null &&
@@ -50,27 +50,21 @@ namespace AsteroidColony
                 unloadInventory = unloadLocation.GetComponent<InventoryComponent>();
         }
 
-        private void Start()
-        {
-            started = true;
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
-        }
-
         private void OnEnable()
         {
-            if (started && SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
+            SimulationManager.RegisterTickable(this);
         }
 
         private void OnDisable()
         {
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Unregister(this);
+            SimulationManager.UnregisterTickable(this);
         }
 
         public void SimulationTick(float deltaGameHours)
         {
+            if (!isActiveAndEnabled || (ship != null && (!ship.isActiveAndEnabled || !ship.operationalEnabled ||
+                (ship.crewStaffing != null && !ship.crewStaffing.isActiveAndEnabled))))
+                return;
             switch (state)
             {
                 case ExtractionMissionState.Idle:
@@ -96,6 +90,8 @@ namespace AsteroidColony
                     if (unloadLocation == null || movement == null ||
                         movement.MoveToward(unloadLocation, deltaGameHours))
                     {
+                        if (ship != null)
+                            ship.SetDock(unloadLocation);
                         state = ExtractionMissionState.Unloading;
                         SimulationLog.Log($"{GetDisplayName()} returned to {GetUnloadName()}");
                     }
@@ -109,7 +105,8 @@ namespace AsteroidColony
 
         private void TryBeginMission()
         {
-            if (ship == null || !ship.IsOperationallyCrewed || collector == null ||
+            if (ship == null || !ship.IsOperationallyCrewed || !ship.HasSafeDock || ship.IsTraveling ||
+                ship.ReleaseRequested || collector == null ||
                 collector.collectableResource == null || targetDeposit == null ||
                 targetDeposit.resource != collector.collectableResource ||
                 !targetDeposit.extractionEnabled || targetDeposit.RemainingQuantity <= QuantityEpsilon ||
@@ -130,7 +127,10 @@ namespace AsteroidColony
 
             missionTargetQuantity = missionQuantity;
             missionCollectedQuantity = 0f;
+            if (!ship.TryClaimMovement(ShipMovementOwner.Extraction))
+                return;
             state = ExtractionMissionState.TravelingToDeposit;
+            ship.MarkDeparted();
             SimulationLog.Log($"{GetDisplayName()} departing for {GetDepositName()}");
         }
 
@@ -207,6 +207,8 @@ namespace AsteroidColony
             state = ExtractionMissionState.Idle;
             missionTargetQuantity = 0f;
             missionCollectedQuantity = 0f;
+            if (ship != null)
+                ship.ReleaseMovement(ShipMovementOwner.Extraction);
         }
 
         private float GetDestinationTargetStock()

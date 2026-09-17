@@ -9,6 +9,7 @@ namespace AsteroidColony
         Running,
         InputBlocked,
         OutputBlocked,
+        /// <summary>Blocked by facility performance (for example staffing).</summary>
         StaffingBlocked,
         CompletedBatchWaitingForOutput,
         Disabled
@@ -19,10 +20,11 @@ namespace AsteroidColony
     /// transport behavior; outputs remain in this inventory until stock policy
     /// or another local consumer moves them.
     /// </summary>
-    public class ResourceConverterComponent : MonoBehaviour, ISimulationTickable
+    public class ResourceConverterComponent : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         public InventoryComponent inventory;
-        public StaffingComponent staffing;
+        public FacilityPerformanceComponent performance;
+        public FacilityEffectDefinition productionRateEffect;
         public List<RecipeDefinition> availableRecipes = new List<RecipeDefinition>();
         public RecipeDefinition activeRecipe;
         public bool operationalEnabled = true;
@@ -34,7 +36,6 @@ namespace AsteroidColony
 
         private bool batchActive;
         private float batchProgress;
-        private bool started;
 
         private const float QuantityEpsilon = 0.0001f;
 
@@ -42,6 +43,7 @@ namespace AsteroidColony
         public float Progress => progress;
         public float ThroughputMultiplier => throughputMultiplier;
         public string BlockedReason => blockedReason;
+        public int SimulationTickPriority => 200;
 
         private void Awake()
         {
@@ -49,23 +51,17 @@ namespace AsteroidColony
                 inventory = GetComponent<InventoryComponent>();
         }
 
-        private void Start()
-        {
-            started = true;
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
-        }
-
         private void OnEnable()
         {
-            if (started && SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
+            SimulationManager.RegisterTickable(this);
         }
 
         private void OnDisable()
         {
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Unregister(this);
+            SimulationManager.UnregisterTickable(this);
+            // Keep batchActive/batchProgress and all inventory reservations intact;
+            // disabling pauses work rather than cancelling the batch.
+            SetState(ResourceConverterState.Disabled, "Disabled");
         }
 
         public void SelectRecipe(RecipeDefinition recipe)
@@ -90,16 +86,20 @@ namespace AsteroidColony
                 return;
             }
 
-            IReadOnlyList<ColonistAgent> workers = staffing != null
-                ? staffing.GetWorkingWorkers()
-                : new List<ColonistAgent>();
-            RecipeStaffingRule rule = activeRecipe.staffingRule ?? new RecipeStaffingRule();
-            throughputMultiplier = rule.CalculateThroughputMultiplier(workers);
-            if (!rule.IsStaffed(workers))
+            // Facility performance is the only operational input. Staffing never
+            // talks to production; it publishes performance and this consumes it.
+            if (performance != null && !performance.IsOperational)
             {
-                SetState(ResourceConverterState.StaffingBlocked, "Required staffing unavailable");
+                throughputMultiplier = 0f;
+                SetState(ResourceConverterState.StaffingBlocked,
+                    string.IsNullOrEmpty(performance.BlockSummary)
+                        ? "Facility not operational"
+                        : performance.BlockSummary);
                 return;
             }
+            throughputMultiplier = performance != null
+                ? performance.GetMultiplier(productionRateEffect)
+                : 1f;
 
             if (activeRecipe.executionMode == RecipeExecutionMode.Batch)
                 TickBatch(deltaGameHours, activeRecipe);

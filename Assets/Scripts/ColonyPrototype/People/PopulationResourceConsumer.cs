@@ -43,15 +43,15 @@ namespace AsteroidColony
     /// Consumes configured resources from a habitation inventory for its current
     /// resident count. It does not create personal inventories or health gameplay.
     /// </summary>
-    public class PopulationResourceConsumer : MonoBehaviour, ISimulationTickable
+    public class PopulationResourceConsumer : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         public HabitationComponent habitation;
         public InventoryComponent inventory;
         public List<PopulationConsumptionEntry> entries = new List<PopulationConsumptionEntry>();
 
-        private bool started;
         public int ResidentCount => habitation != null ? habitation.ResidentCount : 0;
         public IReadOnlyList<PopulationConsumptionEntry> Entries => entries;
+        public int SimulationTickPriority => 200;
 
         private void Awake()
         {
@@ -61,23 +61,14 @@ namespace AsteroidColony
                 inventory = GetComponent<InventoryComponent>();
         }
 
-        private void Start()
-        {
-            started = true;
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
-        }
-
         private void OnEnable()
         {
-            if (started && SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
+            SimulationManager.RegisterTickable(this);
         }
 
         private void OnDisable()
         {
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Unregister(this);
+            SimulationManager.UnregisterTickable(this);
         }
 
         public void SimulationTick(float deltaGameHours)

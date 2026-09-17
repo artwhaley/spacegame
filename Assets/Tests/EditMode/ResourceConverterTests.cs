@@ -104,32 +104,50 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
-        public void RequiredClassBlocksUntilEligibleWorkerIsWorking()
+        public void FacilityPerformanceGatesAndScalesConversion()
         {
-            ConfigureInventory(input, 4f, 2f);
-            ConfigureInventory(output, 2f, 0f);
-            WorkerClassDefinition requiredClass = ScriptableObject.CreateInstance<WorkerClassDefinition>();
-            createdObjects.Add(requiredClass);
-            StaffingComponent staffing = converterObject.AddComponent<StaffingComponent>();
-            ColonistAgent worker = new GameObject("Worker").AddComponent<ColonistAgent>();
-            createdObjects.Add(worker.gameObject);
-            worker.currentLocation = converterObject.AddComponent<LocationAnchor>();
-            worker.activity = ColonistActivity.Working;
-            staffing.workplace = worker.currentLocation;
-            staffing.assignedWorkers.Add(worker);
-            RecipeDefinition recipe = CreateRecipe("staffed", RecipeExecutionMode.Continuous,
+            ConfigureInventory(input, 10f, 10f);
+            ConfigureInventory(output, 10f, 0f);
+            FacilityEffectDefinition rate = ScriptableObject.CreateInstance<FacilityEffectDefinition>();
+            createdObjects.Add(rate);
+            TestEffectProvider provider = converterObject.AddComponent<TestEffectProvider>();
+            provider.effect = rate;
+            provider.multiplier = 1f;
+            FacilityPerformanceComponent performance = converterObject.AddComponent<FacilityPerformanceComponent>();
+            RecipeDefinition recipe = CreateRecipe("productive", RecipeExecutionMode.Continuous,
                 new ResourceAmount { resource = input, amount = 1f },
                 new ResourceAmount { resource = output, amount = 1f });
-            recipe.staffingRule.minimumWorkers = 1;
-            recipe.staffingRule.requiredClass = requiredClass;
             ResourceConverterComponent converter = CreateConverter(recipe);
-            converter.staffing = staffing;
+            converter.performance = performance;
+            converter.productionRateEffect = rate;
 
+            provider.blocker = "Understaffed: Farm Operator 0/1 active";
             converter.SimulationTick(1f);
             Assert.That(converter.State, Is.EqualTo(ResourceConverterState.StaffingBlocked));
-            worker.classes.Add(requiredClass);
+            Assert.That(inventory.GetOnHand(output), Is.EqualTo(0f));
+
+            provider.blocker = null;
+            provider.multiplier = 0.5f;
             converter.SimulationTick(1f);
             Assert.That(converter.State, Is.EqualTo(ResourceConverterState.Running));
+            Assert.That(inventory.GetOnHand(output), Is.EqualTo(0.5f).Within(0.0001f));
+            Assert.That(inventory.GetOnHand(input), Is.EqualTo(9.5f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ConverterWithoutPerformanceRunsAtFullRate()
+        {
+            ConfigureInventory(input, 4f, 2f);
+            ConfigureInventory(output, 4f, 0f);
+            RecipeDefinition recipe = CreateRecipe("automated", RecipeExecutionMode.Continuous,
+                new ResourceAmount { resource = input, amount = 1f },
+                new ResourceAmount { resource = output, amount = 1f });
+            ResourceConverterComponent converter = CreateConverter(recipe);
+
+            converter.SimulationTick(1f);
+
+            Assert.That(converter.State, Is.EqualTo(ResourceConverterState.Running));
+            Assert.That(inventory.GetOnHand(output), Is.EqualTo(1f).Within(0.0001f));
         }
 
         private ResourceConverterComponent CreateConverter(RecipeDefinition recipe)

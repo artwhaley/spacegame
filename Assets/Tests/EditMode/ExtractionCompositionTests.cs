@@ -10,6 +10,8 @@ namespace AsteroidColony.Tests
         private readonly List<GameObject> objects = new List<GameObject>();
         private ResourceDefinition ice;
         private ResourceDefinition wrench;
+        private WorkerClassDefinition pilotClass;
+        private StaffingRoleDefinition pilotRole;
 
         [SetUp]
         public void SetUp()
@@ -18,6 +20,9 @@ namespace AsteroidColony.Tests
             ice.quantityMode = ResourceQuantityMode.Fractional;
             wrench = ScriptableObject.CreateInstance<ResourceDefinition>();
             wrench.quantityMode = ResourceQuantityMode.Discrete;
+            pilotClass = ScriptableObject.CreateInstance<WorkerClassDefinition>();
+            pilotRole = ScriptableObject.CreateInstance<StaffingRoleDefinition>();
+            pilotRole.requiredClass = pilotClass;
         }
 
         [TearDown]
@@ -25,6 +30,8 @@ namespace AsteroidColony.Tests
         {
             Object.DestroyImmediate(wrench);
             Object.DestroyImmediate(ice);
+            Object.DestroyImmediate(pilotRole);
+            Object.DestroyImmediate(pilotClass);
             for (int i = objects.Count - 1; i >= 0; i--)
                 if (objects[i] != null)
                     Object.DestroyImmediate(objects[i]);
@@ -82,12 +89,17 @@ namespace AsteroidColony.Tests
             GameObject shipObject = CreateObject("Mining Ship");
             LocationAnchor shipLocation = shipObject.AddComponent<LocationAnchor>();
             ShipComponent ship = shipObject.AddComponent<ShipComponent>();
+            StaffingComponent roster = shipObject.AddComponent<StaffingComponent>();
+            roster.workplaceLocation = shipLocation;
             ColonistAgent pilot = CreateObject("Pilot").AddComponent<ColonistAgent>();
-            WorkerClassDefinition pilotClass = ScriptableObject.CreateInstance<WorkerClassDefinition>();
             pilot.classes.Add(pilotClass);
-            ship.requiredPilotClass = pilotClass;
-            ship.assignedPilot = pilot;
             pilot.currentLocation = shipLocation;
+            ship.operatingRole = pilotRole;
+            roster.offeredRoles.Add(pilotRole);
+            ship.crewStaffing = roster;
+            ship.AdoptResponsiblePilot(pilot);
+            pilot.Status.BeginPilotDuty(ship, pilotRole, "A", 0f);
+            shipObject.AddComponent<ShipCrewDutyComponent>();
             InventoryComponent cargo = shipObject.AddComponent<InventoryComponent>();
             Configure(cargo, ice, 10f, 0f);
             ShipMovementComponent movement = shipObject.AddComponent<ShipMovementComponent>();
@@ -111,7 +123,6 @@ namespace AsteroidColony.Tests
 
             Assert.That(mission.State, Is.EqualTo(ExtractionMissionState.Idle));
             Assert.That(mission.targetDeposit.RemainingQuantity, Is.EqualTo(10f));
-            Object.DestroyImmediate(pilotClass);
         }
 
         [Test]

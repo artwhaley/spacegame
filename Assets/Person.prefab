@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8416599670358360124}
   - component: {fileID: 4400000001}
+  - component: {fileID: 4400000002}
   m_Layer: 0
   m_Name: Person
   m_TagString: Untagged
@@ -139,8 +140,34 @@ MonoBehaviour:
   displayName: 
   home: {fileID: 0}
   currentLocation: {fileID: 0}
-  assignedWorkplace: {fileID: 0}
   activity: 0
+  classes: []
+  skills: []
+  currentEmployment:
+    workplace: {fileID: 0}
+    role: {fileID: 0}
+    shiftId: 
+--- !u!114 &4400000002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 632752544844219499}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c4f2d7e6b1a4f5c9d3e7a2b6c8f0e11, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  fatigue: 0
+  workFatiguePerHour: 0.1
+  sleepRecoveryPerHour: 0.1
+  exhaustionThreshold: 0.9
+  recoveredThreshold: 0.2
+  exhausted: 0
+  dutyHistory: []
+  maximumDutyRecords: 32
+  activeDuty: {fileID: 0}
 --- !u!136 &911099829896581529
 CapsuleCollider:
   m_ObjectHideFlags: 0

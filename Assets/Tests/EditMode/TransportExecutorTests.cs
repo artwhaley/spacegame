@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -19,17 +18,41 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void DefaultContractIsNotLiveWork()
+        {
+            TransportContract contract = new TransportContract
+            {
+                state = TransportContractState.Open
+            };
+
+            Assert.That(contract.IsActive, Is.False);
+            Assert.That(contract.IsAssignedOrInFlight, Is.False);
+        }
+
+        [Test]
         public void AssignedTransportAdvancesTowardPickupOnSimulationTick()
         {
             GameObject clockObject = CreateObject("Simulation");
-            SimulationManager clock = clockObject.AddComponent<SimulationManager>();
-            InvokePrivate(clock, "Awake");
+            clockObject.AddComponent<SimulationManager>();
 
             GameObject vehicleObject = CreateObject("Shuttle");
             LocationAnchor vehicleLocation = vehicleObject.AddComponent<LocationAnchor>();
             ShipComponent ship = vehicleObject.AddComponent<ShipComponent>();
-            ship.assignedPilot = CreateObject("Pilot").AddComponent<ColonistAgent>();
-            ship.assignedPilot.currentLocation = vehicleLocation;
+            StaffingComponent roster = vehicleObject.AddComponent<StaffingComponent>();
+            roster.workplaceLocation = vehicleLocation;
+            WorkerClassDefinition pilotClass = ScriptableObject.CreateInstance<WorkerClassDefinition>();
+            StaffingRoleDefinition pilotRole = ScriptableObject.CreateInstance<StaffingRoleDefinition>();
+            pilotRole.requiredClass = pilotClass;
+            ColonistAgent pilot = CreateObject("Pilot").AddComponent<ColonistAgent>();
+            pilot.classes.Add(pilotClass);
+            pilot.currentLocation = vehicleLocation;
+            ship.operatingRole = pilotRole;
+            roster.offeredRoles.Add(pilotRole);
+            ship.crewStaffing = roster;
+            ship.SetDock(vehicleLocation);
+            ship.AdoptResponsiblePilot(pilot);
+            pilot.Status.BeginPilotDuty(ship, pilotRole, "A", 0f);
+            vehicleObject.AddComponent<ShipCrewDutyComponent>();
             vehicleObject.AddComponent<ShipMovementComponent>();
             TransportExecutorComponent executor = vehicleObject.AddComponent<TransportExecutorComponent>();
             TransportVehicleComponent vehicle = vehicleObject.AddComponent<TransportVehicleComponent>();
@@ -38,21 +61,25 @@ namespace AsteroidColony.Tests
             pickup.transform.position = new Vector3(10f, 0f, 0f);
             TransportContract contract = new TransportContract
             {
+                contractId = 1,
                 type = TransportContractType.Passenger,
                 sourceLocation = pickup,
                 destinationLocation = vehicleLocation,
                 state = TransportContractState.Open
             };
 
-            InvokePrivate(executor, "Awake");
-            InvokePrivate(executor, "Start");
             Assert.That(vehicle.StartContract(contract), Is.True);
 
             float positionBeforeTick = vehicleObject.transform.position.x;
-            InvokePrivate(clock, "AdvanceTick");
+            // Exercise the public tick contract. A tenth of a game hour matches
+            // the default SimulationManager interval without reaching pickup.
+            executor.SimulationTick(0.1f);
 
             Assert.That(vehicleObject.transform.position.x, Is.GreaterThan(positionBeforeTick));
             Assert.That(executor.State, Is.EqualTo(TransportExecutionState.TravelingToPickup));
+
+            Object.DestroyImmediate(pilotRole);
+            Object.DestroyImmediate(pilotClass);
         }
 
         private GameObject CreateObject(string objectName)
@@ -62,11 +89,5 @@ namespace AsteroidColony.Tests
             return created;
         }
 
-        private static void InvokePrivate(object target, string methodName)
-        {
-            MethodInfo method = target.GetType().GetMethod(
-                methodName, BindingFlags.Instance | BindingFlags.NonPublic);
-            method.Invoke(target, null);
-        }
     }
 }

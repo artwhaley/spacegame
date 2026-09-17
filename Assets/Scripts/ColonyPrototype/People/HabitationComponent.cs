@@ -7,6 +7,12 @@ namespace AsteroidColony
     {
         public LocationAnchor location;
         public int capacity = 8;
+        [Min(0f)] public float restfulnessMultiplier = 1f;
+
+        public float EffectiveRestfulnessMultiplier =>
+            float.IsNaN(restfulnessMultiplier) || float.IsInfinity(restfulnessMultiplier)
+                ? 1f
+                : Mathf.Max(0f, restfulnessMultiplier);
 
         public int ResidentCount => PopulationManager.Instance != null && location != null
             ? PopulationManager.Instance.CountResidents(location)
@@ -21,6 +27,9 @@ namespace AsteroidColony
         private void OnValidate()
         {
             capacity = Mathf.Max(0, capacity);
+            restfulnessMultiplier = float.IsNaN(restfulnessMultiplier) || float.IsInfinity(restfulnessMultiplier)
+                ? 1f
+                : Mathf.Max(0f, restfulnessMultiplier);
         }
     }
 }

@@ -38,16 +38,17 @@ namespace AsteroidColony
     /// Publishes reusable import/export policy for one local inventory. The policy
     /// owns no production and does not choose a source; LogisticsManager does that.
     /// </summary>
-    public class ResourceStockPolicyComponent : MonoBehaviour, ISimulationTickable
+    public class ResourceStockPolicyComponent : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         public LocationAnchor location;
         public InventoryComponent inventory;
         public List<ResourceStockPolicyEntry> entries = new List<ResourceStockPolicyEntry>();
 
-        private bool started;
         private const float QuantityEpsilon = 0.0001f;
+        private LogisticsManager registeredManager;
 
         public IReadOnlyList<ResourceStockPolicyEntry> Entries => entries;
+        public int SimulationTickPriority => 300;
 
         private void Awake()
         {
@@ -57,25 +58,16 @@ namespace AsteroidColony
                 inventory = GetComponent<InventoryComponent>();
         }
 
-        private void Start()
-        {
-            started = true;
-            RegisterPolicies();
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
-        }
-
         private void OnEnable()
         {
-            if (started)
-                RegisterPolicies();
+            RegisterPolicies();
+            SimulationManager.RegisterTickable(this);
         }
 
         private void OnDisable()
         {
             UnregisterPolicies();
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Unregister(this);
+            SimulationManager.UnregisterTickable(this);
         }
 
         /// <summary>Refreshes registrations and snapshots; useful for tests and authoring tools.</summary>
@@ -95,6 +87,23 @@ namespace AsteroidColony
         {
             if (LogisticsManager.Instance == null || location == null || inventory == null)
                 return;
+
+            LogisticsManager logistics = LogisticsManager.Instance;
+            if (registeredManager != logistics)
+            {
+                // Demand IDs belong to one manager instance. A replacement manager
+                // starts with fresh registries, so force policy re-registration.
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    ResourceStockPolicyEntry entry = entries[i];
+                    if (entry == null)
+                        continue;
+                    entry.foregroundDemandId = 0;
+                    entry.backgroundDemandId = 0;
+                    entry.exportSupplyId = 0;
+                }
+                registeredManager = logistics;
+            }
 
             for (int i = 0; i < entries.Count; i++)
             {
@@ -208,6 +217,7 @@ namespace AsteroidColony
                 entry.backgroundDemandId = 0;
                 entry.exportSupplyId = 0;
             }
+            registeredManager = null;
         }
 
         private static bool ValidateEntry(ResourceStockPolicyEntry entry)

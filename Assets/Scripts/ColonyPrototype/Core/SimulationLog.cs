@@ -23,19 +23,28 @@ namespace AsteroidColony
             Instance = this;
         }
 
+        private void OnDestroy()
+        {
+            if (Instance == this)
+                Instance = null;
+        }
+
         /// <summary>Simple static logging entry point used across the prototype.</summary>
         public static void Log(string message)
         {
             if (Instance != null)
                 Instance.AddEntry(message);
             else
-                Debug.Log(message);
+            {
+                float hour = SimulationManager.Instance != null ? SimulationManager.Instance.CurrentGameHour : 0f;
+                Debug.Log($"[{SimulationTime.FormatTimestamp(hour)}] {message}");
+            }
         }
 
         private void AddEntry(string message)
         {
             float hour = simulationManager != null ? simulationManager.CurrentGameHour : 0f;
-            string formatted = $"[{hour:00.00}h] {message}";
+            string formatted = $"[{SimulationTime.FormatTimestamp(hour)}] {message}";
             entries.Add(formatted);
             if (entries.Count > capacity)
                 entries.RemoveAt(0);

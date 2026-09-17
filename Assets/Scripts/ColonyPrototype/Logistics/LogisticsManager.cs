@@ -7,7 +7,7 @@ namespace AsteroidColony
     /// Chooses ordinary passenger and freight work through one deterministic
     /// arbitration path. Freight is materialized only after a vehicle has won.
     /// </summary>
-    public class LogisticsManager : MonoBehaviour, ISimulationTickable
+    public class LogisticsManager : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         public static LogisticsManager Instance { get; private set; }
 
@@ -19,6 +19,7 @@ namespace AsteroidColony
         public IReadOnlyList<TransportVehicleComponent> TransportVehicles => transportVehicles;
         public IReadOnlyList<FreightDemand> Demands => demands;
         public IReadOnlyList<FreightSupply> Supplies => supplies;
+        public int SimulationTickPriority => 300;
 
         private bool startupReported;
         private string lastWaitReason;
@@ -29,25 +30,50 @@ namespace AsteroidColony
 
         private void Awake()
         {
+            if (Instance != null && Instance != this)
+            {
+                Debug.LogError("Only one active LogisticsManager is supported.", this);
+                enabled = false;
+                return;
+            }
             Instance = this;
+            DiscoverTransportVehicles();
         }
 
-        private void Start()
+        private void OnEnable()
         {
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Register(this);
+            if (Instance == null)
+                Instance = this;
+            SimulationManager.RegisterTickable(this);
+            DiscoverTransportVehicles();
             SimulationLog.Log("LogisticsManager online");
         }
 
         private void OnDisable()
         {
-            if (SimulationManager.Instance != null)
-                SimulationManager.Instance.Unregister(this);
+            SimulationManager.UnregisterTickable(this);
+            if (Instance == this)
+                Instance = null;
+        }
+
+        private void DiscoverTransportVehicles()
+        {
+            PruneTransportVehicles();
+            TransportVehicleComponent[] vehicles = FindObjectsByType<TransportVehicleComponent>();
+            for (int i = 0; i < vehicles.Length; i++)
+                RegisterTransportVehicle(vehicles[i]);
+        }
+
+        private void PruneTransportVehicles()
+        {
+            for (int i = transportVehicles.Count - 1; i >= 0; i--)
+                if (transportVehicles[i] == null || !transportVehicles[i].isActiveAndEnabled)
+                    transportVehicles.RemoveAt(i);
         }
 
         public void RegisterTransportVehicle(TransportVehicleComponent vehicle)
         {
-            if (vehicle != null && !transportVehicles.Contains(vehicle))
+            if (vehicle != null && vehicle.isActiveAndEnabled && !transportVehicles.Contains(vehicle))
                 transportVehicles.Add(vehicle);
         }
 
@@ -178,6 +204,7 @@ namespace AsteroidColony
 
         public void SimulationTick(float deltaGameHours)
         {
+            PruneTransportVehicles();
             UpdatePlanningStates();
             TryAssignNext(reportBlocked: true);
 
@@ -257,12 +284,23 @@ namespace AsteroidColony
                 vehicle.disposition == TransportDisposition.FreightOnly ||
                 vehicle.passengerCarrier == null || contract.sourceLocation == null ||
                 contract.destinationLocation == null ||
-                contract.passengers.Count > vehicle.PassengerCapacity)
+                contract.passengers.Count > vehicle.PassengerCapacity ||
+                (vehicle.ship != null && vehicle.ship.IsTraveling && !vehicle.ship.HasSafeDock))
                 return null;
 
             for (int i = 0; i < contract.passengers.Count; i++)
                 if (contract.passengers[i] == null || contract.passengers[i].currentLocation != contract.sourceLocation)
                     return null;
+
+            string boardingReason;
+            if (!vehicle.passengerCarrier.CanBoardPassengers(
+                    contract.passengers, contract.sourceLocation, out boardingReason))
+            {
+                ReportInvalidPassengerCandidate(contract, vehicle, boardingReason);
+                if (boardingReason == "manifest contains the carrier's responsible pilot")
+                    ContractManager.Instance.Cancel(contract);
+                return null;
+            }
 
             return new TransportDispatchCandidate
             {
@@ -274,12 +312,24 @@ namespace AsteroidColony
             };
         }
 
+        private void ReportInvalidPassengerCandidate(
+            TransportContract contract, TransportVehicleComponent vehicle, string reason)
+        {
+            string diagnostic = $"contract #{contract.contractId} rejected by {vehicle.DisplayName}: {reason}";
+            if (lastWaitReason != diagnostic)
+            {
+                lastWaitReason = diagnostic;
+                SimulationLog.Log($"LogisticsManager: {diagnostic}");
+            }
+        }
+
         private TransportDispatchCandidate BuildFreightCandidate(
             FreightDemand demand, TransportVehicleComponent vehicle)
         {
             if (demand == null || !demand.active || demand.resource == null ||
                 demand.destinationLocation == null || demand.destinationInventory == null ||
-                !vehicle.freightEnabled || vehicle.disposition == TransportDisposition.PersonnelOnly)
+                !vehicle.freightEnabled || vehicle.disposition == TransportDisposition.PersonnelOnly ||
+                (vehicle.ship != null && vehicle.ship.IsTraveling && !vehicle.ship.HasSafeDock))
                 return null;
 
             float inbound = ContractManager.Instance.GetActiveFreightQuantityForDemand(demand.demandId);

@@ -4,7 +4,13 @@ The live simulation is composed from small MonoBehaviours and ScriptableObject c
 
 ## Simulation tick
 
-`SimulationManager` owns game time, tick order, and the `ISimulationTickable` registry. A component registers in `Start` and unregisters in `OnDisable`. Facilities, schedules, stock policies, logistics, and extraction therefore advance from simulation time rather than `Update` or wall-clock behavior.
+`SimulationManager` owns game time, tick order, and the `ISimulationTickable` registry. Components register in `OnEnable` and unregister in `OnDisable`, even when the manager is created later. Disable/re-enable pauses and resumes retained state. Facilities, staffing, stock policies, logistics, and extraction therefore advance from simulation time rather than `Update` or wall-clock behavior.
+
+`CurrentGameHour` is absolute elapsed game time and never wraps at midnight. The
+shared `SimulationTime` helper exposes the 24-hour calendar view
+(`CurrentDayNumber` and `CurrentHourOfDay`) for daily schedules and display.
+Rates, durations, contract ages, and duty timestamps continue to use absolute
+hours or `deltaGameHours` so crossing midnight cannot reset simulation state.
 
 ## Resources, inventory, and conservation
 
@@ -14,13 +20,29 @@ The live simulation is composed from small MonoBehaviours and ScriptableObject c
 
 ## Recipes and conversion
 
-`RecipeDefinition` is content, not code. Continuous recipes may use fractional resources and apply proportional input/output progress. Batch recipes consume complete inputs at batch start and emit complete outputs only at completion. `ResourceConverterComponent` handles staffing, input/output capacity, blocked states, and local inventory mutation. It never transports outputs.
+`RecipeDefinition` is content, not code. Continuous recipes may use fractional resources and apply proportional input/output progress. Batch recipes consume complete inputs at batch start and emit complete outputs only at completion. Recipes never contain staffing requirements. `ResourceConverterComponent` consumes facility performance, input/output capacity, blocked states, and local inventory mutation. It never transports outputs and never reads worker counts.
 
 ## Classes, skills, staffing, and schedules
 
-`WorkerClassDefinition` describes hard eligibility such as Pilot or Farm Technician. `SkillDefinition` and `SkillRating` describe proficiency and optional throughput bonuses. A colonist may have multiple classes and skills; a skill never substitutes for a required class.
+`WorkerClassDefinition` describes hard eligibility such as Pilot or Farm Technician. `SkillDefinition` and `SkillRating` describe proficiency and optional throughput bonuses. A colonist may have multiple classes and skills; a skill never substitutes for a required class. A colonist has exactly one current `EmploymentAssignment` (workplace + `StaffingRoleDefinition` + shift) and a `ColonistStatusComponent` for personal fatigue and duty history.
 
-`StaffingComponent` owns assigned workers and reports who is present, working, and eligible. `WorkScheduleComponent` owns the current two-location commute/work/rest cycle and passenger requests. It does not produce resources or choose vehicles.
+A `StaffingRoleDefinition` declares a required class, a minimum active count for operation, a per-shift assignment cap, and one `StaffingEffectRule` per `FacilityEffectDefinition` with a `multiplierByActiveCount` curve. There are no ordered worker slots: contribution depends only on the number of active qualified workers.
+
+`ColonistStatusComponent.CurrentDutyState` separately exposes the work
+obligation phase (`ReleasedResting`, `ScheduledShift`, `AcceptingNewWork`,
+`CompletingCommittedWork`, or `ReturningHome`) so future commute and contract
+policies can evolve without overloading the physical `ColonistActivity` enum.
+
+`StaffingManager` owns explicit employment, daily `ShiftPatternDefinition`
+scheduling, activity transitions, grouped commute passenger requests, and the
+read-only daily schedule dump. `StaffingComponent` offers roles to a workplace
+and publishes effect multipliers and operational blockers as an
+`IFacilityPerformanceProvider`. `FacilityPerformanceComponent` aggregates all
+local providers into one `IsOperational` flag and per-channel multipliers
+(default `1.0`), which functional modules such as `ResourceConverterComponent`
+consume. Staffing never knows about Food, Water, or recipes, and production
+never counts workers. See `STAFFING_ARCHITECTURE.md` and
+`STAFFING_AUTHORING.md`.
 
 ## Stock policy and demand
 
@@ -47,6 +69,15 @@ A transport Shuttle is composed from:
 - `PassengerCarrierComponent` for physical boarding and unboarding;
 - `TransportVehicleComponent` for logistics eligibility and disposition;
 - `TransportExecutorComponent` for one contract's load/travel/unload execution.
+
+Crew is a normal workplace on the ship: `StaffingComponent` stores explicit
+Pilot role/shift employment, while `ShipCrewDutyComponent` owns the temporary
+`ResponsiblePilot` lease for the one pilot physically controlling the ship.
+Employment persists off shift, but only an eligible on-shift pilot at the fixed
+`crewChangeBase` boards. Shift end, exhaustion, reassignment, or an invalid
+crew base blocks new work, lets an accepted operation finish, returns the ship
+crew-only to base, and disembarks the pilot for handover. Empty shifts leave
+the ship parked; assigned pilots from another shift do not reserve it.
 
 No separate per-resource cargo fields are authoritative. The cargo inventory is the capacity source of truth.
 

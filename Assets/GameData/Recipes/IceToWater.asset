@@ -23,12 +23,5 @@ MonoBehaviour:
   outputs:
   - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
     amount: 2
-  staffingRule:
-    minimumWorkers: 0
-    maximumEffectiveWorkers: 0
-    requiredClass: {fileID: 0}
-    preferredSkill: {fileID: 0}
-    additionalWorkerBonus: 0
-    maxPreferredSkillBonus: 0
   valid: 1
   validationError: 

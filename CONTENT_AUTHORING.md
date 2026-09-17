@@ -25,7 +25,24 @@ Set `Execution Mode = Batch`, use complete discrete input/output amounts, and ch
 
 ## 5. Compose a converter facility
 
-Create a GameObject with `LocationAnchor`, `InventoryComponent`, and `ResourceConverterComponent`. Add inventory entries with capacities, assign the recipe, and add `StaffingComponent` when the recipe has a staffing rule. Add `ResourceStockPolicyComponent` if the facility imports inputs or exports outputs.
+Create a GameObject with `LocationAnchor`, `InventoryComponent`, and `ResourceConverterComponent`. Add inventory entries with capacities, assign the recipe, and point `productionRateEffect` at a `FacilityEffectDefinition`. Add `ResourceStockPolicyComponent` if the facility imports inputs or exports outputs.
+
+Staffing is a facility concern, never a recipe concern. To make the facility need workers, add `StaffingComponent` (with a `ShiftPatternDefinition` and one or more `StaffingRoleDefinition`s) and `FacilityPerformanceComponent`, then set the converter's `performance` reference. To make it automated, add no required role - the converter sees `IsOperational == true` and runs at `1.0` multipliers. See `STAFFING_AUTHORING.md`.
+
+Every colonist prefab carries `ColonistStatusComponent`. Fatigue is `0..1`, rises
+by `0.10` per game hour while Working, and falls by `0.10` per game hour while
+Sleeping, modified by role exertion and home restfulness. At `0.90` the worker
+leaves immediately; recovery clears the exhaustion latch at `0.20`. Assignments
+are immediate and explicit (`workplace + role + shift`); there is no pending job
+or automatic vacancy filler.
+
+All simulation schedules use a 24-hour day. `SimulationManager.CurrentGameHour`
+is still the absolute elapsed hour; `SimulationManager.CurrentHourOfDay` is the
+daily view used by shifts and future UI. The committed `Daily8HourShifts`
+pattern exposes A `00:00-08:00`, B `08:00-16:00`, and C `16:00-24:00`. Assigning
+one, two, or three of those shifts is always explicit; an unassigned window is
+uncovered. The future 8-hours-on/8-hours-off rotation is not represented by a
+shift pattern.
 
 ## 6. Configure import, export, and priority
 
@@ -43,9 +60,21 @@ On a `ColonistAgent`, add one or more `WorkerClassDefinition` assets to `classes
 
 On a Shuttle's `TransportVehicleComponent`, assign its `ShipComponent`, cargo inventory, and passenger carrier. Choose `Neutral`, `FreightOnly`, `PersonnelOnly`, `PreferFreight`, or `PreferPersonnel`. Preferences apply only when passenger and freight candidates have equal priority.
 
-## 10. Configure a resource collector/extraction ship
+## 10. Staff a shuttle or extraction ship
 
-Compose a GameObject with `LocationAnchor`, `InventoryComponent`, `ShipComponent`, `ShipMovementComponent`, `ResourceCollectorComponent`, and `ExtractionMissionController`. Assign a qualified Pilot class to the ship, a collectable resource and extraction rate to the collector, and a finite `ResourceDeposit`, unload location, unload inventory, and optional destination stock policy to the mission. The mission will not launch when the destination has no useful capacity or need.
+Add `StaffingComponent` and `ShipCrewDutyComponent` to the ship. Point the
+roster at the ship anchor, an explicit shift pattern, and the Pilot role; set
+`ShipComponent.crewStaffing`, `operatingRole`, `crewChangeBase`, and
+`initialDock`. Assign pilots through `StaffingManager.Assign` using the roster,
+role, and named shift. All assigned pilots must have the same crew-change base
+as their `home`. Employment persists while off duty, but only one eligible
+on-shift pilot is boarded as `ResponsiblePilot`; shift end or exhaustion causes
+safe completion and crew-only return before handover. Empty shifts leave the
+ship unavailable.
+
+## 11. Configure a resource collector/extraction ship
+
+Compose a GameObject with `LocationAnchor`, `InventoryComponent`, `ShipComponent`, `ShipMovementComponent`, `ResourceCollectorComponent`, and `ExtractionMissionController`. Staff it as described above, then assign a collectable resource and extraction rate to the collector, and a finite `ResourceDeposit`, unload location, unload inventory, and optional destination stock policy to the mission. The mission will not launch when the destination has no useful capacity or need.
 
 ## Verification
 

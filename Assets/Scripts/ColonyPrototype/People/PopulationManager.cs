@@ -5,7 +5,8 @@ namespace AsteroidColony
 {
     /// <summary>
     /// Registry of all colonists. Job roles and workplace assignments are configured
-    /// manually in the Inspector; no employment allocator is implemented.
+    /// explicitly; <see cref="StaffingManager"/> executes them and there is still no
+    /// automatic employment allocator.
     /// </summary>
     public class PopulationManager : MonoBehaviour
     {
@@ -18,12 +19,45 @@ namespace AsteroidColony
 
         private void Awake()
         {
+            if (Instance != null && Instance != this)
+            {
+                Debug.LogError("Only one active PopulationManager is supported.", this);
+                enabled = false;
+                return;
+            }
             Instance = this;
+            DiscoverColonists();
+        }
+
+        private void OnEnable()
+        {
+            if (Instance == null)
+                Instance = this;
+            DiscoverColonists();
+        }
+
+        private void OnDisable()
+        {
+            if (Instance == this)
+                Instance = null;
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this)
+                Instance = null;
+        }
+
+        private void DiscoverColonists()
+        {
+            ColonistAgent[] found = FindObjectsByType<ColonistAgent>();
+            for (int i = 0; i < found.Length; i++)
+                Register(found[i]);
         }
 
         public void Register(ColonistAgent colonist)
         {
-            if (colonist != null && !colonists.Contains(colonist))
+            if (colonist != null && colonist.isActiveAndEnabled && !colonists.Contains(colonist))
                 colonists.Add(colonist);
         }
 
@@ -35,6 +69,9 @@ namespace AsteroidColony
 
         public int CountResidents(LocationAnchor homeLocation)
         {
+            for (int i = colonists.Count - 1; i >= 0; i--)
+                if (colonists[i] == null || !colonists[i].isActiveAndEnabled)
+                    colonists.RemoveAt(i);
             int count = 0;
             for (int i = 0; i < colonists.Count; i++)
                 if (colonists[i].home == homeLocation)

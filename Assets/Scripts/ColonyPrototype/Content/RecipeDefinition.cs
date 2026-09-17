@@ -20,7 +20,6 @@ namespace AsteroidColony
         public float durationHours = 1f;
         public List<ResourceAmount> inputs = new List<ResourceAmount>();
         public List<ResourceAmount> outputs = new List<ResourceAmount>();
-        public RecipeStaffingRule staffingRule = new RecipeStaffingRule();
 
         [SerializeField] private bool valid;
         [SerializeField] private string validationError;

@@ -12,6 +12,7 @@ namespace AsteroidColony.Tests
         private GameObject logisticsManagerObject;
         private ResourceDefinition food;
         private WorkerClassDefinition pilotClass;
+        private StaffingRoleDefinition pilotRole;
 
         private LocationAnchor source;
         private InventoryComponent sourceInventory;
@@ -31,6 +32,9 @@ namespace AsteroidColony.Tests
             food.quantityMode = ResourceQuantityMode.Fractional;
             pilotClass = ScriptableObject.CreateInstance<WorkerClassDefinition>();
             pilotClass.displayName = "Pilot";
+            pilotRole = ScriptableObject.CreateInstance<StaffingRoleDefinition>();
+            pilotRole.displayName = "Pilot";
+            pilotRole.requiredClass = pilotClass;
 
             source = CreateObject("Source").AddComponent<LocationAnchor>();
             source.displayName = "Source";
@@ -49,6 +53,7 @@ namespace AsteroidColony.Tests
         {
             Object.DestroyImmediate(food);
             Object.DestroyImmediate(pilotClass);
+            Object.DestroyImmediate(pilotRole);
             for (int i = objects.Count - 1; i >= 0; i--)
                 if (objects[i] != null)
                     Object.DestroyImmediate(objects[i]);
@@ -254,10 +259,17 @@ namespace AsteroidColony.Tests
             GameObject vehicleObject = CreateObject("Vehicle");
             LocationAnchor vehicleLocation = vehicleObject.AddComponent<LocationAnchor>();
             ShipComponent ship = vehicleObject.AddComponent<ShipComponent>();
-            ship.requiredPilotClass = pilotClass;
-            ship.assignedPilot = CreateObject("Pilot").AddComponent<ColonistAgent>();
-            ship.assignedPilot.classes.Add(pilotClass);
-            ship.assignedPilot.currentLocation = vehicleLocation;
+            StaffingComponent roster = vehicleObject.AddComponent<StaffingComponent>();
+            roster.workplaceLocation = vehicleLocation;
+            ship.operatingRole = pilotRole;
+            ColonistAgent pilot = CreateObject("Pilot").AddComponent<ColonistAgent>();
+            pilot.classes.Add(pilotClass);
+            pilot.currentLocation = vehicleLocation;
+            roster.offeredRoles.Add(pilotRole);
+            ship.crewStaffing = roster;
+            ship.AdoptResponsiblePilot(pilot);
+            pilot.Status.BeginPilotDuty(ship, pilotRole, "A", 0f);
+            vehicleObject.AddComponent<ShipCrewDutyComponent>();
             InventoryComponent cargo = vehicleObject.AddComponent<InventoryComponent>();
             Configure(cargo, food, 12f, 0f);
             vehicleObject.AddComponent<PassengerCarrierComponent>();
