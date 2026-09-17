@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace AsteroidColony
 {
@@ -10,6 +11,14 @@ namespace AsteroidColony
         CrewReturn
     }
 
+    public enum ShipMovementPhase
+    {
+        Docked,
+        Undocking,
+        InFlight,
+        Docking
+    }
+
     /// <summary>
     /// Shared physical state for a ship. Employment belongs to the sibling
     /// StaffingComponent; only the crew duty component owns the temporary pilot
@@ -17,16 +26,21 @@ namespace AsteroidColony
     /// </summary>
     public class ShipComponent : MonoBehaviour
     {
+        private static readonly List<ShipComponent> knownShips = new List<ShipComponent>();
+
+        public static IReadOnlyList<ShipComponent> Ships => knownShips;
         public string displayName = "Ship";
         public bool operationalEnabled = true;
         public StaffingComponent crewStaffing;
         public StaffingRoleDefinition operatingRole;
         public LocationAnchor crewChangeBase;
         public LocationAnchor initialDock;
+        public Transform dockingPort;
 
         private LocationAnchor shipLocation;
         [SerializeField] private LocationAnchor currentDock;
         [SerializeField] private bool traveling;
+        [SerializeField] private ShipMovementPhase movementPhase = ShipMovementPhase.Docked;
         [SerializeField] private bool releaseRequested;
         [SerializeField] private DutyEndReason releaseReason = DutyEndReason.ShiftEnded;
         [SerializeField] private ColonistAgent responsiblePilot;
@@ -34,7 +48,9 @@ namespace AsteroidColony
 
         public LocationAnchor ShipLocation => shipLocation;
         public LocationAnchor CurrentDock => currentDock;
-        public bool IsTraveling => traveling;
+        public ShipMovementPhase MovementPhase => movementPhase;
+        public bool IsTraveling => movementPhase != ShipMovementPhase.Docked;
+        public Transform DockingPort => dockingPort != null ? dockingPort : transform;
         public bool ReleaseRequested => releaseRequested;
         public DutyEndReason ReleaseReason => releaseReason;
         public ColonistAgent ResponsiblePilot => responsiblePilot;
@@ -73,11 +89,24 @@ namespace AsteroidColony
             EnsureInitialized();
         }
 
+        private void OnEnable()
+        {
+            if (!knownShips.Contains(this))
+                knownShips.Add(this);
+        }
+
+        private void OnDestroy()
+        {
+            knownShips.Remove(this);
+        }
+
         public void EnsureInitialized()
         {
+            if (traveling && movementPhase == ShipMovementPhase.Docked)
+                movementPhase = ShipMovementPhase.InFlight;
             if (shipLocation == null)
                 shipLocation = GetComponent<LocationAnchor>();
-            if (currentDock == null && !traveling)
+            if (currentDock == null && movementPhase == ShipMovementPhase.Docked)
                 currentDock = initialDock;
             if (crewStaffing == null)
                 crewStaffing = GetComponent<StaffingComponent>();
@@ -86,6 +115,10 @@ namespace AsteroidColony
             if (crewStaffing != null && operatingRole == null && crewStaffing.offeredRoles != null &&
                 crewStaffing.offeredRoles.Count > 0)
                 operatingRole = crewStaffing.offeredRoles[0];
+            if (initialDock != null && movementPhase == ShipMovementPhase.Docked &&
+                Vector3.Distance(transform.position, DockingPort.position) > 0.5f)
+                SimulationLog.Log($"{displayName} startup pose differs from logical dock {initialDock.displayName}");
+            traveling = IsTraveling;
         }
 
         private void Start()
@@ -98,7 +131,7 @@ namespace AsteroidColony
         public bool TryBoardResponsiblePilot(ColonistAgent pilot)
         {
             if (!isActiveAndEnabled || pilot == null || (responsiblePilot != null && responsiblePilot != pilot) || releaseRequested || shipLocation == null ||
-                currentDock == null || pilot.currentLocation != currentDock || traveling)
+                currentDock == null || pilot.currentLocation != currentDock || IsTraveling)
                 return false;
             if (operatingRole == null || operatingRole.requiredClass == null ||
                 !pilot.HasClass(operatingRole.requiredClass))
@@ -134,13 +167,40 @@ namespace AsteroidColony
         public void SetDock(LocationAnchor dock)
         {
             currentDock = dock;
+            movementPhase = ShipMovementPhase.Docked;
             traveling = false;
         }
 
         public void MarkDeparted()
         {
             currentDock = null;
+            movementPhase = ShipMovementPhase.InFlight;
             traveling = true;
+        }
+
+        public void BeginUndocking()
+        {
+            movementPhase = ShipMovementPhase.Undocking;
+            traveling = true;
+        }
+
+        public void BeginDocking(LocationAnchor dock)
+        {
+            if (dock == null)
+                return;
+            movementPhase = ShipMovementPhase.Docking;
+            traveling = true;
+        }
+
+        public bool TryCompleteArrival(ShipMovementOwner owner, LocationAnchor dock)
+        {
+            if (owner == ShipMovementOwner.None || movementOwner != owner || dock == null)
+                return false;
+            currentDock = dock;
+            movementPhase = ShipMovementPhase.Docked;
+            traveling = false;
+            ReadinessHistory.Record("ship.docked", displayName, dock.displayName, owner.ToString());
+            return true;
         }
 
         public bool TryClaimMovement(ShipMovementOwner owner)
@@ -198,7 +258,7 @@ namespace AsteroidColony
                 return "crew duty component disabled or missing";
             if (crewChangeBase == null)
                 return "missing crew-change base";
-            if (currentDock == null && !traveling)
+            if (currentDock == null && movementPhase == ShipMovementPhase.Docked)
                 return "no current dock";
             if (!operationalEnabled)
                 return "operational disabled";

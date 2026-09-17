@@ -34,8 +34,8 @@ namespace AsteroidColony
         [SerializeField] private float throughputMultiplier = 1f;
         [SerializeField] private string blockedReason;
 
-        private bool batchActive;
-        private float batchProgress;
+        [SerializeField] private bool batchActive;
+        [SerializeField] private float batchProgress;
 
         private const float QuantityEpsilon = 0.0001f;
 
@@ -43,6 +43,8 @@ namespace AsteroidColony
         public float Progress => progress;
         public float ThroughputMultiplier => throughputMultiplier;
         public string BlockedReason => blockedReason;
+        public bool BatchActive => batchActive;
+        public float BatchProgress => batchProgress;
         public int SimulationTickPriority => 200;
 
         private void Awake()
@@ -66,8 +68,24 @@ namespace AsteroidColony
 
         public void SelectRecipe(RecipeDefinition recipe)
         {
-            if (recipe == null || availableRecipes.Count == 0 || availableRecipes.Contains(recipe))
-                activeRecipe = recipe;
+            TrySelectRecipe(recipe, out _);
+        }
+
+        public bool TrySelectRecipe(RecipeDefinition recipe, out string reason)
+        {
+            reason = string.Empty;
+            if (batchActive)
+            {
+                reason = "cannot switch recipe during an active batch";
+                return false;
+            }
+            if (recipe != null && (availableRecipes == null || !availableRecipes.Contains(recipe)))
+            {
+                reason = "recipe is not available to this converter";
+                return false;
+            }
+            activeRecipe = recipe;
+            return true;
         }
 
         public void SimulationTick(float deltaGameHours)

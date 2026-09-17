@@ -10,5 +10,11 @@ namespace AsteroidColony
     public class LocationAnchor : MonoBehaviour
     {
         public string displayName;
+
+        private void Awake()
+        {
+            if (GetComponent<Collider>() == null)
+                gameObject.AddComponent<BoxCollider>();
+        }
     }
 }

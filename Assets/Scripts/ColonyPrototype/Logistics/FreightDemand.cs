@@ -55,7 +55,10 @@ namespace AsteroidColony
                 activeSinceGameHour = SimulationManager.Instance != null
                     ? SimulationManager.Instance.CurrentGameHour
                     : tick;
+                ReadinessHistory.Record("demand.started", displayName, resource != null ? resource.displayName : "", demandId.ToString());
             }
+            else if (!active && wasActive)
+                ReadinessHistory.Record("demand.resolved", displayName, resource != null ? resource.displayName : "", demandId.ToString());
             lastUpdatedTick = tick;
         }
 
@@ -68,6 +71,8 @@ namespace AsteroidColony
             inboundQuantity = Mathf.Max(0f, inbound);
             uncoveredQuantity = Mathf.Max(0f, uncovered);
             effectiveDestinationFreeCapacity = Mathf.Max(0f, destinationFree);
+            if (planningStatus != status)
+                ReadinessHistory.Record("demand.status", displayName, status ?? string.Empty, demandId.ToString());
             planningStatus = status;
         }
     }

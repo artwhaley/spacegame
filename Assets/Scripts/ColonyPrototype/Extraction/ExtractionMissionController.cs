@@ -26,6 +26,7 @@ namespace AsteroidColony
         [SerializeField] private ExtractionMissionState state = ExtractionMissionState.Idle;
         [SerializeField] private float missionTargetQuantity;
         [SerializeField] private float missionCollectedQuantity;
+        [SerializeField] private string lastDiagnostic;
 
         private const float QuantityEpsilon = 0.0001f;
 
@@ -33,6 +34,7 @@ namespace AsteroidColony
         public int SimulationTickPriority => 400;
         public float CurrentMissionTargetQuantity => missionTargetQuantity;
         public float MissionCollectedQuantity => missionCollectedQuantity;
+        public string LastDiagnostic => lastDiagnostic;
         public float CurrentCargoQuantity => collector != null && collector.destinationCargo != null &&
             collector.collectableResource != null
             ? collector.destinationCargo.GetOnHand(collector.collectableResource)
@@ -58,6 +60,8 @@ namespace AsteroidColony
         private void OnDisable()
         {
             SimulationManager.UnregisterTickable(this);
+            if (state != ExtractionMissionState.Idle)
+                SetDiagnostic("extraction operation disabled; mission paused");
         }
 
         public void SimulationTick(float deltaGameHours)
@@ -73,9 +77,22 @@ namespace AsteroidColony
                     break;
 
                 case ExtractionMissionState.TravelingToDeposit:
-                    if (targetDeposit == null || movement == null ||
-                        movement.MoveToward(targetDeposit.WorldPosition, deltaGameHours))
+                    if (targetDeposit == null)
                     {
+                        SetDiagnostic("missing extraction deposit");
+                        break;
+                    }
+                    if (movement == null || !movement.isActiveAndEnabled)
+                    {
+                        SetDiagnostic("missing or disabled ship movement component");
+                        break;
+                    }
+                    if (movement.MoveToward(targetDeposit.WorldPosition, deltaGameHours))
+                    {
+                        ship.BeginDocking(null);
+                        // A deposit has no logical dock identity. The extraction
+                        // movement lease still gates the hard arrival transition;
+                        // keep the ship undocked while the collector works.
                         state = ExtractionMissionState.Extracting;
                         SimulationLog.Log($"{GetDisplayName()} arrived at {GetDepositName()}");
                         SimulationLog.Log($"{GetDisplayName()} began extraction");
@@ -87,11 +104,23 @@ namespace AsteroidColony
                     break;
 
                 case ExtractionMissionState.Returning:
-                    if (unloadLocation == null || movement == null ||
-                        movement.MoveToward(unloadLocation, deltaGameHours))
+                    if (unloadLocation == null)
                     {
-                        if (ship != null)
-                            ship.SetDock(unloadLocation);
+                        SetDiagnostic("missing extraction unload location");
+                        break;
+                    }
+                    if (movement == null || !movement.isActiveAndEnabled)
+                    {
+                        SetDiagnostic("missing or disabled ship movement component");
+                        break;
+                    }
+                    if (movement.MoveToward(unloadLocation, deltaGameHours))
+                    {
+                        if (ship == null || !ship.TryCompleteArrival(ShipMovementOwner.Extraction, unloadLocation))
+                        {
+                            SetDiagnostic("extraction arrival was not owned by this mission");
+                            break;
+                        }
                         state = ExtractionMissionState.Unloading;
                         SimulationLog.Log($"{GetDisplayName()} returned to {GetUnloadName()}");
                     }
@@ -106,6 +135,7 @@ namespace AsteroidColony
         private void TryBeginMission()
         {
             if (ship == null || !ship.IsOperationallyCrewed || !ship.HasSafeDock || ship.IsTraveling ||
+                movement == null || !movement.isActiveAndEnabled ||
                 ship.ReleaseRequested || collector == null ||
                 collector.collectableResource == null || targetDeposit == null ||
                 targetDeposit.resource != collector.collectableResource ||
@@ -130,6 +160,7 @@ namespace AsteroidColony
             if (!ship.TryClaimMovement(ShipMovementOwner.Extraction))
                 return;
             state = ExtractionMissionState.TravelingToDeposit;
+            ship.BeginUndocking();
             ship.MarkDeparted();
             SimulationLog.Log($"{GetDisplayName()} departing for {GetDepositName()}");
         }
@@ -209,6 +240,26 @@ namespace AsteroidColony
             missionCollectedQuantity = 0f;
             if (ship != null)
                 ship.ReleaseMovement(ShipMovementOwner.Extraction);
+            lastDiagnostic = string.Empty;
+        }
+
+        public bool CancelMission()
+        {
+            if (state == ExtractionMissionState.Idle)
+                return false;
+            ResetMission();
+            ReadinessHistory.Record("extraction.cancelled", GetDisplayName());
+            return true;
+        }
+
+        private void SetDiagnostic(string message)
+        {
+            message = message ?? string.Empty;
+            if (lastDiagnostic == message)
+                return;
+            lastDiagnostic = message;
+            if (!string.IsNullOrEmpty(message))
+                ReadinessHistory.Record("extraction.blocked", GetDisplayName(), message);
         }
 
         private float GetDestinationTargetStock()

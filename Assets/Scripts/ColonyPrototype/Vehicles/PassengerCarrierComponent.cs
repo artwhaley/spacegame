@@ -8,23 +8,35 @@ namespace AsteroidColony
     {
         public int passengerCapacity = 4;
         public ShipComponent ship;
-        public List<ColonistAgent> currentPassengers = new List<ColonistAgent>();
+        [SerializeField] private List<ColonistAgent> currentPassengers = new List<ColonistAgent>();
 
         public IReadOnlyList<ColonistAgent> CurrentPassengers => currentPassengers;
         public int AboardCount => currentPassengers.Count;
 
-        private LocationAnchor CarrierLocation => GetComponent<LocationAnchor>();
+        public LocationAnchor CarrierLocation => GetComponent<LocationAnchor>();
 
         private void Awake()
         {
             if (ship == null)
                 ship = GetComponent<ShipComponent>();
             passengerCapacity = Mathf.Max(0, passengerCapacity);
-            currentPassengers.Clear();
+            if (currentPassengers == null)
+                currentPassengers = new List<ColonistAgent>();
+            PruneDestroyedPassengers();
+        }
+
+        public void PruneDestroyedPassengers()
+        {
+            if (currentPassengers == null)
+                currentPassengers = new List<ColonistAgent>();
+            for (int i = currentPassengers.Count - 1; i >= 0; i--)
+                if (currentPassengers[i] == null)
+                    currentPassengers.RemoveAt(i);
         }
 
         public bool CanBoardPassengers(List<ColonistAgent> passengers, LocationAnchor source, out string reason)
         {
+            PruneDestroyedPassengers();
             reason = "available";
             if (passengers == null || passengers.Count == 0)
             {
@@ -88,7 +100,8 @@ namespace AsteroidColony
             for (int i = 0; i < passengers.Count; i++)
             {
                 ColonistAgent passenger = passengers[i];
-                passenger.MoveToLocation(CarrierLocation);
+                passenger.BeginTransit(source, CarrierLocation, "boarding");
+                passenger.CompleteTransit();
                 passenger.activity = ColonistActivity.Passenger;
                 currentPassengers.Add(passenger);
             }
@@ -97,6 +110,7 @@ namespace AsteroidColony
 
         public bool TryUnboardPassengers(LocationAnchor destination)
         {
+            PruneDestroyedPassengers();
             if (destination == null || CarrierLocation == null)
                 return false;
 
@@ -110,11 +124,28 @@ namespace AsteroidColony
             for (int i = 0; i < currentPassengers.Count; i++)
             {
                 ColonistAgent passenger = currentPassengers[i];
-                passenger.MoveToLocation(destination);
+                passenger.BeginTransit(CarrierLocation, destination, "unboarding");
+                passenger.CompleteTransit();
                 passenger.activity = ColonistActivity.Idle;
             }
             currentPassengers.Clear();
             return true;
+        }
+
+        public void RecoverPassengers(LocationAnchor fallback)
+        {
+            PruneDestroyedPassengers();
+            if (fallback == null)
+                return;
+            for (int i = 0; i < currentPassengers.Count; i++)
+            {
+                ColonistAgent passenger = currentPassengers[i];
+                if (passenger == null)
+                    continue;
+                passenger.MoveToLocation(fallback);
+                passenger.activity = ColonistActivity.Idle;
+            }
+            currentPassengers.Clear();
         }
     }
 }

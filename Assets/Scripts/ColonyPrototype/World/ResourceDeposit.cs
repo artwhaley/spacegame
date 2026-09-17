@@ -20,6 +20,12 @@ namespace AsteroidColony
 
         public Vector3 WorldPosition => transform.position;
 
+        private void Awake()
+        {
+            if (GetComponent<Collider>() == null)
+                gameObject.AddComponent<SphereCollider>();
+        }
+
         private void Reset()
         {
             remainingQuantity = startingQuantity;

@@ -8,7 +8,8 @@ namespace AsteroidColony
         TravelingToPickup,
         Loading,
         TravelingToDestination,
-        Unloading
+        Unloading,
+        Blocked
     }
 
     /// <summary>Executes the physical steps of one transport contract.</summary>
@@ -16,9 +17,11 @@ namespace AsteroidColony
     {
         [SerializeField] private TransportContract currentContract;
         [SerializeField] private TransportExecutionState state = TransportExecutionState.Idle;
+        [SerializeField] private string lastDiagnostic;
 
         public TransportContract CurrentContract => currentContract;
         public TransportExecutionState State => state;
+        public string LastDiagnostic => lastDiagnostic;
         public LocationAnchor CurrentDock => Vehicle != null && Vehicle.ship != null
             ? Vehicle.ship.CurrentDock
             : null;
@@ -60,11 +63,28 @@ namespace AsteroidColony
         private void OnEnable()
         {
             SimulationManager.RegisterTickable(this);
+            if (currentContract != null && currentContract.IsAssignedOrInFlight)
+            {
+                state = StateForContract(currentContract.state);
+                lastDiagnostic = string.Empty;
+            }
         }
 
         private void OnDisable()
         {
             SimulationManager.UnregisterTickable(this);
+            if (currentContract != null && currentContract.IsAssignedOrInFlight)
+            {
+                state = TransportExecutionState.Blocked;
+                lastDiagnostic = "transport executor disabled; operation paused";
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (currentContract != null && currentContract.IsAssignedOrInFlight &&
+                ContractManager.Instance != null)
+                ContractManager.Instance.HandleVehicleLoss(currentContract, Vehicle);
         }
 
         public void StartContract(TransportContract contract)
@@ -83,7 +103,10 @@ namespace AsteroidColony
                 return;
             }
             if (Vehicle != null && Vehicle.ship != null)
+            {
+                Vehicle.ship.BeginUndocking();
                 Vehicle.ship.MarkDeparted();
+            }
             if (contract.sourceLocation != null)
                 SimulationLog.Log($"{GetDisplayName()} traveling to {contract.sourceLocation.displayName}");
         }
@@ -116,10 +139,13 @@ namespace AsteroidColony
                 (Vehicle.ship.crewStaffing != null && !Vehicle.ship.crewStaffing.isActiveAndEnabled))
                 return;
 
+            if (State == TransportExecutionState.Blocked)
+                state = StateForContract(CurrentContract.state);
+
             switch (State)
             {
                 case TransportExecutionState.TravelingToPickup:
-                    if (movement == null || movement.MoveToward(CurrentContract.sourceLocation, deltaGameHours))
+                    if (TryMoveTo(CurrentContract.sourceLocation, deltaGameHours))
                         BeginLoading();
                     break;
 
@@ -128,7 +154,7 @@ namespace AsteroidColony
                     break;
 
                 case TransportExecutionState.TravelingToDestination:
-                    if (movement == null || movement.MoveToward(CurrentContract.destinationLocation, deltaGameHours))
+                    if (TryMoveTo(CurrentContract.destinationLocation, deltaGameHours))
                         BeginUnloading();
                     break;
 
@@ -144,8 +170,12 @@ namespace AsteroidColony
 
         private void BeginLoading()
         {
-            if (Vehicle != null && Vehicle.ship != null)
-                Vehicle.ship.SetDock(CurrentContract.sourceLocation);
+            if (Vehicle == null || Vehicle.ship == null ||
+                !Vehicle.ship.TryCompleteArrival(ShipMovementOwner.Transport, CurrentContract.sourceLocation))
+            {
+                SetBlocked("transport arrival was not owned by this executor");
+                return;
+            }
             state = TransportExecutionState.Loading;
             CurrentContract.state = TransportContractState.Loading;
             CompleteLoading();
@@ -182,7 +212,10 @@ namespace AsteroidColony
             }
 
             if (Vehicle != null && Vehicle.ship != null)
+            {
+                Vehicle.ship.BeginUndocking();
                 Vehicle.ship.MarkDeparted();
+            }
 
             state = TransportExecutionState.TravelingToDestination;
             CurrentContract.state = TransportContractState.TravelingToDestination;
@@ -225,8 +258,12 @@ namespace AsteroidColony
 
         private void BeginUnloading()
         {
-            if (Vehicle != null && Vehicle.ship != null)
-                Vehicle.ship.SetDock(CurrentContract.destinationLocation);
+            if (Vehicle == null || Vehicle.ship == null ||
+                !Vehicle.ship.TryCompleteArrival(ShipMovementOwner.Transport, CurrentContract.destinationLocation))
+            {
+                SetBlocked("transport arrival was not owned by this executor");
+                return;
+            }
             state = TransportExecutionState.Unloading;
             CurrentContract.state = TransportContractState.Unloading;
 
@@ -278,6 +315,47 @@ namespace AsteroidColony
                 ContractManager.Instance.Complete(done);
             if (LogisticsManager.Instance != null)
                 LogisticsManager.Instance.TryAssignNext();
+            ReadinessHistory.Record("contract.completed", done.contractId.ToString(), GetDisplayName());
+        }
+
+        public bool CancelCurrentContract()
+        {
+            if (currentContract == null)
+                return false;
+            TransportContract cancelled = currentContract;
+            currentContract = null;
+            state = TransportExecutionState.Idle;
+            if (Vehicle != null && Vehicle.ship != null)
+                Vehicle.ship.ReleaseMovement(ShipMovementOwner.Transport);
+            if (ContractManager.Instance != null)
+                ContractManager.Instance.Cancel(cancelled);
+            return true;
+        }
+
+        private bool TryMoveTo(LocationAnchor target, float deltaGameHours)
+        {
+            if (target == null)
+            {
+                SetBlocked("transport target location missing");
+                return false;
+            }
+            if (movement == null || !movement.isActiveAndEnabled)
+            {
+                SetBlocked("missing or disabled ship movement component");
+                return false;
+            }
+            bool arrived = movement.MoveToward(target, deltaGameHours);
+            if (arrived && Vehicle != null && Vehicle.ship != null)
+                Vehicle.ship.BeginDocking(target);
+            return arrived;
+        }
+
+        private void SetBlocked(string reason)
+        {
+            state = TransportExecutionState.Blocked;
+            lastDiagnostic = reason;
+            ReadinessHistory.Record("transport.blocked", GetDisplayName(), reason,
+                currentContract != null ? currentContract.contractId.ToString() : string.Empty);
         }
 
         private static TransportExecutionState StateForContract(TransportContractState contractState)

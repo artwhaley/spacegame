@@ -77,6 +77,25 @@ namespace AsteroidColony
             PublishSnapshots();
         }
 
+        /// <summary>Small UI command for toggling authored policy channels.</summary>
+        public bool TrySetEntryModes(ResourceDefinition resource, bool normalDemand,
+            bool backgroundFill, bool export, out string reason)
+        {
+            ResourceStockPolicyEntry entry = FindEntry(resource);
+            if (entry == null)
+            {
+                reason = "resource policy entry not found";
+                return false;
+            }
+
+            entry.normalDemandEnabled = normalDemand;
+            entry.backgroundFillEnabled = backgroundFill;
+            entry.exportEnabled = export;
+            RefreshPolicy();
+            reason = string.Empty;
+            return true;
+        }
+
         public void SimulationTick(float deltaGameHours)
         {
             RegisterPolicies();
@@ -218,6 +237,16 @@ namespace AsteroidColony
                 entry.exportSupplyId = 0;
             }
             registeredManager = null;
+        }
+
+        private ResourceStockPolicyEntry FindEntry(ResourceDefinition resource)
+        {
+            if (resource == null)
+                return null;
+            for (int i = 0; i < entries.Count; i++)
+                if (entries[i] != null && entries[i].resource == resource)
+                    return entries[i];
+            return null;
         }
 
         private static bool ValidateEntry(ResourceStockPolicyEntry entry)

@@ -32,6 +32,7 @@ namespace AsteroidColony
         /// <summary>Simple static logging entry point used across the prototype.</summary>
         public static void Log(string message)
         {
+            ReadinessHistory.Record("transition", string.Empty, message);
             if (Instance != null)
                 Instance.AddEntry(message);
             else

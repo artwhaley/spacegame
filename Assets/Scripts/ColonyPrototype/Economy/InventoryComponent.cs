@@ -57,9 +57,23 @@ namespace AsteroidColony
     /// </summary>
     public class InventoryComponent : MonoBehaviour
     {
+        private static readonly List<InventoryComponent> knownInventories = new List<InventoryComponent>();
         [SerializeField] private List<InventoryEntry> entries = new List<InventoryEntry>();
 
         public IReadOnlyList<InventoryEntry> Entries => entries;
+        public static IReadOnlyList<InventoryComponent> Inventories => knownInventories;
+        public event Action<InventoryComponent, ResourceDefinition> OnChanged;
+
+        private void OnEnable()
+        {
+            if (!knownInventories.Contains(this))
+                knownInventories.Add(this);
+        }
+
+        private void OnDestroy()
+        {
+            knownInventories.Remove(this);
+        }
 
         public InventoryEntry GetEntry(ResourceDefinition resource)
         {
@@ -139,6 +153,7 @@ namespace AsteroidColony
                 added = Mathf.Floor(added + ResourceQuantityRules.WholeNumberEpsilon);
             entry.onHand += added;
             entry.Refresh();
+            OnChanged?.Invoke(this, resource);
             return added;
         }
 
@@ -169,6 +184,7 @@ namespace AsteroidColony
             if (entry.reserved > entry.onHand)
                 entry.reserved = entry.onHand;
             entry.Refresh();
+            OnChanged?.Invoke(this, resource);
             return removed;
         }
 
@@ -187,6 +203,7 @@ namespace AsteroidColony
                 return false;
             entry.reserved += normalized;
             entry.Refresh();
+            OnChanged?.Invoke(this, resource);
             return true;
         }
 
@@ -201,6 +218,7 @@ namespace AsteroidColony
             entry.Refresh();
             entry.reserved = Mathf.Max(0f, entry.reserved - normalized);
             entry.Refresh();
+            OnChanged?.Invoke(this, resource);
         }
 
         /// <summary>Physically withdraws previously reserved stock. Returns the amount actually withdrawn.</summary>
@@ -219,6 +237,7 @@ namespace AsteroidColony
             entry.reserved -= withdrawn;
             entry.onHand -= withdrawn;
             entry.Refresh();
+            OnChanged?.Invoke(this, resource);
             return withdrawn;
         }
 

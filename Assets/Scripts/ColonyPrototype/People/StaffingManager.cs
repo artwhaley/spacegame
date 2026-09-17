@@ -18,7 +18,8 @@ namespace AsteroidColony
         RejectedShipInvalid,
         RejectedShipOccupied,
         RejectedMissingHome,
-        RejectedCrewBaseMismatch
+        RejectedCrewBaseMismatch,
+        RejectedMissingCrewBase
     }
 
     /// <summary>T08: owns explicit employment, shifts, fatigue, and commutes.</summary>
@@ -51,6 +52,7 @@ namespace AsteroidColony
             DiscoverColonists();
             DiscoverShips();
             ReconcilePopulation();
+            ValidateAuthoredEmployment();
         }
 
         private void OnEnable()
@@ -61,6 +63,7 @@ namespace AsteroidColony
             DiscoverColonists();
             DiscoverShips();
             ReconcilePopulation();
+            ValidateAuthoredEmployment();
         }
 
         private void OnDisable()
@@ -81,9 +84,15 @@ namespace AsteroidColony
             ReconcilePopulation();
             float hour = CurrentGameHour();
             commuteGroups.Clear();
-            TickResponsibleShipDuties(Mathf.Max(0f, deltaGameHours), hour);
+            float workDelta = Mathf.Max(0f, deltaGameHours);
+            // Operation facts and fatigue are applied before the single
+            // reconciliation pass that publishes each colonist's phase.
+            TickResponsibleShipDuties(workDelta, hour);
             for (int i = 0; i < knownColonists.Count; i++)
-                TickColonist(knownColonists[i], Mathf.Max(0f, deltaGameHours), hour);
+                if (knownColonists[i] != null && knownColonists[i].isActiveAndEnabled)
+                    ReconcileColonist(knownColonists[i], hour);
+            for (int i = 0; i < knownColonists.Count; i++)
+                TickColonist(knownColonists[i], workDelta, hour);
             FlushCommutes();
             UpdateCounts();
         }
@@ -150,7 +159,7 @@ namespace AsteroidColony
 
         public void RegisterColonist(ColonistAgent colonist)
         {
-            if (colonist != null && colonist.isActiveAndEnabled && !knownColonists.Contains(colonist))
+            if (colonist != null && !knownColonists.Contains(colonist))
                 knownColonists.Add(colonist);
         }
 
@@ -169,21 +178,28 @@ namespace AsteroidColony
                     RegisterColonist(colonists[i]);
             }
             for (int i = knownColonists.Count - 1; i >= 0; i--)
-                if (knownColonists[i] == null || !knownColonists[i].isActiveAndEnabled)
+                if (knownColonists[i] == null)
                     knownColonists.RemoveAt(i);
         }
 
         private void DiscoverShips()
         {
-            ShipComponent[] found = FindObjectsByType<ShipComponent>();
-            for (int i = 0; i < found.Length; i++)
+            IReadOnlyList<ShipComponent> found = ShipComponent.Ships;
+            for (int i = 0; i < found.Count; i++)
                 if (found[i] != null)
                     found[i].EnsureInitialized();
+
+            // Startup/recovery fallback only. Simulation ticks use the registry
+            // above so inactive-owned ships remain inspectable without hot-path scans.
+            ShipComponent[] fallback = FindObjectsByType<ShipComponent>(FindObjectsInactive.Include);
+            for (int i = 0; i < fallback.Length; i++)
+                if (fallback[i] != null)
+                    fallback[i].EnsureInitialized();
         }
 
         private void DiscoverColonists()
         {
-            ColonistAgent[] found = FindObjectsByType<ColonistAgent>();
+            ColonistAgent[] found = FindObjectsByType<ColonistAgent>(FindObjectsInactive.Include);
             for (int i = 0; i < found.Length; i++)
                 RegisterColonist(found[i]);
         }
@@ -203,14 +219,13 @@ namespace AsteroidColony
                 string baseText = requestedShip == null ? string.Empty :
                     $" expected base {AnchorLabel(requestedShip.crewChangeBase)}, actual home {AnchorLabel(colonist != null ? colonist.home : null)}";
                 SetDiagnostic($"assignment rejected for {subject}: {workplaceName} / {roleName} / {shiftId ?? "<none>"} - {Describe(validation)}{baseText}");
+                ReadinessHistory.Record("assignment.rejected", subject,
+                    $"{workplaceName} / {roleName} / {shiftId ?? "<none>"}: {Describe(validation)}");
                 return validation;
             }
 
             RegisterColonist(colonist);
             EmploymentAssignment current = colonist.currentEmployment;
-            ShipComponent targetShip = workplace.GetComponent<ShipComponent>();
-            if (targetShip != null && targetShip.crewChangeBase == null)
-                targetShip.crewChangeBase = colonist.home;
             if (current != null && current.workplace == workplace && current.role == role && current.shiftId == shiftId)
                 return AssignmentResult.Applied;
 
@@ -220,6 +235,8 @@ namespace AsteroidColony
             if (colonist.activity == ColonistActivity.Working)
                 SetActivity(colonist, ColonistActivity.Idle);
             Log($"{colonist.displayName} assigned to {colonist.currentEmployment.Describe()}");
+            ReadinessHistory.Record("assignment.applied", colonist.displayName,
+                colonist.currentEmployment.Describe());
             UpdateCounts();
             commuteGroups.Clear();
             ReconcileColonist(colonist, CurrentGameHour());
@@ -249,7 +266,7 @@ namespace AsteroidColony
             return AssignmentResult.Applied;
         }
 
-        private AssignmentResult ValidateAssignment(
+        public AssignmentResult ValidateAssignment(
             ColonistAgent colonist, StaffingComponent workplace, StaffingRoleDefinition role, string shiftId)
         {
             if (colonist == null)
@@ -276,6 +293,8 @@ namespace AsteroidColony
                     return AssignmentResult.RejectedShipInvalid;
                 if (colonist.home == null)
                     return AssignmentResult.RejectedMissingHome;
+                if (ship.crewChangeBase == null)
+                    return AssignmentResult.RejectedMissingCrewBase;
                 if (ship.crewChangeBase != null && ship.crewChangeBase != colonist.home)
                     return AssignmentResult.RejectedCrewBaseMismatch;
             }
@@ -291,9 +310,55 @@ namespace AsteroidColony
                 return eligible;
             for (int i = 0; i < knownColonists.Count; i++)
                 if (knownColonists[i] != null && knownColonists[i].isActiveAndEnabled &&
-                    knownColonists[i].HasClass(role.requiredClass))
+                    knownColonists[i].HasClass(role.requiredClass) &&
+                    ValidateAssignment(knownColonists[i], workplace, role,
+                        workplace != null && workplace.shiftPattern != null && workplace.shiftPattern.shifts.Count > 0
+                            ? workplace.shiftPattern.shifts[0].shiftId : null) == AssignmentResult.Applied)
                     eligible.Add(knownColonists[i]);
             return eligible;
+        }
+
+        public IReadOnlyList<AssignmentCandidate> GetAssignmentCandidates(
+            StaffingComponent workplace, StaffingRoleDefinition role, string shiftId)
+        {
+            List<AssignmentCandidate> result = new List<AssignmentCandidate>();
+            for (int i = 0; i < knownColonists.Count; i++)
+            {
+                ColonistAgent colonist = knownColonists[i];
+                if (colonist == null || !colonist.isActiveAndEnabled)
+                    continue;
+                AssignmentResult validation = ValidateAssignment(colonist, workplace, role, shiftId);
+                result.Add(new AssignmentCandidate
+                {
+                    colonist = colonist,
+                    result = validation,
+                    reason = Describe(validation)
+                });
+            }
+            return result;
+        }
+
+        private void ValidateAuthoredEmployment()
+        {
+            for (int i = 0; i < knownColonists.Count; i++)
+            {
+                ColonistAgent colonist = knownColonists[i];
+                EmploymentAssignment employment = colonist != null ? colonist.currentEmployment : null;
+                if (colonist == null || employment == null || !employment.IsAssigned)
+                    continue;
+
+                AssignmentResult result = ValidateAssignment(
+                    colonist, employment.workplace, employment.role, employment.shiftId);
+                if (result == AssignmentResult.Applied)
+                    continue;
+
+                string message = $"authored employment invalid for {ColonistLabel(colonist)} / " +
+                    $"{employment.workplace?.DisplayName ?? "<none>"} / " +
+                    $"{RoleLabel(employment.role)} / {employment.shiftId ?? "<none>"}: {Describe(result)}";
+                SetDiagnostic(message);
+                ReadinessHistory.Record("assignment.rejected", ColonistLabel(colonist), message,
+                    employment.shiftId ?? string.Empty);
+            }
         }
 
         public IReadOnlyList<ColonistAgent> GetAssignedWorkers(StaffingComponent workplace, StaffingRoleDefinition role, string shiftId)
@@ -336,42 +401,38 @@ namespace AsteroidColony
                 case AssignmentResult.RejectedShipOccupied: return "ship already has another active pilot";
                 case AssignmentResult.RejectedMissingHome: return "ship crew member has no home habitat";
                 case AssignmentResult.RejectedCrewBaseMismatch: return "ship crew member home does not match the crew-change base";
+                case AssignmentResult.RejectedMissingCrewBase: return "ship is missing an authored crew-change base";
                 default: return result.ToString();
             }
         }
 
         private void TickColonist(ColonistAgent colonist, float deltaGameHours, float hour)
         {
-            if (colonist == null)
+            if (colonist == null || !colonist.isActiveAndEnabled)
                 return;
             ColonistStatusComponent status = EnsureStatus(colonist);
             EmploymentAssignment employment = colonist.currentEmployment;
             if (IsShipEmployment(employment))
             {
                 TickPilot(colonist, employment, status, deltaGameHours, hour);
-                ReconcileColonist(colonist, hour);
                 return;
             }
             if (colonist.activity == ColonistActivity.Working && employment != null && employment.role != null)
             {
-                status.SetDutyState(ColonistDutyState.AcceptingNewWork);
                 status.BeginDuty(employment.workplace, employment.role, employment.shiftId, Mathf.Max(0f, hour - deltaGameHours));
                 status.AddWorkedTime(deltaGameHours);
                 status.ApplyWorkFatigue(deltaGameHours, employment.role.exertionMultiplier);
                 if (status.IsExhausted)
                 {
                     status.EndDuty(hour, DutyEndReason.Exhausted);
+                    status.SetDutyState(ColonistDutyState.ReleasedResting);
                     SetActivity(colonist, ColonistActivity.Idle);
                 }
             }
             else if (colonist.activity == ColonistActivity.Sleeping && colonist.currentLocation == colonist.home)
             {
-                status.SetDutyState(ColonistDutyState.ReleasedResting);
                 status.ApplySleepRecovery(deltaGameHours, HomeRestfulness(colonist));
             }
-            else if (colonist.activity == ColonistActivity.Resting)
-                status.SetDutyState(ColonistDutyState.ReleasedResting);
-            ReconcileColonist(colonist, hour);
         }
 
         private void TickPilot(ColonistAgent colonist, EmploymentAssignment employment,
@@ -383,16 +444,10 @@ namespace AsteroidColony
             {
                 status.BeginPilotDuty(ship, employment.role, employment.shiftId,
                     Mathf.Max(0f, hour - deltaGameHours));
-                status.SetDutyState(status.ActiveDuty != null && status.ActiveDuty.releaseRequested
-                    ? (ship.ReleaseRequested && !HasActiveShipOperation(ship)
-                        ? ColonistDutyState.ReturningHome
-                        : ColonistDutyState.CompletingCommittedWork)
-                    : ColonistDutyState.AcceptingNewWork);
                 SetActivity(colonist, ColonistActivity.OnDutyCrew);
             }
             else if (colonist.activity == ColonistActivity.Sleeping && colonist.currentLocation == colonist.home)
             {
-                status.SetDutyState(ColonistDutyState.ReleasedResting);
                 status.ApplySleepRecovery(deltaGameHours, HomeRestfulness(colonist));
             }
         }
@@ -404,13 +459,11 @@ namespace AsteroidColony
             ColonistStatusComponent status = EnsureStatus(colonist);
             if (HasPassengerInTransit(colonist))
             {
-                EmploymentAssignment passengerEmployment = colonist.currentEmployment;
-                bool scheduled = passengerEmployment != null && passengerEmployment.IsAssigned &&
-                    passengerEmployment.workplace != null && passengerEmployment.workplace.shiftPattern != null &&
-                    passengerEmployment.shiftId != null &&
-                    passengerEmployment.workplace.shiftPattern.IsShiftActive(passengerEmployment.shiftId, hour) &&
-                    !status.IsExhausted;
-                status.SetDutyState(scheduled ? ColonistDutyState.ScheduledShift : ColonistDutyState.ReturningHome);
+                TransportContract passengerContract = FindPassengerContract(colonist);
+                bool returningHome = passengerContract != null && passengerContract.destinationLocation == colonist.home;
+                status.SetDutyState(returningHome
+                    ? ColonistDutyState.ReturningHome
+                    : ColonistDutyState.ScheduledShift);
                 SetActivity(colonist, ColonistActivity.Passenger);
                 return;
             }
@@ -436,6 +489,7 @@ namespace AsteroidColony
             }
             if (employment == null || !employment.IsAssigned || employment.workplace == null ||
                 employment.workplace.workplaceLocation == null || employment.workplace.shiftPattern == null ||
+                !employment.workplace.isActiveAndEnabled ||
                 employment.role == null || employment.role.requiredClass == null || !colonist.HasClass(employment.role.requiredClass))
             {
                 EndDutyIfActive(colonist, hour, DutyEndReason.WorkplaceUnavailable);
@@ -500,6 +554,12 @@ namespace AsteroidColony
             if (ship != null && (!ship.isActiveAndEnabled ||
                 (ship.crewStaffing != null && !ship.crewStaffing.isActiveAndEnabled)))
             {
+                if (ship.ReleaseRequested && ship.ResponsiblePilot == colonist && ship.IsPilotAboard)
+                    status.SetDutyState(HasActiveShipOperation(ship)
+                        ? ColonistDutyState.CompletingCommittedWork
+                        : ColonistDutyState.ReturningHome);
+                else
+                    status.SetDutyState(ColonistDutyState.Blocked, "ship or crew staffing component disabled");
                 if (ship.ResponsiblePilot == colonist && ship.IsPilotAboard)
                     SetActivity(colonist, ColonistActivity.OnDutyCrew);
                 return;
@@ -562,9 +622,9 @@ namespace AsteroidColony
                     ship.RequestRelease(reason);
                     if (crew != null)
                         crew.RequestRelease(reason);
-                    status.SetDutyState(ship.ReleaseRequested && !HasActiveShipOperation(ship)
-                        ? ColonistDutyState.ReturningHome
-                        : ColonistDutyState.CompletingCommittedWork);
+                    status.SetDutyState(HasActiveShipOperation(ship)
+                        ? ColonistDutyState.CompletingCommittedWork
+                        : ColonistDutyState.ReturningHome);
                     SetActivity(colonist, ColonistActivity.OnDutyCrew);
                 }
                 return;
@@ -591,7 +651,7 @@ namespace AsteroidColony
 
             if (ship.CurrentDock == null || ship.IsTraveling)
             {
-                status.SetDutyState(ColonistDutyState.ScheduledShift);
+                status.SetDutyState(ColonistDutyState.Blocked, "ship is not safely docked or is still moving");
                 SetActivity(colonist, ColonistActivity.WaitingForTransport);
                 SetDiagnostic($"{ship.displayName}: pilot waiting for a valid dock");
                 return;
@@ -604,8 +664,8 @@ namespace AsteroidColony
 
         private static ShipComponent FindReturningShip(ColonistAgent colonist)
         {
-            ShipComponent[] ships = FindObjectsByType<ShipComponent>();
-            for (int i = 0; i < ships.Length; i++)
+            IReadOnlyList<ShipComponent> ships = ShipComponent.Ships;
+            for (int i = 0; i < ships.Count; i++)
                 if (ships[i] != null && ships[i].ReleaseRequested && ships[i].ResponsiblePilot == colonist &&
                     ships[i].IsPilotAboard)
                     return ships[i];
@@ -658,19 +718,19 @@ namespace AsteroidColony
             if (ship == null)
                 return false;
             TransportExecutorComponent executor = ship.GetComponent<TransportExecutorComponent>();
-            if (executor != null && executor.CurrentContract != null &&
+            if (executor != null && executor.isActiveAndEnabled && executor.CurrentContract != null &&
                 executor.CurrentContract.IsAssignedOrInFlight &&
                 (executor.CurrentContract.assignedVehicle == null ||
                  executor.CurrentContract.assignedVehicle == ship.GetComponent<TransportVehicleComponent>()))
                 return true;
             ExtractionMissionController extraction = ship.GetComponent<ExtractionMissionController>();
-            return extraction != null && extraction.State != ExtractionMissionState.Idle;
+            return extraction != null && extraction.isActiveAndEnabled && extraction.State != ExtractionMissionState.Idle;
         }
 
         private void TickResponsibleShipDuties(float deltaGameHours, float hour)
         {
-            ShipComponent[] ships = FindObjectsByType<ShipComponent>();
-            for (int i = 0; i < ships.Length; i++)
+            IReadOnlyList<ShipComponent> ships = ShipComponent.Ships;
+            for (int i = 0; i < ships.Count; i++)
             {
                 ShipComponent ship = ships[i];
                 ColonistAgent pilot = ship != null ? ship.ResponsiblePilot : null;
@@ -701,9 +761,8 @@ namespace AsteroidColony
                         Mathf.Max(0f, hour - deltaGameHours));
                 }
                 bool completingCommittedWork = ship.ReleaseRequested && HasActiveShipOperation(ship);
-                status.SetDutyState(!ship.ReleaseRequested
-                    ? ColonistDutyState.AcceptingNewWork
-                    : (completingCommittedWork ? ColonistDutyState.CompletingCommittedWork : ColonistDutyState.ReturningHome));
+                if (ship.ReleaseRequested && !completingCommittedWork)
+                    continue;
                 status.AddWorkedTime(deltaGameHours);
                 StaffingRoleDefinition dutyRole = status.ActiveDuty != null && status.ActiveDuty.role != null
                     ? status.ActiveDuty.role : ship.operatingRole;
@@ -823,6 +882,22 @@ namespace AsteroidColony
             return ContractManager.Instance != null && ContractManager.Instance.HasActivePassengerFor(colonist);
         }
 
+        private static TransportContract FindPassengerContract(ColonistAgent colonist)
+        {
+            if (colonist == null || ContractManager.Instance == null)
+                return null;
+            IReadOnlyList<TransportContract> contracts = ContractManager.Instance.Contracts;
+            for (int i = 0; i < contracts.Count; i++)
+            {
+                TransportContract contract = contracts[i];
+                if (contract == null || !contract.IsActive || contract.type != TransportContractType.Passenger)
+                    continue;
+                if (contract.passengers.Contains(colonist))
+                    return contract;
+            }
+            return null;
+        }
+
         private static bool HasPassengerInTransit(ColonistAgent colonist)
         {
             return colonist != null && colonist.activity == ColonistActivity.Passenger &&
@@ -835,7 +910,7 @@ namespace AsteroidColony
             for (int i = 0; i < knownColonists.Count; i++)
             {
                 ColonistAgent colonist = knownColonists[i];
-                EmploymentAssignment employment = colonist != null && colonist.isActiveAndEnabled && colonist != exclude
+                EmploymentAssignment employment = colonist != null && colonist != exclude
                     ? colonist.currentEmployment : null;
                 if (employment != null && employment.IsAssigned && employment.workplace == workplace &&
                     employment.role == role && employment.shiftId == shiftId)
@@ -848,7 +923,7 @@ namespace AsteroidColony
         {
             employedCount = 0;
             for (int i = 0; i < knownColonists.Count; i++)
-                if (knownColonists[i] != null && knownColonists[i].isActiveAndEnabled && knownColonists[i].IsEmployed)
+                if (knownColonists[i] != null && knownColonists[i].IsEmployed)
                     employedCount++;
         }
 
@@ -976,5 +1051,13 @@ namespace AsteroidColony
             public int priority;
             public readonly List<ColonistAgent> colonists = new List<ColonistAgent>();
         }
+    }
+
+    public class AssignmentCandidate
+    {
+        public ColonistAgent colonist;
+        public AssignmentResult result;
+        public string reason;
+        public bool Eligible => result == AssignmentResult.Applied;
     }
 }

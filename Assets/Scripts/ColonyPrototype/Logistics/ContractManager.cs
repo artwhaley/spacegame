@@ -27,12 +27,16 @@ namespace AsteroidColony
                 return;
             }
             Instance = this;
+            ReconcileContractIds();
+            ReconcileOrphanedCarriers();
         }
 
         private void OnEnable()
         {
             if (Instance == null)
                 Instance = this;
+            ReconcileContractIds();
+            ReconcileOrphanedCarriers();
         }
 
         private void OnDisable()
@@ -124,6 +128,7 @@ namespace AsteroidColony
                 TransportContract c = contracts[i];
                 if (!c.IsActive || c.type != TransportContractType.Passenger)
                     continue;
+                PrunePassengers(c);
                 for (int j = 0; j < c.passengers.Count; j++)
                     if (c.passengers[j] == colonist)
                         return true;
@@ -313,6 +318,7 @@ namespace AsteroidColony
                 return;
             contract.state = TransportContractState.Completed;
             SimulationLog.Log($"Contract #{contract.contractId} completed");
+            ReadinessHistory.Record("contract.completed", contract.contractId.ToString());
         }
 
         public void Cancel(TransportContract contract)
@@ -334,8 +340,79 @@ namespace AsteroidColony
                 contract.sourceInventory.ReleaseReservation(contract.resource, stillReserved);
             }
 
+            contract.assignedVehicle = null;
             contract.state = TransportContractState.Cancelled;
             SimulationLog.Log($"Contract #{contract.contractId} cancelled");
+            ReadinessHistory.Record("contract.cancelled", contract.contractId.ToString());
+        }
+
+        public void HandleVehicleLoss(TransportContract contract, TransportVehicleComponent vehicle)
+        {
+            if (contract == null || !contract.IsActive)
+                return;
+
+            PassengerCarrierComponent carrier = vehicle != null ? vehicle.passengerCarrier : null;
+            LocationAnchor fallback = vehicle != null && vehicle.ship != null
+                ? vehicle.ship.CurrentDock : null;
+            if (fallback == null)
+                fallback = contract.sourceLocation;
+            if (carrier != null)
+                carrier.RecoverPassengers(fallback);
+
+            contract.assignedVehicle = null;
+            if (contract.type == TransportContractType.Freight &&
+                contract.loadedQuantity > contract.deliveredQuantity + 0.0001f)
+            {
+                contract.state = TransportContractState.Cancelled;
+                SimulationLog.Log($"Contract #{contract.contractId} cancelled after vehicle loss with loaded freight");
+            }
+            else if (contract.type == TransportContractType.Passenger && fallback == contract.sourceLocation)
+            {
+                contract.state = TransportContractState.Open;
+                SimulationLog.Log($"Contract #{contract.contractId} reopened after vehicle loss");
+            }
+            else
+            {
+                Cancel(contract);
+            }
+            ReadinessHistory.Record("vehicle.loss", vehicle != null ? vehicle.DisplayName : "<vehicle>",
+                contract.contractId.ToString());
+            if (LogisticsManager.Instance != null)
+                LogisticsManager.Instance.TryAssignNext();
+        }
+
+        private void ReconcileContractIds()
+        {
+            for (int i = 0; i < contracts.Count; i++)
+                if (contracts[i] != null)
+                    nextContractId = Mathf.Max(nextContractId, contracts[i].contractId + 1);
+        }
+
+        private void ReconcileOrphanedCarriers()
+        {
+            PassengerCarrierComponent[] carriers = FindObjectsByType<PassengerCarrierComponent>(FindObjectsInactive.Include);
+            for (int i = 0; i < carriers.Length; i++)
+            {
+                PassengerCarrierComponent carrier = carriers[i];
+                if (carrier == null)
+                    continue;
+                carrier.PruneDestroyedPassengers();
+                bool hasObligation = false;
+                IReadOnlyList<ColonistAgent> passengers = carrier.CurrentPassengers;
+                for (int p = 0; p < passengers.Count && !hasObligation; p++)
+                    hasObligation = HasActivePassengerFor(passengers[p]);
+                if (!hasObligation && passengers.Count > 0)
+                    carrier.RecoverPassengers(carrier.CarrierLocation);
+            }
+        }
+
+        private static void PrunePassengers(TransportContract contract)
+        {
+            if (contract.passengers == null)
+                contract.passengers = new List<ColonistAgent>();
+            for (int i = contract.passengers.Count - 1; i >= 0; i--)
+                if (contract.passengers[i] == null)
+                    contract.passengers.RemoveAt(i);
         }
     }
 }

@@ -262,11 +262,15 @@ namespace AsteroidColony.Tests
             StaffingComponent roster = vehicleObject.AddComponent<StaffingComponent>();
             roster.workplaceLocation = vehicleLocation;
             ship.operatingRole = pilotRole;
+            ship.crewChangeBase = vehicleLocation;
+            ship.initialDock = vehicleLocation;
             ColonistAgent pilot = CreateObject("Pilot").AddComponent<ColonistAgent>();
             pilot.classes.Add(pilotClass);
+            pilot.home = vehicleLocation;
             pilot.currentLocation = vehicleLocation;
             roster.offeredRoles.Add(pilotRole);
             ship.crewStaffing = roster;
+            ship.SetDock(vehicleLocation);
             ship.AdoptResponsiblePilot(pilot);
             pilot.Status.BeginPilotDuty(ship, pilotRole, "A", 0f);
             vehicleObject.AddComponent<ShipCrewDutyComponent>();

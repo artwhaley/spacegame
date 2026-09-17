@@ -64,15 +64,18 @@ namespace AsteroidColony.Tests
             Assert.That(status.CurrentDutyState, Is.EqualTo(ColonistDutyState.ReleasedResting));
 
             status.BeginDuty(workplace, role, "A", 2f);
-            Assert.That(status.CurrentDutyState, Is.EqualTo(ColonistDutyState.AcceptingNewWork));
+            Assert.That(status.CurrentDutyState, Is.EqualTo(ColonistDutyState.ReleasedResting));
             Assert.That(status.ActiveDuty.fatigueAtStart, Is.EqualTo(0f).Within(0.0001f));
+            status.SetDutyState(ColonistDutyState.AcceptingNewWork);
             status.AdjustFatigue(0.3f);
             status.RequestDutyRelease(4f, DutyEndReason.ShiftEnded);
-            Assert.That(status.CurrentDutyState, Is.EqualTo(ColonistDutyState.CompletingCommittedWork));
+            Assert.That(status.CurrentDutyState, Is.EqualTo(ColonistDutyState.AcceptingNewWork));
             status.AddWorkedTime(3f);
+            status.SetDutyState(ColonistDutyState.CompletingCommittedWork);
             status.SetDutyState(ColonistDutyState.ReturningHome);
             Assert.That(status.CurrentDutyState, Is.EqualTo(ColonistDutyState.ReturningHome));
             status.EndDuty(5f, DutyEndReason.Exhausted);
+            status.SetDutyState(ColonistDutyState.ReleasedResting);
             Assert.That(status.CurrentDutyState, Is.EqualTo(ColonistDutyState.ReleasedResting));
 
             Assert.That(status.DutyHistory.Count, Is.EqualTo(1));

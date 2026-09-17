@@ -15,8 +15,8 @@ namespace AsteroidColony
     }
 
     /// <summary>
-    /// A single colonist. Logical location is tracked via LocationAnchor references;
-    /// the transform may simply be moved/parented when the location changes (no walking).
+    /// A single colonist. currentLocation is the last arrived logical location;
+    /// transit fields describe a movement that has not committed arrival yet.
     /// Classes are hard job eligibility, skills are independent 0..1 bonuses, and at
     /// most one current employment assignment may exist at a time.
     /// </summary>
@@ -26,6 +26,10 @@ namespace AsteroidColony
         public string displayName;
         public LocationAnchor home;
         public LocationAnchor currentLocation;
+        [SerializeField] private LocationAnchor transitOrigin;
+        [SerializeField] private LocationAnchor transitDestination;
+        [SerializeField] private bool inTransit;
+        [SerializeField] private string transitKind;
         public ColonistActivity activity;
         public List<WorkerClassDefinition> classes = new List<WorkerClassDefinition>();
         public List<SkillRating> skills = new List<SkillRating>();
@@ -36,6 +40,10 @@ namespace AsteroidColony
         public ColonistDutyState CurrentDutyState => Status != null
             ? Status.CurrentDutyState : ColonistDutyState.ReleasedResting;
         public bool IsEmployed => currentEmployment != null && currentEmployment.IsAssigned;
+        public bool IsInTransit => inTransit;
+        public LocationAnchor TransitOrigin => transitOrigin;
+        public LocationAnchor TransitDestination => transitDestination;
+        public string TransitKind => transitKind;
 
         public bool HasClass(WorkerClassDefinition requiredClass)
         {
@@ -120,10 +128,9 @@ namespace AsteroidColony
 
         private void OnDisable()
         {
-            if (PopulationManager.Instance != null)
-                PopulationManager.Instance.Unregister(this);
-            if (StaffingManager.Instance != null)
-                StaffingManager.Instance.UnregisterColonist(this);
+            // Disable is a temporary experiment, not destruction. Population and
+            // employment registries retain this identity so capacity cannot open
+            // a false slot while the GameObject is inactive.
         }
 
         private void OnDestroy()
@@ -134,12 +141,42 @@ namespace AsteroidColony
                 StaffingManager.Instance.UnregisterColonist(this);
         }
 
-        /// <summary>Changes the colonist's logical location and parents the transform to the anchor.</summary>
+        /// <summary>Instant transition helper used by tests and completed handoffs.</summary>
         public void MoveToLocation(LocationAnchor newLocation)
         {
-            currentLocation = newLocation;
-            if (newLocation != null)
-                transform.SetParent(newLocation.transform, true);
+            BeginTransit(currentLocation, newLocation, "instant");
+            CompleteTransit();
+        }
+
+        /// <summary>Starts a transition without changing the last arrived location.</summary>
+        public bool BeginTransit(LocationAnchor origin, LocationAnchor destination, string kind = "walking")
+        {
+            if (destination == null)
+                return false;
+            if (inTransit && transitDestination != destination)
+                return false;
+
+            transitOrigin = origin != null ? origin : currentLocation;
+            transitDestination = destination;
+            transitKind = string.IsNullOrEmpty(kind) ? "walking" : kind;
+            inTransit = true;
+            return true;
+        }
+
+        /// <summary>Commits the destination exactly once after the transition completes.</summary>
+        public bool CompleteTransit()
+        {
+            if (!inTransit || transitDestination == null)
+                return false;
+
+            LocationAnchor arrived = transitDestination;
+            currentLocation = arrived;
+            transitOrigin = null;
+            transitDestination = null;
+            transitKind = string.Empty;
+            inTransit = false;
+            ReadinessHistory.Record("colonist.arrival", displayName, arrived.displayName);
+            return true;
         }
     }
 }

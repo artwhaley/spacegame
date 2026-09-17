@@ -56,6 +56,7 @@ namespace AsteroidColony
                 return;
             }
             Instance = this;
+            ReadinessHistory.BeginSession();
             PruneDesiredTickables();
             AdoptDesiredTickables();
         }
@@ -75,6 +76,14 @@ namespace AsteroidColony
         public int CurrentDayIndex => SimulationTime.DayIndexAt(currentGameHour);
         public int CurrentDayNumber => SimulationTime.DayNumberAt(currentGameHour);
         public float CurrentHourOfDay => SimulationTime.HourOfDayAt(currentGameHour);
+
+        /// <summary>UI-safe pause command; does not mutate any simulation state.</summary>
+        public void SetPaused(bool value) => paused = value;
+
+        /// <summary>UI-safe speed command with the same authoring bounds as the Inspector.</summary>
+        public void SetSpeedMultiplier(float value) => speedMultiplier = Mathf.Clamp(value, 0.1f, 10f);
+
+        public void TogglePaused() => paused = !paused;
 
         public static void RegisterTickable(ISimulationTickable tickable)
         {

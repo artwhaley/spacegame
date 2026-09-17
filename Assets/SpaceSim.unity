@@ -765,15 +765,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   entries:
   - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
-    onHand: 12
+    onHand: 72
     reserved: 0
-    capacity: 40
-    available: 12
+    capacity: 120
+    available: 72
   - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
-    onHand: 16
+    onHand: 48
     reserved: 0
-    capacity: 40
-    available: 16
+    capacity: 80
+    available: 48
 --- !u!114 &400000203
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -805,12 +805,12 @@ MonoBehaviour:
   inventory: {fileID: 400000202}
   entries:
   - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
-    amountPerResidentPerGameHour: 0.1
+    amountPerResidentPerGameHour: 0.05
     shortageActive: 0
     requestedLastTick: 0
     consumedLastTick: 0
   - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}
-    amountPerResidentPerGameHour: 0.1
+    amountPerResidentPerGameHour: 0.05
     shortageActive: 0
     requestedLastTick: 0
     consumedLastTick: 0
@@ -2760,7 +2760,7 @@ Transform:
   m_GameObject: {fileID: 210000021}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 10}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 0.5, z: 2}
   m_ConstrainProportionsScale: 0
   m_Children: []

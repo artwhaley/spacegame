@@ -18,6 +18,9 @@ namespace AsteroidColony
         /// <summary>An assigned shift is active and the colonist is getting ready or travelling to it.</summary>
         ScheduledShift,
 
+        /// <summary>Scheduled work cannot currently proceed; inspect DutyBlocker.</summary>
+        Blocked,
+
         /// <summary>The colonist is ready to accept new work for the active shift.</summary>
         AcceptingNewWork,
 
@@ -75,6 +78,7 @@ namespace AsteroidColony
 
         [SerializeField] private bool exhausted;
         [SerializeField] private ColonistDutyState currentDutyState = ColonistDutyState.ReleasedResting;
+        [SerializeField] private string dutyBlocker;
         [SerializeField] private List<DutyRecord> dutyHistory = new List<DutyRecord>();
         [SerializeField] private int maximumDutyRecords = 32;
         [SerializeField] private DutyRecord activeDuty;
@@ -82,6 +86,7 @@ namespace AsteroidColony
         public float Fatigue => fatigue;
         public bool IsExhausted => exhausted;
         public ColonistDutyState CurrentDutyState => currentDutyState;
+        public string DutyBlocker => dutyBlocker;
         public bool HasActiveDuty => activeDuty != null;
         public DutyRecord ActiveDuty => activeDuty;
         public IReadOnlyList<DutyRecord> DutyHistory => dutyHistory;
@@ -132,6 +137,14 @@ namespace AsteroidColony
         public void SetDutyState(ColonistDutyState nextState)
         {
             currentDutyState = nextState;
+            if (nextState != ColonistDutyState.Blocked)
+                dutyBlocker = string.Empty;
+        }
+
+        public void SetDutyState(ColonistDutyState nextState, string blocker)
+        {
+            currentDutyState = nextState;
+            dutyBlocker = nextState == ColonistDutyState.Blocked ? blocker ?? string.Empty : string.Empty;
         }
 
         public void BeginDuty(
@@ -157,7 +170,6 @@ namespace AsteroidColony
                     fatigueAtReleaseRequest = -1f,
                     fatigueAtEnd = -1f
                 };
-                currentDutyState = ColonistDutyState.AcceptingNewWork;
                 LogDutyStarted(activeDuty);
             }
         }
@@ -189,7 +201,6 @@ namespace AsteroidColony
                     releaseRequested = false,
                     releaseRequestedGameHour = -1f
                 };
-                currentDutyState = ColonistDutyState.AcceptingNewWork;
                 LogDutyStarted(activeDuty);
             }
         }
@@ -204,8 +215,9 @@ namespace AsteroidColony
                 activeDuty.releaseRequestedGameHour = gameHour;
                 activeDuty.releaseReason = reason;
                 activeDuty.fatigueAtReleaseRequest = fatigue;
-                currentDutyState = ColonistDutyState.CompletingCommittedWork;
                 SimulationLog.Log($"{ColonistLabel()} duty release requested: {reason} (fatigue {fatigue:0.00})");
+                ReadinessHistory.Record("duty.release_requested", ColonistLabel(),
+                    $"{reason}; fatigue {fatigue:0.00}", activeDuty.shiftId);
             }
         }
 
@@ -233,8 +245,10 @@ namespace AsteroidColony
             while (dutyHistory.Count > cap)
                 dutyHistory.RemoveAt(0);
             SimulationLog.Log($"{ColonistLabel()} duty ended: {reason} (fatigue {completedDuty.fatigueAtEnd:0.00}, worked {completedDuty.workedGameHours:0.00}h)");
+            ReadinessHistory.Record("duty.ended", ColonistLabel(),
+                $"{reason}; fatigue {completedDuty.fatigueAtEnd:0.00}; worked {completedDuty.workedGameHours:0.00}h",
+                completedDuty.shiftId);
             activeDuty = null;
-            currentDutyState = ColonistDutyState.ReleasedResting;
         }
 
         private void LogDutyStarted(DutyRecord duty)
@@ -244,6 +258,9 @@ namespace AsteroidColony
                 : (duty.workplace != null ? duty.workplace.DisplayName : "<workplace>");
             string roleName = duty.role != null ? duty.role.displayName : "<role>";
             SimulationLog.Log($"{ColonistLabel()} duty started: {target} / {roleName} / shift {duty.shiftId} (fatigue {duty.fatigueAtStart:0.00})");
+            ReadinessHistory.Record("duty.started", ColonistLabel(),
+                $"{target} / {roleName} / shift {duty.shiftId}; fatigue {duty.fatigueAtStart:0.00}",
+                duty.isPilotDuty && duty.ship != null ? duty.ship.displayName : duty.shiftId);
         }
 
         private string ColonistLabel()

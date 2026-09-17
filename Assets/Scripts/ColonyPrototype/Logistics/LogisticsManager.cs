@@ -37,6 +37,7 @@ namespace AsteroidColony
                 return;
             }
             Instance = this;
+            ReconcileIds();
             DiscoverTransportVehicles();
         }
 
@@ -45,6 +46,7 @@ namespace AsteroidColony
             if (Instance == null)
                 Instance = this;
             SimulationManager.RegisterTickable(this);
+            ReconcileIds();
             DiscoverTransportVehicles();
             SimulationLog.Log("LogisticsManager online");
         }
@@ -59,7 +61,8 @@ namespace AsteroidColony
         private void DiscoverTransportVehicles()
         {
             PruneTransportVehicles();
-            TransportVehicleComponent[] vehicles = FindObjectsByType<TransportVehicleComponent>();
+            TransportVehicleComponent[] vehicles = FindObjectsByType<TransportVehicleComponent>(
+                FindObjectsInactive.Include);
             for (int i = 0; i < vehicles.Length; i++)
                 RegisterTransportVehicle(vehicles[i]);
         }
@@ -67,13 +70,13 @@ namespace AsteroidColony
         private void PruneTransportVehicles()
         {
             for (int i = transportVehicles.Count - 1; i >= 0; i--)
-                if (transportVehicles[i] == null || !transportVehicles[i].isActiveAndEnabled)
+                if (transportVehicles[i] == null)
                     transportVehicles.RemoveAt(i);
         }
 
         public void RegisterTransportVehicle(TransportVehicleComponent vehicle)
         {
-            if (vehicle != null && vehicle.isActiveAndEnabled && !transportVehicles.Contains(vehicle))
+            if (vehicle != null && !transportVehicles.Contains(vehicle))
                 transportVehicles.Add(vehicle);
         }
 
@@ -446,6 +449,8 @@ namespace AsteroidColony
                         : FindBestSupply(demand.resource) == null
                             ? "Waiting for source"
                             : "Waiting for transport";
+                if (inbound > QuantityEpsilon && IsInboundStalled(demand.demandId))
+                    status = "Stalled: inbound transport unavailable";
                 demand.SetPlanningState(inbound, uncovered, destinationFree, status);
             }
         }
@@ -509,6 +514,10 @@ namespace AsteroidColony
             if (transportVehicles.Count == 0)
                 return "no transport vehicles registered";
 
+            for (int i = 0; i < transportVehicles.Count; i++)
+                if (transportVehicles[i] != null && transportVehicles[i].IsAvailable)
+                    return "vehicle available, but no eligible candidate";
+
             string description = transportVehicles.Count == 1
                 ? "1 vehicle, none available"
                 : $"{transportVehicles.Count} vehicles, none available";
@@ -517,9 +526,53 @@ namespace AsteroidColony
                 TransportVehicleComponent vehicle = transportVehicles[i];
                 description += vehicle == null
                     ? " [<null vehicle>]"
-                    : $" [{vehicle.DisplayName}: {vehicle.AvailabilityBlocker()}]";
+                    : $" [{vehicle.DisplayName}: {GetAvailabilityBlocker(vehicle)}]";
             }
             return description;
+        }
+
+        public bool TryGetVehicleAvailability(TransportVehicleComponent vehicle, out VehicleAvailability availability)
+        {
+            if (vehicle == null)
+            {
+                availability = new VehicleAvailability(false, VehicleAvailabilityReason.MissingShip, "vehicle missing");
+                return false;
+            }
+            return vehicle.TryGetAvailability(out availability);
+        }
+
+        private static string GetAvailabilityBlocker(TransportVehicleComponent vehicle)
+        {
+            vehicle.TryGetAvailability(out VehicleAvailability availability);
+            return availability.Blocker;
+        }
+
+        private bool IsInboundStalled(int demandId)
+        {
+            if (ContractManager.Instance == null)
+                return false;
+            IReadOnlyList<TransportContract> contracts = ContractManager.Instance.Contracts;
+            for (int i = 0; i < contracts.Count; i++)
+            {
+                TransportContract contract = contracts[i];
+                if (contract == null || contract.demandId != demandId || !contract.IsActive ||
+                    contract.assignedVehicle == null)
+                    continue;
+                TransportExecutorComponent executor = contract.assignedVehicle.GetComponent<TransportExecutorComponent>();
+                if (!contract.assignedVehicle.isActiveAndEnabled || executor == null || !executor.isActiveAndEnabled)
+                    return true;
+            }
+            return false;
+        }
+
+        private void ReconcileIds()
+        {
+            for (int i = 0; i < demands.Count; i++)
+                if (demands[i] != null)
+                    nextDemandId = Mathf.Max(nextDemandId, demands[i].demandId + 1);
+            for (int i = 0; i < supplies.Count; i++)
+                if (supplies[i] != null)
+                    nextSupplyId = Mathf.Max(nextSupplyId, supplies[i].supplyId + 1);
         }
     }
 }

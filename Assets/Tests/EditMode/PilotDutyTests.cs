@@ -191,7 +191,7 @@ namespace AsteroidColony.Tests
             Assert.That(pilot.GetComponent<ColonistStatusComponent>().Fatigue, Is.EqualTo(0.9f).Within(0.0001f));
             Assert.That(ship.ReleaseRequested, Is.True);
             Assert.That(ship.IsOperationallyCrewed, Is.False);
-            Assert.That(pilot.Status.CurrentDutyState, Is.EqualTo(ColonistDutyState.CompletingCommittedWork));
+            Assert.That(pilot.Status.CurrentDutyState, Is.EqualTo(ColonistDutyState.ReturningHome));
             Assert.That(pilot.currentEmployment.workplace, Is.EqualTo(crewStaffing));
         }
 
@@ -211,14 +211,16 @@ namespace AsteroidColony.Tests
             ship.RequestRelease(DutyEndReason.WorkplaceUnavailable);
             ShipCrewDutyComponent crew = ship.GetComponent<ShipCrewDutyComponent>();
             crew.RequestRelease(DutyEndReason.WorkplaceUnavailable);
-            Assert.That(pilot.Status.CurrentDutyState, Is.EqualTo(ColonistDutyState.CompletingCommittedWork));
+            staffing.SimulationTick(0f);
+            Assert.That(pilot.Status.CurrentDutyState, Is.EqualTo(ColonistDutyState.ReturningHome));
             Assert.That(ship.TryClaimMovement(ShipMovementOwner.Transport), Is.True);
             crew.SimulationTick(0f);
 
             Assert.That(ship.ResponsiblePilot, Is.Null);
             Assert.That(pilot.currentLocation, Is.EqualTo(home));
             Assert.That(ship.ReleaseRequested, Is.False);
-            Assert.That(pilot.Status.CurrentDutyState, Is.EqualTo(ColonistDutyState.ReleasedResting));
+            staffing.SimulationTick(0f);
+            Assert.That(pilot.Status.CurrentDutyState, Is.EqualTo(ColonistDutyState.Blocked));
         }
 
         [Test]

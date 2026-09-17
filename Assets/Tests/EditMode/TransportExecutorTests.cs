@@ -47,6 +47,9 @@ namespace AsteroidColony.Tests
             pilot.classes.Add(pilotClass);
             pilot.currentLocation = vehicleLocation;
             ship.operatingRole = pilotRole;
+            ship.crewChangeBase = vehicleLocation;
+            ship.initialDock = vehicleLocation;
+            pilot.home = vehicleLocation;
             roster.offeredRoles.Add(pilotRole);
             ship.crewStaffing = roster;
             ship.SetDock(vehicleLocation);

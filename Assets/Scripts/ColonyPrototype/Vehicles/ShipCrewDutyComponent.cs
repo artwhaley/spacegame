@@ -53,12 +53,6 @@ namespace AsteroidColony
         {
             if (ship == null)
                 return;
-            ColonistAgent pilot = ship.ResponsiblePilot;
-            ColonistStatusComponent status = pilot != null ? pilot.GetComponent<ColonistStatusComponent>() : null;
-            if (status != null)
-                status.SetDutyState(HasActiveShipOperation()
-                    ? ColonistDutyState.CompletingCommittedWork
-                    : ColonistDutyState.ReturningHome);
             ship.RequestRelease(reason);
             returnDestination = ship.crewChangeBase;
             state = ShipCrewDutyState.ReturningHome;
@@ -155,26 +149,17 @@ namespace AsteroidColony
             }
             if (HasActiveShipOperation())
             {
-                ColonistAgent pilot = ship.ResponsiblePilot;
-                ColonistStatusComponent status = pilot != null ? pilot.GetComponent<ColonistStatusComponent>() : null;
-                if (status != null)
-                    status.SetDutyState(ColonistDutyState.CompletingCommittedWork);
                 state = ShipCrewDutyState.ReturningHome;
                 return;
             }
             state = ShipCrewDutyState.ReturningHome;
-            ColonistAgent returningPilot = ship.ResponsiblePilot;
-            ColonistStatusComponent returningStatus = returningPilot != null
-                ? returningPilot.GetComponent<ColonistStatusComponent>() : null;
-            if (returningStatus != null)
-                returningStatus.SetDutyState(ColonistDutyState.ReturningHome);
 
             if (ship.CurrentDock == returnDestination)
             {
                 ReleaseAtBase();
                 return;
             }
-            if (movement == null)
+            if (movement == null || !movement.isActiveAndEnabled)
             {
                 state = ShipCrewDutyState.Holding;
                 SetDiagnostic("missing ship movement component");
@@ -196,9 +181,12 @@ namespace AsteroidColony
                 ship.MarkDeparted();
             if (movement.MoveToward(returnDestination, Mathf.Max(0f, deltaGameHours)))
             {
-                ship.SetDock(returnDestination);
-                ship.ReleaseMovement(ShipMovementOwner.CrewReturn);
-                ReleaseAtBase();
+                ship.BeginDocking(returnDestination);
+                if (ship.TryCompleteArrival(ShipMovementOwner.CrewReturn, returnDestination))
+                {
+                    ship.ReleaseMovement(ShipMovementOwner.CrewReturn);
+                    ReleaseAtBase();
+                }
             }
         }
 
@@ -230,13 +218,13 @@ namespace AsteroidColony
         private bool HasActiveShipOperation()
         {
             TransportExecutorComponent executor = GetComponent<TransportExecutorComponent>();
-            if (executor != null && executor.CurrentContract != null &&
+            if (executor != null && executor.isActiveAndEnabled && executor.CurrentContract != null &&
                 executor.CurrentContract.IsAssignedOrInFlight &&
                 (executor.CurrentContract.assignedVehicle == null ||
                  executor.CurrentContract.assignedVehicle == GetComponent<TransportVehicleComponent>()))
                 return true;
             ExtractionMissionController extraction = GetComponent<ExtractionMissionController>();
-            return extraction != null && extraction.State != ExtractionMissionState.Idle;
+            return extraction != null && extraction.isActiveAndEnabled && extraction.State != ExtractionMissionState.Idle;
         }
 
         private static bool HasActiveDutyOnOtherShip(ColonistAgent pilot, ShipComponent currentShip)

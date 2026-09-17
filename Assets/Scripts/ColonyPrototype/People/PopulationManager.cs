@@ -50,14 +50,14 @@ namespace AsteroidColony
 
         private void DiscoverColonists()
         {
-            ColonistAgent[] found = FindObjectsByType<ColonistAgent>();
+            ColonistAgent[] found = FindObjectsByType<ColonistAgent>(FindObjectsInactive.Include);
             for (int i = 0; i < found.Length; i++)
                 Register(found[i]);
         }
 
         public void Register(ColonistAgent colonist)
         {
-            if (colonist != null && colonist.isActiveAndEnabled && !colonists.Contains(colonist))
+            if (colonist != null && !colonists.Contains(colonist))
                 colonists.Add(colonist);
         }
 
@@ -70,7 +70,7 @@ namespace AsteroidColony
         public int CountResidents(LocationAnchor homeLocation)
         {
             for (int i = colonists.Count - 1; i >= 0; i--)
-                if (colonists[i] == null || !colonists[i].isActiveAndEnabled)
+                if (colonists[i] == null)
                     colonists.RemoveAt(i);
             int count = 0;
             for (int i = 0; i < colonists.Count; i++)

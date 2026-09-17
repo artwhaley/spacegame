@@ -77,11 +77,26 @@ namespace AsteroidColony
     [DisallowMultipleComponent]
     public class FacilityPerformanceComponent : MonoBehaviour
     {
+        private static readonly List<FacilityPerformanceComponent> knownFacilities =
+            new List<FacilityPerformanceComponent>();
         [Tooltip("Extra providers beyond the components on this GameObject.")]
         public List<MonoBehaviour> additionalProviders = new List<MonoBehaviour>();
 
         private readonly List<IFacilityPerformanceProvider> providers = new List<IFacilityPerformanceProvider>();
         private readonly FacilityPerformanceSnapshot snapshot = new FacilityPerformanceSnapshot();
+
+        public static IReadOnlyList<FacilityPerformanceComponent> Facilities => knownFacilities;
+
+        private void OnEnable()
+        {
+            if (!knownFacilities.Contains(this))
+                knownFacilities.Add(this);
+        }
+
+        private void OnDestroy()
+        {
+            knownFacilities.Remove(this);
+        }
 
         public bool IsOperational
         {
@@ -127,6 +142,9 @@ namespace AsteroidColony
         {
             RebuildProviders();
             snapshot.Reset();
+            StaffingComponent authoredStaffing = GetComponent<StaffingComponent>();
+            if (authoredStaffing != null && !authoredStaffing.isActiveAndEnabled)
+                snapshot.AddBlocker("staffing component disabled");
             for (int i = 0; i < providers.Count; i++)
             {
                 IFacilityPerformanceProvider provider = providers[i];
