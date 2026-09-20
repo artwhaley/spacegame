@@ -1,47 +1,32 @@
 # Banished in Space — Start Here
 
-Planning documents, in reading order. Each is self-contained; together they are the
-whole plan from today's codebase to 1.0.
+This repository is planned from the current code/content, not the other way around.
+Read the active documents in this order:
 
-| # | File | What it answers |
-|---|---|---|
-| 0 | `HOW_IT_WORKS.md` | Plain-English walkthrough of the minigame: what happens hour by hour, who owns which fact, and every change made to the plan and why |
-| 1 | `STATE_OF_THE_PROJECT.md` | What exists, what doesn't, why progress *feels* slow, where the hotspots are |
-| 2 | `GAME_DESIGN_DECISIONS.md` | Every gameplay decision that is locked, and the ones deliberately still open |
-| 3 | `ARCHITECTURE_CONSTITUTION.md` | The 12 binding rules every ticket is checked against (canonical copy) |
-| 4 | `ROADMAP.md` | Phases 0–3 to 1.0, epics per phase, definition of done per phase |
-| 5 | `DAY_BY_DAY_PLAN.md` | **The 26-day path to a playable minigame**, one observable per day, with the dependency flaws it exposes and where each is resolved |
-| 6 | `PACKET_INDEX.md` | Every agent packet (written or planned), status, directories owned, dispatch order |
-| 7 | `GAPS_AND_OPEN_QUESTIONS.md` | What the roadmap still misses, plus process risks (scene contention, review bandwidth) |
-| 8 | `ENVIRONMENT_ASSETS.md` | Plan for procedural low-poly asteroids, volumetric dust, scatter tooling, and the art bible |
-| 10 | `DECISION_LOG.md` | Every decision from the planning session, dated, with rationale and the vetoes still owed |
-| 11 | `GLOSSARY.md` | Terms used across the docs and code |
-| 9 | `EXPLORATION_AND_LONG_RANGE.md` | Second-act nods: resource field vs. survey knowledge, sensors and survey missions, the volumetric scan view, long-range logistics options, remote construction, and the Phase 0 seams that must stay open |
+1. `STATE_OF_THE_PROJECT.md` — what is actually present at the current local HEAD.
+2. `ARCHITECTURE_CONSTITUTION.md` — verified invariants, working architecture policy,
+   and process policy, each labeled separately.
+3. `PROTECT_LIST.md` — facts and owner intent that must survive experimentation.
+4. `planning/CURRENT_WINDOW.md` — the actual next three-day commitment.
+5. `DAY_BY_DAY_PLAN.md` — the human-facing 28-day orientation map; only Days 1–3 are
+   written at working depth.
+6. `DECISION_BACKLOG.md` — unresolved questions and the evidence trigger for each.
+7. `PLANNING_GOVERNANCE.md` — how to classify and revisit planning statements.
+8. `GAME_DESIGN_DECISIONS.md` and `DECISION_LOG.md` — owner choices and reasoning
+   history, separated from hypotheses and open questions.
+9. `ARCHITECTURE_OWNERSHIP.md`, `HOW_IT_WORKS.md`, and `GLOSSARY.md` — ownership,
+   intended experience, and terminology.
 
-Packets under `tickets/`:
-- `P0-0_Skeleton/` — scenes, asmdefs, sockets, prefabs, clock (Days 1–2) — written
-- `P0-A_Foundation/` — staffing split + corridor/shuttle routing — written
-- `P0-S_Shuttle_Flight/` — ports, queueing, 6DOF voyages, ship presentation — written
-- `P0-B_Interaction_UI/` — camera, selection, panels, reporting, HR, colony report — written
-- `P0-P_Presentation_People/` — colonist bodies, Facilities presenter port — written
-- `P0-C_Build_And_Staff/` — construction + allocator — draft, lock after Day 6
-- `P0-D_Live_And_Die/` — needs, death, housing, scenario, session — draft, lock after Day 13
-- `P0-E_Environment/` — asteroids, dust, scatter — written (spec in root)
-- `P1-X_Exploration/` — Phase 1 stub
+The near-term visible loop is deliberately concrete:
 
-Existing runtime documentation (already accurate, keep maintaining):
-`ARCHITECTURE.md`, `STAFFING_ARCHITECTURE.md`, `STAFFING_AUTHORING.md`, `CONTENT_AUTHORING.md`.
+- Day 1: human avatars plus navigable Command Post/Farm blockouts;
+- Day 2: inspect and port the real interactable-facility prototype at
+  `Packages/com.asteroidcolony.interactions` so a Farm worker visibly works;
+- Day 3: physical shuttle docking with visible boarding and disembarking.
 
-Agent packets live under `tickets/P0-*/`. Each packet has `00_README_FIRST.md`,
-`01_LOCKED_DESIGN.md`, and one file per ticket.
+`PACKET_INDEX.md` is a reference index, not an execution queue. Old Fable packets under
+`tickets/` retain useful reasoning, but their detail is not implicitly binding. A packet
+becomes active only when `planning/CURRENT_WINDOW.md` promotes it.
 
-## How to use this
-
-1. Read 1–3 once.
-2. Pick the next packet from `PACKET_INDEX.md`.
-3. Paste the packet's README + locked design + one ticket into an agent.
-4. When the packet's acceptance ticket passes, update `PACKET_INDEX.md` status and
-   tick the epic in `ROADMAP.md`.
-5. When a decision in `GAME_DESIGN_DECISIONS.md` or a question in
-   `GAPS_AND_OPEN_QUESTIONS.md` gets resolved, move it to the locked section and, if it
-   changes a design, reopen the owning packet's `01_LOCKED_DESIGN.md`.
+The project already contains the reusable interaction package and imported Synty art;
+the current scene and simulation authority remain the source of truth for integration.

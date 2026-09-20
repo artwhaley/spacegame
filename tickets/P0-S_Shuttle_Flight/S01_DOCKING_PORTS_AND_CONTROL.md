@@ -1,6 +1,7 @@
 # S01 — `DockingPortComponent` and `DockingControlComponent`
 
-Independent of S02. Read `01_LOCKED_DESIGN.md` §1. API is fixed.
+Independent of S02. Read the historical §1 proposal in `01_LOCKED_DESIGN.md`; the API
+is not fixed until the current docking experiment earns it.
 
 ## Must create
 - `Assets/Scripts/ColonyPrototype/World/Docking/DockingPortComponent.cs`

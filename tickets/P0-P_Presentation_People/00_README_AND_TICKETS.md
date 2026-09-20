@@ -1,10 +1,15 @@
 # Packet P0-P — Presentation: People and Facilities (Days 12–13)
 
+> **STATUS: SUPERSEDED / REFRAMED.** The local `Packages/com.asteroidcolony.interactions`
+> prototype is now the source to inspect for facility activities. Preserve the
+> presentation-only boundary, but do not dispatch this packet's old slot/presenter
+> contract as written.
+
 Depends on P0-0 (Presentation asmdef, `ModuleSockets`), P0-A T06 (`PedestrianTransit`).
 Constitution: `ARCHITECTURE_CONSTITUTION.md`; rule 2 is the whole packet — nothing here
 writes simulation state.
 
-## Design (locked)
+## Historical design (reference)
 
 - **`ColonistView`** (`Presentation/People/`) on the colonist prefab's mesh child. Each
   frame reads `ColonistAgent` + `PedestrianTransitComponent`:

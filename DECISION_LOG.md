@@ -1,7 +1,51 @@
 # Decision Log
 
-Every decision made during the 2026-09-18 planning session, in order, with the reason
-and where it lives. Append new decisions at the bottom with a date.
+The log preserves the reasoning trail. The status register below is the active reading
+of that trail; it prevents an old proposal from silently becoming a current contract.
+Append new decisions with a date and all four status fields.
+
+## Active status register
+
+| # | Status | Basis | Revisit trigger |
+|---|---|---|---|
+| 1 | OWNER DECISION | Planning direction: visible work earns infrastructure. | Revisit if the first visible loop does not improve discovery. |
+| 2 | OWNER DECISION | Owner-stated game shape. | Owner changes the product identity. |
+| 3 | OWNER DECISION / PROCESS POLICY | Owner accepted compile + observable behavior as the practical gate. | Revisit when the test runner is reliable and useful. |
+| 4 | WORKING HYPOTHESIS | Existing interaction prototype and runtime/presentation boundary. | Day 2 integration exposes a better seam. |
+| 5 | SUPERSEDED | Old 26-day milestone. | Replaced by the rolling 28-day plan. |
+| 6 | OWNER DECISION | Owner-stated hybrid control concept. | Manual target experiment reveals a different need. |
+| 7 | OWNER DECISION | Owner-stated walk/shuttle strategic distinction. | First real corridor commute. |
+| 8 | WORKING HYPOTHESIS | Behavior-preserving refactor proposal. | Current code shows a better responsibility boundary. |
+| 9 | WORKING HYPOTHESIS | Useful arrival invariant; test with the first commute handoff. | Day 7/8 walking experiment. |
+| 10 | WORKING HYPOTHESIS | Scene-link proposal. | First built corridor interaction. |
+| 11 | WORKING HYPOTHESIS | One voyage owner is a protected consolidation seam. | Day 3 docking and Day 9 authority experiment. |
+| 12 | OPEN | Old queue policy was not earned. | Force berth contention. See DB-013–DB-015. |
+| 13 | OPEN | Custom 6DOF was a proposal, not a fact. | Watch current motion; run a focused spike only if inadequate. See DB-016–DB-017. |
+| 14 | WORKING HYPOTHESIS | Watchability dial, not game law. | Measure the visible slice. |
+| 15 | WORKING HYPOTHESIS | Watchable transfer timing proposal. | Observe actual dock operations. |
+| 16 | WORKING ARCHITECTURE POLICY | One presentation/runtime authority per fact. | Revisit if the visible loop exposes a missing owner. |
+| 17 | SUPERSEDED | UI Toolkit-only was a premature global lock. | Two real management surfaces provide evidence. See DB-019. |
+| 18 | WORKING HYPOTHESIS | Read-model direction. | First panel proves which facts are actually needed. |
+| 19 | WORKING HYPOTHESIS | Event/read-model seam. | First diagnostic question reveals required shape. |
+| 20 | SUPERSEDED | Speculative additive-scene schedule. | Split only where current consumers justify it. |
+| 21 | SUPERSEDED | Future socket schema was over-specified. | Add an anchor/socket only for an immediate consumer. |
+| 22 | OPEN | Placement rules were never observed. | First placement experiment. See DB-031–DB-033. |
+| 23 | OPEN | `Regolith` was proposed content, not canon. | Construction needs an economy identity. See DB-029. |
+| 24 | WORKING HYPOTHESIS | Registry-based extraction seam. | Exploration/content proves a different demand source. |
+| 25 | WORKING HYPOTHESIS | Reuse logistics/staffing for construction. | First construction site. |
+| 26 | OPEN | Fixed death teardown order was not tested. | Manual death test. See DB-004. |
+| 27 | OPEN | Starting composition and bed count conflicted in old prose. | Housing/economy experiment. See DB-038–DB-041. |
+| 28 | WORKING HYPOTHESIS | Avoid scenario/construction divergence. | Scenario round-trip work. See DB-037. |
+| 29 | HORIZON / WORKING HYPOTHESIS | Environment-generator direction. | Repeated manual environment work becomes a bottleneck. |
+| 30 | HORIZON / WORKING HYPOTHESIS | Truth/belief split for exploration. | Exploration enters the active roadmap. |
+| 31 | WORKING HYPOTHESIS | Automated ship/facility handling proposal. | Current content proves the null-role meaning. |
+| 32 | OPEN | Ice depletion timing was a guessed trigger. | Measured exploration/economy run. See DB-042. |
+| 33 | OPEN | Future save policy was not implementation evidence. | Save/load work begins. See DB-048. |
+
+## Historical reasoning trail (pre-install)
+
+The original table is retained verbatim below. Its `Recorded in` links are historical
+references; the status/basis/revisit fields above are authoritative.
 
 | # | Decision | Reason | Recorded in |
 |---|---|---|---|

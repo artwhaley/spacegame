@@ -1,5 +1,9 @@
 # Packet P0-C — Build & Staff (Days 14–19) — DRAFT, lock after P0-A/P0-S acceptance
 
+> **STATUS: DRAFT / REFERENCE.** Construction and allocator details are trigger-gated;
+> do not lock them from this file. In particular, site access, material identity,
+> placement, release order, hysteresis, and autonomous reassignment remain open.
+
 Everything discussed so far about construction and the allocator, in one place. Turn
 this into `01_LOCKED_DESIGN.md` + tickets once `TransitLink`, `EmploymentRegistry`,
 docking ports and `ModuleSockets` exist on disk (names may shift slightly).

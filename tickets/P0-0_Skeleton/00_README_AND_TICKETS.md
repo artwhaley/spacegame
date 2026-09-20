@@ -1,5 +1,9 @@
 # Packet P0-0 — Skeleton (Days 1–2)
 
+> **STATUS: SUPERSEDED / REFERENCE.** This packet records the old infrastructure-first
+> skeleton ordering. Keep its dependency reasoning, but do not dispatch it as written;
+> the active three-day window starts with human avatars and navigable facilities.
+
 Small packet, run first. Every other packet assumes it is done. Constitution:
 `ARCHITECTURE_CONSTITUTION.md`.
 

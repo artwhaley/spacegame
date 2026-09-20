@@ -1,6 +1,7 @@
 # S03 — `ShipVoyageComponent`
 
-Depends on S01 and S02. Read `01_LOCKED_DESIGN.md` §3 — the phase machine is fixed.
+Depends on S01 and S02. Read the historical §3 proposal in `01_LOCKED_DESIGN.md`; the
+phase machine is provisional until the current docking/boarding work demonstrates it.
 
 ## Must create
 - `Assets/Scripts/ColonyPrototype/Vehicles/ShipVoyageComponent.cs`

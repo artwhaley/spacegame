@@ -1,17 +1,36 @@
-# How It Works — the minigame in plain English
+# Intended Experience — Working Draft
 
-The colony: **one Command Center** (8 beds, the main warehouse, two docking ports),
-**one Farm** (joined to the Command Center by a corridor), **one Water Processor**
-(floating off on its own — shuttle-served), **one Shuttle**, **one Mining Ship**, an
-**ice asteroid** and a **rock asteroid** nearby. **Eight colonists**: three Pilots,
-two Farm Technicians, three Builders.
+> **Status: WORKING HYPOTHESIS.** This narrative describes the intended visible loop;
+> it is not a report of current Play Mode behavior and does not lock starting counts,
+> recipes, camera technique, or future schemas. For code-grounded ownership, read
+> [`ARCHITECTURE_OWNERSHIP.md`](ARCHITECTURE_OWNERSHIP.md).
 
-This document explains what happens when you press Play, who owns which fact, and
-what I changed in the plan and why. It is written for a human, not an agent.
+The first useful slice should make the colony legible through bodies in space: a human
+avatar stands in a navigable facility, an active Farm worker moves through a local
+interactable work cycle, and a shuttle parks at a physical berth while a person boards
+and later disembarks. The existing simulation remains authoritative for employment,
+logical location, transport contracts, inventory, and facility performance.
+
+The exact cutaway/interior treatment, commute synchronization boundary, docking phases,
+work-cycle contract, starting population, stock, and bed count remain questions. The
+next three days are the experiments that should earn those decisions.
+
+## Intended experience boundary
+
+The interactable-facility package may direct local navigation, poses, animation, and
+optional contacts for an already-active worker. It must not independently decide that a
+colonist is employed, qualified, productive, or generating resources. The package is a
+presentation/local-activity client until a later owner decision deliberately changes
+that boundary.
+
+## Historical pre-install walkthrough (reference only)
+
+The detailed hour-by-hour narrative below was written against an earlier speculative
+minigame plan. It remains useful reasoning, but its assertions are not current facts.
 
 ---
 
-## 1. The heartbeat
+### Historical 1. The heartbeat
 
 There is one clock: `SimulationManager`. Ten times a real second it says "another
 slice of game time has passed" and calls everything that registered to be ticked, in
@@ -33,7 +52,7 @@ minutes; you'll play at 4×–10×.
 
 ---
 
-## 2. A day in the colony — what actually happens
+### Historical 2. A day in the colony — prior intended sequence
 
 **00:00 — Shift A starts.** The staffing system (`StaffingManager`) looks at every
 colonist's *employment* — a record saying "you work at this workplace, in this role,
@@ -120,7 +139,7 @@ would walk. Demolish the corridor and they'd fly again.
 
 ---
 
-## 3. Who owns what
+### Historical 3. Who owns what
 
 One owner per fact. If two things could disagree about something, one of them is the
 owner and the other is a view.
@@ -153,7 +172,7 @@ Two ownership rules that matter most:
 
 ---
 
-## 4. The layers (and which way the arrows point)
+### Historical 4. The layers (and which way the arrows point)
 
 ```
 Content  (ScriptableObjects: resources, recipes, roles, shifts, buildings, flight profiles)
@@ -173,7 +192,7 @@ Presentation reads sim state and animates. UI reads sim state and ledgers and ca
 
 ---
 
-## 5. What I changed in the plan, and why
+### Historical 5. What the earlier plan changed, and why
 
 You had a strong simulation with no game around it. Most of what I did is ordering and
 seams, not new rules.
@@ -238,7 +257,7 @@ seams, not new rules.
 14. **Dropped tests as a gate.** They stay as design artifacts inside tickets; the gate
     is compile + the day's observable.
 
-## 6. What I deliberately did not change
+### Historical 6. What the earlier plan deliberately did not change
 
 The inventory authority, the recipe/staffing split, explicit employment, the pilot
 lease, publish-then-commit logistics, discrete quantity rules, extraction staying

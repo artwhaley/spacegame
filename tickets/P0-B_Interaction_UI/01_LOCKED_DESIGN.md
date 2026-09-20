@@ -1,4 +1,7 @@
-# P0-B Locked Design
+# P0-B Working Design Reference
+
+> **STATUS: INACTIVE DRAFT / REFERENCE.** The layout, technology, and panel details are
+> not current contracts.
 
 ## 1. Camera (`Presentation/Camera/`)
 `OrbitPanZoomCamera : MonoBehaviour` driven by `InputSystem_Actions` (add a `Camera`

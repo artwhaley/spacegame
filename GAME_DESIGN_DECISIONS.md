@@ -1,9 +1,80 @@
 # Game Design Decisions
 
-Locked decisions are binding on all packets. Open decisions are listed so nobody
-resolves them by accident inside a ticket.
+Planning statements use four statuses:
 
-## Locked
+- **FACT** — verified in current code or content;
+- **OWNER DECISION** — deliberately chosen product intent;
+- **WORKING HYPOTHESIS** — a provisional choice made to enable the next observable;
+- **OPEN QUESTION** — no answer has been earned yet; see `DECISION_BACKLOG.md`.
+
+## Verified / Owner Decisions
+
+### FACT — current seams
+
+- `InventoryComponent` remains the resource-quantity authority; views and reports do
+  not carry a second stock truth.
+- `EmploymentAssignment` and the validated staffing commands remain the employment
+  authority.
+- `ColonistAgent.currentLocation` is the last arrived logical location; transit and
+  presentation movement are separate.
+- `FacilityPerformanceComponent` aggregates provider channels; converters do not count
+  workers themselves.
+- `PopulationResourceConsumer` currently consumes aggregate resources from a
+  habitation inventory. It has no per-colonist `Fed(...)` API or personal-needs model.
+- The Farm Operator content asset already ships a one-worker `0.65` performance curve
+  (`Assets/GameData/Roles/FarmOperator.asset`); it is not an invented planning constant.
+- `HabitationComponent` has an explicit `capacity` and `restfulnessMultiplier` seam.
+  No homelessness penalty is ratified by that seam.
+- The reusable interaction authoring unit is the local
+  `Packages/com.asteroidcolony.interactions` package. Its `InteractableFacility`
+  owns activity and sequence data; the package contains no game-specific sample scene.
+
+### OWNER DECISION — product intent
+
+- The game is a small colony-builder in which the player should physically see people
+  moving, working, sitting, sleeping, boarding, and disembarking.
+- Walk and shuttle transport are both first-class strategic modes. A valid walk
+  connection should matter to the layout; lack of either mode should be visible rather
+  than silently bypassed.
+- Staffing is a facility-level concern separate from recipe definitions and facility
+  production authority.
+- Hybrid staffing control is a valid direction: human-set targets/priority and manual
+  pinning may coexist. The autonomous allocation algorithm is not chosen.
+- Explicit employment remains the mutation authority, and a pilot lease remains
+  distinct from employment.
+
+## Working Hypotheses
+
+- Days 1–3 should integrate human avatars, navigable facility blockouts, the existing
+  interactable-facility prototype, and visible shuttle docking before expanding the
+  simulation. The active details live in `planning/CURRENT_WINDOW.md`.
+- A local work-cycle layer should present what an already-active worker does at a
+  facility. It must not become a second authority for employment, recipes,
+  productivity, inventory, or resource quantities.
+- One voyage authority is a useful refactor seam, but the final flight model and
+  docking phases must be learned from the visible docking experiment.
+- The fastest UI technology that answers the first real management question should be
+  used; UI Toolkit is not a project-wide lock.
+- Scenario/bootstrap data should be derived from the slice that actually exists when
+  that work begins, rather than predicted as a full schema now.
+
+## Open Questions
+
+The active unresolved questions and their evidence triggers live in
+[`DECISION_BACKLOG.md`](DECISION_BACKLOG.md). In particular, do not lock:
+
+- personal nutrition/hydration, ration allocation, death thresholds, or a homelessness
+  penalty;
+- custom Newtonian 6DOF, a final docking queue policy, or modulo holding-slot behavior;
+- UI Toolkit as a global standard, a canonical construction material, or a full
+  `ScenarioDefinition` field list;
+- starting crew/stock/bed counts, including the old 6-vs-8 bed discrepancy;
+- the final interior/cutaway presentation technique or construction-site access rule.
+
+## Historical pre-install register (reference only)
+
+The older locked/open register below is retained as reasoning history. It is not an
+execution contract; the active registers above and the decision backlog supersede it.
 
 ### Identity
 - **Genre:** Banished-style survival builder on an asteroid colony. Player places
@@ -89,7 +160,7 @@ Ship, ice and rock deposits, 8 colonists (3 Pilots, 2 Farm Technicians, 3 Builde
   readable silhouettes) — not full Synty. Dirty, dusty space: volumetric dust,
   drifting motes, muted warm greys with accent lighting.
 
-## Open (do not resolve inside a ticket)
+### Historical open register (superseded; see active backlog)
 
 | Question | Why it matters | Owning phase |
 |---|---|---|

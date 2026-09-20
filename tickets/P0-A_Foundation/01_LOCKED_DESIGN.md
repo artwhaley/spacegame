@@ -1,7 +1,10 @@
-# P0-A Locked Design
+# P0-A Working Design Reference
 
-This design is fixed. Tickets implement it; they do not reinterpret it. Names below are
-the names to use.
+> **STATUS: REFERENCE / WORKING.** The staffing facade/refactor intent is useful. The
+> walk-specific details must be re-earned by the current visible commute experiment.
+
+The names and phase details below describe the historical proposal. Tickets must not
+treat them as fixed until the active window and current code justify them.
 
 ---
 

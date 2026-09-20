@@ -1,4 +1,8 @@
-# P0-S Locked Design
+# P0-S Working Design Reference
+
+> **STATUS: REFERENCE / WORKING.** The contents below are a historical design proposal.
+> One movement authority remains a protected direction; flight physics, docking policy,
+> and phase details are provisional until experiments earn them.
 
 ---
 

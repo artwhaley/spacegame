@@ -1,5 +1,9 @@
 # Packet P1-X — Exploration and Scans (Phase 1) — STUB
 
+> **STATUS: HORIZON / STUB.** Preserve the resource-field reasoning, but do not lock
+> exploration schemas or depletion pacing before the Phase-0 visible loop and its
+> economy experiments exist.
+
 Design nods: `EXPLORATION_AND_LONG_RANGE.md`. Do not lock before the Phase 0 playable
 exists and the Phase 0 seams in that document's §8 are verified on disk.
 

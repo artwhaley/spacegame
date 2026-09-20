@@ -1,6 +1,7 @@
 # T06 (H2) — `PedestrianTransitComponent` and `ColonistActivity.Walking`
 
-Depends on T05. Read `01_LOCKED_DESIGN.md` Part 2 — tick semantics are fixed there.
+Depends on T05. Read the historical Part 2 proposal in `01_LOCKED_DESIGN.md`; its tick
+semantics are not a current contract until the visible commute experiment needs them.
 
 ## Goal
 A colonist can execute a walk plan with truthful per-waypoint arrival. Nothing

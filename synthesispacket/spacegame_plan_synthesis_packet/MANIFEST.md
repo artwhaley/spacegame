@@ -1,0 +1,23 @@
+# Packet Manifest
+
+- `01_SYNTHESIS_REPORT.md`
+- `02_SYNTHESIZED_FINDINGS_MATRIX.md`
+- `CODEX_INSTALL_PROMPT.md`
+- `README.md`
+- `audit/original_openai/AUDIT_FINDINGS.md`
+- `audit/original_openai/DAY_BY_DAY_PLAN_REWRITE.md`
+- `audit/original_openai/DECISION_BACKLOG.md`
+- `audit/original_openai/DE_SPECIFICATION_PASS.md`
+- `audit/original_openai/PROTECT_LIST.md`
+- `audit/original_openai/README.md`
+- `codex/08_REPOSITORY_PATCH_MAP.md`
+- `codex/09_CODEX_INSTALL_AND_PATCH_PROMPT.md`
+- `planning/02_HUMAN_28_DAY_PLAN.md`
+- `planning/03_PLANNING_GOVERNANCE.md`
+- `planning/04_DECISION_BACKLOG.md`
+- `planning/05_PROTECT_LIST.md`
+- `planning/06_CURRENT_WINDOW_TEMPLATE.md`
+- `planning/07_AGENT_28_DAY_PROMPTS.md`
+- `reference/CLAUDE_ADVERSARIAL_PLAN_AUDIT.md`
+- `reference/DEEPSEEK_SYNTHESIZED_AUDIT.md`
+- `reference/ORIGINAL_AUDIT_PROMPT.md`

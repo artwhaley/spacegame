@@ -1,6 +1,7 @@
 # T05 (H1) — `TransitLinkComponent`, `TransitGraph`, `RoutePlan`, `RouteResolver`
 
-Independent of the G tickets. Read `01_LOCKED_DESIGN.md` Part 2 — the API is fixed there.
+Independent of the G tickets. Read the historical Part 2 proposal in
+`01_LOCKED_DESIGN.md`; confirm the API against the active window and current source.
 
 ## Goal
 Add the walk-link registry and the pure route resolver. Nothing consumes them yet.

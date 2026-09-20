@@ -1,6 +1,51 @@
 # Glossary
 
-Terms as used in the code and the planning documents. Code names in backticks.
+Terms are split so a planned type cannot masquerade as shipped code. Code names are in
+backticks.
+
+## Exists in current code/content
+
+- **Colonist** — `ColonistAgent`, with `currentLocation`, transit fields, classes,
+  skills, and an optional `EmploymentAssignment`.
+- **Employment** — `EmploymentAssignment`; staffing commands validate changes.
+- **Facility performance** — `FacilityPerformanceComponent` plus
+  `IFacilityPerformanceProvider` channels.
+- **Habitation** — `HabitationComponent`, which currently exposes capacity and a
+  restfulness multiplier.
+- **Inventory** — `InventoryComponent`, the quantity authority.
+- **Population consumption** — `PopulationResourceConsumer`, aggregate consumption
+  from a habitation inventory with shortage state.
+- **Interactable facility** — `InteractableFacility` in
+  `Packages/com.asteroidcolony.interactions`; its embedded activities and sequences are
+  the authoring unit for the extracted local interaction system.
+- **Activity runner / motor / animation driver** — `ColonistActivityRunner`,
+  `ColonistMotor`, and `ColonistAnimationDriver`; package runtime components that
+  execute local movement and animation.
+- **Contact rig** — optional `ContactRigDriver` integration with Animation Rigging.
+- **Ship movement phase** — `ShipMovementPhase` on `ShipComponent` in the current
+  repository.
+
+## Proposed / working terms
+
+- **Active worker** — a future presentation/runtime query combining employment, arrived
+  location, shift, activity, and eligibility; do not treat this as a new authority yet.
+- **Route resolver / Walk–Ship–Blocked** — the owner-stated strategic direction; the
+  first implementation should earn only the seam the real commute needs.
+- **Voyage authority** — a working refactor direction for consolidating ship movement;
+  it does not lock custom 6DOF or queue policy.
+- **Docking berth / holding slot** — authoring concepts to test during physical docking,
+  not a final queue schema.
+- **Workforce allocator** — a possible client of employment commands; no autonomous
+  algorithm is locked.
+- **Scenario definition** — a future bootstrap representation to derive from the
+  slice that exists when New Game is built; no full field list is current.
+- **Site plane / module sockets** — future content/presentation concepts only where an
+  immediate consumer proves they are needed.
+
+## Historical pre-install glossary
+
+The older entries below are retained because packet links may reference them. Read them
+as historical terminology unless the term appears in the current-code section above.
 
 **Active worker** — assigned + physically present + shift active + activity `Working` + holds the role's class. Only active workers contribute to facility effects.
 

@@ -1,7 +1,55 @@
 # Architecture Constitution
 
-The canonical copy. `ROADMAP.md` and every packet README reference this file; if they
-disagree, this file wins. Any ticket that violates a rule must say so and justify it.
+This is the canonical architecture-policy document, but not every sentence in an old
+packet is a code-forced fact. The active rules are classified below. Tickets must say
+which status they rely on and what observable protects the choice.
+
+## FACT — verified project invariants
+
+- Inventory components own resource quantities; presentation and reporting are views.
+- Employment is represented by `EmploymentAssignment` and changed through validated
+  staffing commands.
+- `ColonistAgent.currentLocation` means the last logically arrived location; transit
+  state describes movement that has not committed arrival.
+- Facility consumers use `FacilityPerformanceComponent` and provider channels rather
+  than counting workers inside recipe/converter code.
+- Runtime simulation work is driven by the simulation tick infrastructure; presentation
+  may interpolate visuals but must not become a second simulation authority.
+- Registries and explicit lifecycle ownership are preferred to hot-path scene scans.
+
+## WORKING ARCHITECTURE POLICY
+
+- Keep the dependency direction `Content ← Runtime ← Presentation ← UI` wherever
+  those layers exist. The current interaction package is a local runtime/editor
+  package; it does not by itself create a project-wide UI contract.
+- Views read state and raise narrow commands. They do not write runtime authority.
+- Keep one authority per fact and use explicit state enums where a silent fallback would
+  hide a blocker.
+- New facility behavior should be composition/content when the existing seams fit; a
+  bespoke component needs an immediate, demonstrated consumer.
+- One voyage owner remains a useful consolidation hypothesis, not a commitment to a
+  custom Newtonian flight model or a particular queue policy.
+- Serialized authoritative state should remain deliberate, but future save/load is not
+  a reason to add speculative fields before a real round-trip exists.
+- File size and responsibility are review smells. No arbitrary line count is an
+  acceptance gate.
+
+## PROCESS POLICY
+
+- The next three days are governed by `planning/CURRENT_WINDOW.md`; the 28-day plan is
+  orientation.
+- Prefer small reviewable changes, preserve local work, and record the Play Mode
+  observable that justifies a change.
+- Add focused tests where they protect a pure algorithm, a regression, or a critical
+  invariant. Do not require a fixed test count per ticket.
+- Runtime/presentation and scene ownership boundaries should be introduced when a
+  current consumer needs them, not solely because a future packet mentions them.
+
+## Historical pre-install rule list (reference only)
+
+The numbered rules below are retained as the historical planning spine. The active
+classification above supersedes any blanket claim that every rule was mechanically
+forced by current code.
 
 1. **Dependency direction is one-way:** `Content` ← `Runtime` ← `Presentation` ← `UI`.
    Each is its own asmdef. Runtime never references Presentation or UI. Presentation

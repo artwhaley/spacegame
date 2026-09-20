@@ -1,6 +1,11 @@
 # Packet P0-B — Interaction, Panels, Reporting, HR
 
-Read this, then `01_LOCKED_DESIGN.md`, then your ticket in `02_TICKETS.md`.
+> **STATUS: INACTIVE DRAFT / REFERENCE.** This packet's panel and UI-stack decisions
+> were written before a real management question existed. Keep the read-model reasoning;
+> choose the first UI surface from observed play.
+
+Read this, then the historical design reference, then your ticket in `02_TICKETS.md`;
+neither is an active execution contract until the current window promotes it.
 
 ## What this packet delivers
 

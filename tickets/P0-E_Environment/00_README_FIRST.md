@@ -1,5 +1,9 @@
 # Packet P0-E — Environment (Day 24)
 
+> **STATUS: HORIZON / REFERENCE.** Use this packet only after the active visible slice
+> demonstrates a repeated environment bottleneck. It does not authorize a generator
+> or art-pipeline commitment now.
+
 Full spec and art bible: `ENVIRONMENT_ASSETS.md` (root). This packet owns
 `Assets/Editor/Environment/`, `Assets/Art/Environment/`, `Environment.unity`, and a
 `Presentation/Environment/SlowTumble` component. It touches no Runtime code.

@@ -1,5 +1,9 @@
 # Packet P0-D — Live & Die (Days 20–26) — DRAFT, lock after Day 13
 
+> **STATUS: DRAFT / REFERENCE.** Needs, death, housing, scenario, and session details
+> are trigger-gated experiments. Aggregate shortage comes before personal needs; no
+> threshold, death order, auto-homing, or scenario field list is locked here.
+
 ## Needs (Day 20)
 - `ColonistNeedsComponent` on the colonist prefab: `nutrition`, `hydration` 0..1,
   serialized. `PopulationResourceConsumer` reports per-colonist satisfaction each hour

@@ -1,7 +1,12 @@
 # Packet P0-A — Foundation: Staffing Split + Walkable/Shipped Base
 
-Read this file, then `01_LOCKED_DESIGN.md`, then your ticket. Do not read other tickets
-unless yours names them as a dependency.
+> **STATUS: REFERENCE.** The behavior-preserving staffing split remains useful. The
+> packet's old walk graph, NavMesh exclusions, and exact ticket order are reference
+> material, not an active API contract.
+
+Read this file, then the historical design reference, then your ticket. Do not read
+other tickets unless yours names them as a dependency; confirm active details from the
+current window and source.
 
 ## What this packet delivers
 

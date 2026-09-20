@@ -1,6 +1,11 @@
 # Packet P0-S — Shuttle Voyages: Ports, Queueing, 6DOF Flight, Presentation
 
-Read this, then `01_LOCKED_DESIGN.md`, then your ticket.
+> **STATUS: REFERENCE / WORKING.** Retain the one-voyage-authority intent, but do not
+> treat the custom 6DOF model, queue policy, holding arithmetic, or exact phase list as
+> locked. Day 3 must inspect the current movement and boarding code first.
+
+Read this, then the historical design reference, then your ticket. Confirm every
+implementation detail against the active window and current source.
 
 ## What this packet delivers
 

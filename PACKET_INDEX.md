@@ -1,7 +1,33 @@
 # Packet Index
 
-Status legend: `written` = README + locked design + tickets exist; `planned` = named
-in the roadmap, design not yet locked; `done` = acceptance ticket passed.
+This is a reference index, not an execution queue. The active queue is
+`planning/CURRENT_WINDOW.md`; a packet is dispatchable only when that file promotes it.
+
+## Current status
+
+| Packet | Current reading |
+|---|---|
+| `tickets/P0-0_Skeleton/` | **SUPERSEDED / REFERENCE** — old skeleton ordering and socket assumptions. |
+| `tickets/P0-A_Foundation/` | **REFERENCE** — staffing split remains useful; old walk specifics are not an API contract. |
+| `tickets/P0-S_Shuttle_Flight/` | **REFERENCE / WORKING** — one voyage-authority intent retained; 6DOF, queue, and holding details are provisional. |
+| `tickets/P0-B_Interaction_UI/` | **INACTIVE DRAFT / REFERENCE** — old UI plan; choose technology from the real management question. |
+| `tickets/P0-P_Presentation_People/` | **SUPERSEDED / REFRAMED** — local interactable-facility prototype integration now leads. |
+| `tickets/P0-C_Build_And_Staff/` | **DRAFT / REFERENCE** — trigger-gated; do not lock until the visible loop earns it. |
+| `tickets/P0-D_Live_And_Die/` | **DRAFT / REFERENCE** — needs, death, housing, and scenario remain experiments. |
+| `tickets/P0-E_Environment/` | **HORIZON / REFERENCE** — use only when the active slice demonstrates the need. |
+| `tickets/P1-X_Exploration/` | **HORIZON / STUB** — wait for Phase 0 evidence. |
+
+The extracted interactable-facility source is now local at
+`Packages/com.asteroidcolony.interactions`; Day 2 must inspect that code rather than
+reconstructing it from the old P0-P prose.
+
+## Historical pre-install index
+
+The packet table and dependency graph below preserve the old ownership/reasoning map.
+Their old `written`/`locked` labels do not override the status table above.
+
+Status legend: `written` = README + design + tickets existed at the time; `planned` =
+named in the old roadmap; `done` = old acceptance ticket passed.
 
 | Packet | Epics | Directories owned | Status | Days |
 |---|---|---|---|---|

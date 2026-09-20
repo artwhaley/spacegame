@@ -1,10 +1,29 @@
 # Gaps and Open Questions
 
-"What else are we missing" — everything not covered by a written or planned packet,
-plus process risks. Dependency flaws already resolved in the day plan are listed in
-`DAY_BY_DAY_PLAN.md` and not repeated here.
+This is an index, not a recommendation list. Active unresolved questions live in
+[`DECISION_BACKLOG.md`](DECISION_BACKLOG.md), where each has a trigger or evidence
+requirement. An agent must not turn a gap into a design merely because the old packet
+contains a suggested answer.
 
-## Gaps in the plan (things nobody owns yet)
+## Active gap index
+
+| Gap | Evidence needed / trigger |
+|---|---|
+| Interior visibility and cramped-space presentation | Watch real people work/sleep/dock in the actual blockouts; see DB-043. |
+| Module art kit and environment workflow | Repeated manual work becomes a bottleneck; see DB-044–DB-045. |
+| Construction-site access | Place a site that is not walk-connected and observe the desired handoff; see DB-034. |
+| Dock contention, holding, and queue policy | Force two ships to want one berth; see DB-013–DB-015. |
+| Walking/ship synchronization | Run the first inter-facility commute and inspect logical versus visual arrival; see DB-009–DB-011. |
+| Staffing mental model and automation | Use the first manual staffing surface, then watch for real tedium; see DB-020–DB-025. |
+| Scarcity, housing consequences, and lifecycle | Run aggregate shortage, housing, and manual-death experiments; see DB-001–DB-006 and DB-040. |
+| Scenario/bootstrap shape | Round-trip the smallest slice that actually exists; see DB-037. |
+
+## Historical pre-install gap notes (reference only)
+
+The older packet-era notes below are retained for reasoning and attribution. Their
+recommendations are not active answers.
+
+### Historical Gaps in the plan (things nobody owned yet)
 
 ### Design
 - **Interior visibility.** Colonists walk corridors and work at stations — do we see
@@ -47,7 +66,7 @@ plus process risks. Dependency flaws already resolved in the day plan are listed
 - **Off-map anchor** for immigration/trade arrivals — Phase 1, but ports/voyages should
   not assume every destination is a station (Loiter already covers this).
 
-## Process risks
+### Historical Process risks
 
 | Risk | Mitigation |
 |---|---|
@@ -59,7 +78,7 @@ plus process risks. Dependency flaws already resolved in the day plan are listed
 | **Agent scope creep** | Forbidden lists by name in every ticket; "stop and report" rule for unlisted files. |
 | **Clock retune surprises** | Everything is per game-hour; the only visible change is pace. Verify Day 1. |
 
-## Open questions (copy of `GAME_DESIGN_DECISIONS.md` § Open, with recommendations)
+### Historical open-question snapshot (recommendations not active)
 
 | Question | Recommendation | Decide by |
 |---|---|---|

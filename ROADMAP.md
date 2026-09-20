@@ -1,16 +1,55 @@
 # Roadmap to 1.0 — Banished in Space
 
-Game shape: **Banished-style survival builder** on an asteroid colony. Player places
-facilities, sets staffing targets, keeps colonists fed, housed and rested while the
-population grows. Failure is attrition. Ships and logistics are the connective tissue,
-not the game.
+This is an orientation map. The active implementation authority is
+`planning/CURRENT_WINDOW.md`, followed by the next three days in
+`DAY_BY_DAY_PLAN.md`. Current code/content at HEAD outranks this roadmap.
 
-Control model: **hybrid** — player sets per-facility staffing targets and priorities;
-a workforce allocator fills them through the existing explicit `Assign()` API.
+## Current horizon — make the colony visibly alive
+
+The immediate horizon is the first three-day visible loop:
+
+1. human avatars and navigable Command Post/Farm blockouts;
+2. the existing interactable-facility prototype driving a visible Farm work cycle;
+3. physical shuttle docking with visible boarding and disembarking.
+
+Days 4–7 stabilize the seams that this loop exposes. Later days are questions and
+experiments, not committed APIs. See `DAY_BY_DAY_PLAN.md` for the human-facing map.
+
+## Protected spine
+
+Keep these facts/intentions visible while the roadmap changes: inventory authority;
+facility performance separate from recipes and staffing; explicit employment; pilot
+lease distinct from employment; publish-then-commit freight/reservation; extraction
+outside ordinary freight arbitration; logical arrived location distinct from transit;
+narrow validated commands; runtime/presentation dependency direction; a behavior-
+preserving staffing split; eventual one-voyage authority; and the Walk / Ship /
+visibly Blocked strategic rule.
+
+## Horizon 1 — growth and persistence
+
+When the visible loop and the first management questions are understood, investigate
+save/load, population growth, wider resource chains, power/maintenance, and exploration
+as separate experiments. Their schemas and balance numbers are not current contracts.
+
+## Horizon 2 — depth and content
+
+Later questions include multiple sites, inter-site shipping, medical care, morale,
+research, trade, events, and the presentation of cramped interiors. Add only the seam
+the current slice consumes.
+
+## Horizon 3 — productization
+
+Performance, settings, accessibility, localization, modding, platform integration,
+balance, and onboarding belong after the game loop has survived playtesting.
+
+## Historical pre-install roadmap (reference only)
+
+The former Phase 0–3 implementation plan remains below for reasoning and traceability.
+It is not an execution queue and does not lock the old schemas, constants, or order.
 
 ---
 
-## 0. Where we actually are
+### Historical 0. Where we actually are
 
 | Layer | State |
 |---|---|
@@ -36,47 +75,15 @@ epic needs it.
 
 ---
 
-## 1. Architectural constitution (paste into every agent prompt)
+### Historical 1. Architecture policy
 
-**Canonical copy: `ARCHITECTURE_CONSTITUTION.md`.** The list below is a summary; if
-they differ, the canonical file wins. Any ticket that violates a rule must say so
-explicitly and justify it.
-
-1. **Dependency direction is one-way:** `Content` ← `Runtime` ← `Presentation` ← `UI`.
-   Each is its own asmdef. Runtime never references Presentation or UI. Presentation
-   never references UI.
-2. **Views are read-only projections.** A presenter/view/UI reads sim state and raises
-   commands. It never writes a sim field. (`InventoryRackView` is the template.)
-3. **Mutations go through narrow validated commands** that return a result enum
-   (`Assign() → AssignmentResult` is the template). No universal command bus, no
-   event soup. One method per player intention.
-4. **One authority per fact.** Inventory owns quantities. `EmploymentAssignment` owns
-   employment. `currentLocation` owns arrived location. Contract owns the transport
-   obligation. Nothing caches a second copy that can drift.
-5. **Simulation advances only from `SimulationTick(deltaGameHours)`.** `Update` is for
-   presentation only. Register in `OnEnable`, unregister in `OnDisable`.
-6. **Cross-cutting influences on a facility are `IFacilityPerformanceProvider` channels**
-   (staffing, power, maintenance condition, morale, hazard). Consumers read
-   `IsOperational` and `GetMultiplier(effect)`; they never learn *why*.
-7. **Registries, never scene scans, on hot paths.** `FindObjectsByType` is allowed only
-   at startup/recovery.
-8. **A new facility is composition + content assets, never a bespoke controller.**
-   If a feature needs a new MonoBehaviour, it must be reusable by at least two
-   facility types or it belongs in content.
-9. **Explicit state, no booleans that lie.** Phases are enums with one writer
-   (`DutyState`, `ShipPhase`, `TransitState` are the templates). Disabled means paused
-   and blocked, never "silently automated."
-10. **File ceiling ~400 lines / one responsibility per class.** Split by responsibility,
-    keep a facade if callers exist.
-11. **All runtime-authoritative state lives in serialized fields** (private
-    `[SerializeField]` with read-only accessors) so save/load in Phase 1 is a
-    serializer, not a rewrite.
-12. **Acceptance criteria are observable behavior**, written as "when the player does X,
-    Y is visible within Z game-hours," not "method returns true."
+The canonical, status-labeled policy is [`ARCHITECTURE_CONSTITUTION.md`](ARCHITECTURE_CONSTITUTION.md).
+Do not copy a stale rule list into an agent prompt. Use the active three-day window and
+state which rule is a verified invariant, a working policy, or a process preference.
 
 ---
 
-## 2. Phase 0 — Vertical Slice (target: 2–3 weeks)
+### Historical 2. Phase 0 — Vertical Slice (target: 2–3 weeks)
 
 **Definition of done:** a stranger sits down, plays 15 minutes without instruction
 from you, and can say what the game is. Concretely: they place a farm, see builders
@@ -232,7 +239,7 @@ morale, health, events, final art, audio, tutorial.
 
 ---
 
-## 3. Phase 1 — The Growth Loop (weeks 4–8)
+### Historical 3. Phase 1 — The Growth Loop (weeks 4–8)
 
 **Definition of done:** a session lasts 2+ hours because the colony keeps demanding
 something new. Can be saved and resumed.
@@ -265,7 +272,7 @@ something new. Can be saved and resumed.
 
 ---
 
-## 4. Phase 2 — Depth and Content (months 3–5)
+### Historical 4. Phase 2 — Depth and Content (months 3–5)
 
 **Definition of done:** the game has its own identity; a 10-hour campaign is possible.
 
@@ -288,7 +295,7 @@ something new. Can be saved and resumed.
 
 ---
 
-## 5. Phase 3 — Productization to 1.0 (months 5–8)
+### Historical 5. Phase 3 — Productization to 1.0 (months 5–8)
 
 - **Performance:** 200+ colonists at 4× speed within tick budget; profile the
   allocator, dispatch arbitration and reconcilers; pooling for views.
@@ -299,7 +306,7 @@ something new. Can be saved and resumed.
 
 ---
 
-## 6. How to carve this into agent packets
+### Historical 6. How to carve this into agent packets
 
 Use the same shape as `tickets/minigame readiness/`:
 `00_README_FIRST` → `01_LOCKED_DESIGN` → `T0x` tickets → acceptance matrix.

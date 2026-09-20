@@ -1,6 +1,40 @@
-# State of the Project (snapshot: 2026-09-18, commit `c2b92cc`)
+# State of the Project (snapshot: 2026-09-20, local HEAD `5986e66`)
 
-## Numbers
+## Current local snapshot
+
+The repository is on `main` at the imported-interaction/art baseline. Current code and
+content include:
+
+- the simulation runtime under `Assets/Scripts/ColonyPrototype` and its existing
+  inventory, staffing, facility-performance, population-consumption, logistics, and
+  ship components;
+- the reusable `Packages/com.asteroidcolony.interactions` package, including
+  `InteractableFacility`, embedded activity/sequence authoring, local motor/animation
+  execution, editor validation, placement preview, and optional Animation Rigging
+  contacts;
+- imported Synty art under `Assets/PolygonSciFiWorlds`, converted for the HDRP project;
+- the existing `Assets/SpaceSim.unity` scene and current content, which remain the
+  authority for integration. The interaction package intentionally has no sample scene.
+
+The current repository still does not have the final player-facing camera/UI,
+construction loop, scenario bootstrap, personal-needs consequences, or final docking /
+boarding presentation. These are planning statements to verify against source before
+each future task, not permission to implement them in this documentation pass.
+
+## Active planning state
+
+The old infrastructure-first ordering is superseded. The next window is:
+
+1. human avatar plus navigable Command Post/Farm blockouts;
+2. port the local interactable-facility prototype so an active Farm worker visibly works;
+3. make one shuttle dock physically with visible boarding/disembarking.
+
+The external audit packet is preserved under `planning/audits/2026-09-20/` as historical
+reference. Tentative notes do not override the current source or owner decisions.
+
+## Historical pre-install snapshot (reference only)
+
+### Historical Numbers
 
 | Metric | Value |
 |---|---|
@@ -11,7 +45,7 @@
 | Scene | `SpaceSim.unity`: CommandPod, Farm, Water Processor, Shuttle, Mining Ship 1, Ice Asteroid 1, one authored colonist (`Pilot 3`), primitives for visuals |
 | Unity | 6000.5.9f1, HDRP 17.5, Input System 1.20, uGUI 2.5 (UI Toolkit modules present) |
 
-## What exists and is good
+### Historical What existed and was good
 
 The simulation backend is complete for its scope and the docs match the code.
 
@@ -39,7 +73,7 @@ The simulation backend is complete for its scope and the docs match the code.
   containment-without-reparenting, explicit transit state, ship phases, fail-closed
   movers, teardown recovery, single duty-phase writer, availability query, registries.
 
-## What does not exist
+### Historical What did not exist
 
 | Layer | Status |
 |---|---|
@@ -56,7 +90,7 @@ The simulation backend is complete for its scope and the docs match the code.
 | Art / environment / audio | Primitives only; no materials, no environment, no audio |
 | Presentation asmdef | None; nothing separates sim from visuals yet |
 
-## Why progress feels slow
+### Historical Why progress felt slow
 
 Velocity is high. The problem is **ordering**: three consecutive packets (production
 refactor, staffing system, readiness remediation) were infrastructure and hardening for
@@ -67,7 +101,7 @@ about invariants under component-disabling experiments.
 The fix is not to go faster; it is to build infrastructure only when a player-visible
 epic needs it (see `ROADMAP.md` Phase 0).
 
-## Hotspots and smells
+### Historical Hotspots and smells
 
 - `People/StaffingManager.cs` — 1,063 lines, 55 methods: employment API, colonist
   reconciliation, pilot reconciliation, commute batching, schedule formatting, diagnostics.
