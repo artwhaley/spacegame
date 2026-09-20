@@ -1,0 +1,19 @@
+{
+  "name": "Colony.Interactions.Editor",
+  "rootNamespace": "Colony.Interactions.Editor",
+  "references": [
+    "Colony.Interactions.Runtime",
+    "Unity.Animation.Rigging.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
