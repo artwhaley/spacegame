@@ -1,0 +1,10 @@
+Assets/PolygonSciFiWorlds/**/*.unitypackage filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.tga filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.exr filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.tif filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.tiff filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.png filter=lfs diff=lfs merge=lfs -text
+Assets/PolygonSciFiWorlds/**/*.psd filter=lfs diff=lfs merge=lfs -text
