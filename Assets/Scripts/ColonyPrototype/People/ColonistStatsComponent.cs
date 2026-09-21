@@ -42,11 +42,36 @@ namespace AsteroidColony
         [SerializeField, Min(0f)]
         private float criticalHungerThreshold = 90f;
 
+        // Soft discretionary drives. They are not death meters: zero means fully satisfied
+        // and a larger value means a stronger unmet discretionary drive. Nothing in Stack 1
+        // attaches a health consequence to them.
+        [SerializeField, Min(0f)]
+        private float stimulationNeed;
+
+        [SerializeField]
+        private float baselineStimulationNeedPerGameHour = 4f;
+
+        [SerializeField, Min(0f)]
+        private float stimulationNeedThreshold = 50f;
+
+        [SerializeField, Min(0f)]
+        private float relaxationNeed;
+
+        [SerializeField]
+        private float baselineRelaxationNeedPerGameHour = 4f;
+
+        [SerializeField, Min(0f)]
+        private float relaxationNeedThreshold = 50f;
+
         private bool thresholdStateInitialized;
         private bool wasHungry;
         private bool wasCriticallyHungry;
         private bool wasSleepy;
         private bool wasRestPreferred;
+        private bool wasStimulationNeeded;
+        private bool wasRelaxationNeeded;
+        private InteractableFacility cachedOffDutyFacility;
+        private OffDutyComponent cachedOffDutyProvider;
 
         public float Fatigue => fatigue;
 
@@ -106,6 +131,15 @@ namespace AsteroidColony
             }
         }
 
+        // Effective leisure rates are baseline accumulation minus the recovery authored by the
+        // discretionary activity the colonist is genuinely performing right now. Navigation,
+        // entry, exit and released state all receive the plain baseline rate.
+        public float EffectiveStimulationPerGameHour =>
+            BaselineStimulationNeedPerGameHour - ActiveOffDutyRecovery(true);
+
+        public float EffectiveRelaxationPerGameHour =>
+            BaselineRelaxationNeedPerGameHour - ActiveOffDutyRecovery(false);
+
         public float SleepyThreshold => sleepyThreshold;
 
         public float RestPreferredThreshold => restPreferredThreshold;
@@ -117,6 +151,28 @@ namespace AsteroidColony
         public float StarvationThreshold => starvationThreshold;
 
         public float CriticalHungerThreshold => criticalHungerThreshold;
+
+        public float StimulationNeed => stimulationNeed;
+
+        public float BaselineStimulationNeedPerGameHour =>
+            IsFinite(baselineStimulationNeedPerGameHour)
+                ? Mathf.Max(0f, baselineStimulationNeedPerGameHour)
+                : 0f;
+
+        public float StimulationNeedThreshold => stimulationNeedThreshold;
+
+        public bool NeedsStimulation => stimulationNeed >= stimulationNeedThreshold;
+
+        public float RelaxationNeed => relaxationNeed;
+
+        public float BaselineRelaxationNeedPerGameHour =>
+            IsFinite(baselineRelaxationNeedPerGameHour)
+                ? Mathf.Max(0f, baselineRelaxationNeedPerGameHour)
+                : 0f;
+
+        public float RelaxationNeedThreshold => relaxationNeedThreshold;
+
+        public bool NeedsRelaxation => relaxationNeed >= relaxationNeedThreshold;
 
         public bool IsSleepy => fatigue >= sleepyThreshold;
 
@@ -162,6 +218,14 @@ namespace AsteroidColony
             float hungerChange = EffectiveHungerPerGameHour * deltaGameHours;
             if (IsFinite(hungerChange))
                 ApplyHungerDelta(hungerChange);
+
+            float stimulationChange = EffectiveStimulationPerGameHour * deltaGameHours;
+            if (IsFinite(stimulationChange))
+                ApplyStimulationDelta(stimulationChange);
+
+            float relaxationChange = EffectiveRelaxationPerGameHour * deltaGameHours;
+            if (IsFinite(relaxationChange))
+                ApplyRelaxationDelta(relaxationChange);
         }
 
         public void AdjustFatigue(float amount)
@@ -178,6 +242,22 @@ namespace AsteroidColony
                 return;
 
             ApplyHungerDelta(amount);
+        }
+
+        public void AdjustStimulationNeed(float amount)
+        {
+            if (!IsFinite(amount))
+                return;
+
+            ApplyStimulationDelta(amount);
+        }
+
+        public void AdjustRelaxationNeed(float amount)
+        {
+            if (!IsFinite(amount))
+                return;
+
+            ApplyRelaxationDelta(amount);
         }
 
         private void OnValidate()
@@ -227,6 +307,27 @@ namespace AsteroidColony
                 hungryThreshold,
                 starvationThreshold);
 
+            if (!IsFinite(stimulationNeed))
+                stimulationNeed = 0f;
+            stimulationNeed = Mathf.Max(0f, stimulationNeed);
+
+            if (!IsFinite(baselineStimulationNeedPerGameHour))
+                baselineStimulationNeedPerGameHour = 0f;
+
+            if (!IsFinite(stimulationNeedThreshold))
+                stimulationNeedThreshold = 0f;
+            stimulationNeedThreshold = Mathf.Max(0f, stimulationNeedThreshold);
+
+            if (!IsFinite(relaxationNeed))
+                relaxationNeed = 0f;
+            relaxationNeed = Mathf.Max(0f, relaxationNeed);
+
+            if (!IsFinite(baselineRelaxationNeedPerGameHour))
+                baselineRelaxationNeedPerGameHour = 0f;
+
+            if (!IsFinite(relaxationNeedThreshold))
+                relaxationNeedThreshold = 0f;
+            relaxationNeedThreshold = Mathf.Max(0f, relaxationNeedThreshold);
         }
 
         private void ApplyFatigueDelta(float amount)
@@ -255,12 +356,83 @@ namespace AsteroidColony
             RecordThresholdTransitions();
         }
 
+        private void ApplyStimulationDelta(float amount)
+        {
+            if (!IsFinite(stimulationNeed))
+                stimulationNeed = 0f;
+
+            float updatedNeed = stimulationNeed + amount;
+            if (!IsFinite(updatedNeed))
+                return;
+
+            stimulationNeed = Mathf.Max(0f, updatedNeed);
+            RecordThresholdTransitions();
+        }
+
+        private void ApplyRelaxationDelta(float amount)
+        {
+            if (!IsFinite(relaxationNeed))
+                relaxationNeed = 0f;
+
+            float updatedNeed = relaxationNeed + amount;
+            if (!IsFinite(updatedNeed))
+                return;
+
+            relaxationNeed = Mathf.Max(0f, updatedNeed);
+            RecordThresholdTransitions();
+        }
+
+        private float ActiveOffDutyRecovery(bool stimulation)
+        {
+            OffDutyActivityBinding activity = ResolveActiveOffDutyActivity();
+            if (activity == null)
+                return 0f;
+
+            return stimulation
+                ? activity.StimulationRecoveryPerGameHour
+                : activity.RelaxationRecoveryPerGameHour;
+        }
+
+        private OffDutyActivityBinding ResolveActiveOffDutyActivity()
+        {
+            if (activityRunner == null || !activityRunner.IsActivityActive)
+                return null;
+
+            InteractableFacility facility = activityRunner.ActiveFacility;
+            string activityId = activityRunner.ActiveActivityId;
+            if (facility == null || string.IsNullOrWhiteSpace(activityId))
+                return null;
+
+            OffDutyComponent provider;
+            if (cachedOffDutyFacility == facility)
+            {
+                provider = cachedOffDutyProvider;
+            }
+            else
+            {
+                provider = facility.GetComponent<OffDutyComponent>();
+                cachedOffDutyFacility = facility;
+                cachedOffDutyProvider = provider;
+            }
+
+            if (provider == null ||
+                !provider.TryGetActivity(activityId, out OffDutyActivityBinding activity) ||
+                !provider.IsLive(activity))
+            {
+                return null;
+            }
+
+            return activity;
+        }
+
         private void CaptureThresholdState()
         {
             wasHungry = IsHungry;
             wasCriticallyHungry = IsCriticallyHungry;
             wasSleepy = IsSleepy;
             wasRestPreferred = ShouldPreferRest;
+            wasStimulationNeeded = NeedsStimulation;
+            wasRelaxationNeeded = NeedsRelaxation;
             thresholdStateInitialized = true;
         }
 
@@ -276,38 +448,59 @@ namespace AsteroidColony
             bool criticallyHungry = IsCriticallyHungry;
             bool sleepy = IsSleepy;
             bool restPreferred = ShouldPreferRest;
+            bool stimulationNeeded = NeedsStimulation;
+            bool relaxationNeeded = NeedsRelaxation;
 
             RecordTransition(
                 "colonist.need.hungry",
                 wasHungry,
                 hungry,
+                Hunger,
                 HungryThreshold);
             RecordTransition(
                 "colonist.need.critical_hunger",
                 wasCriticallyHungry,
                 criticallyHungry,
+                Hunger,
                 CriticalHungerThreshold);
             RecordTransition(
                 "colonist.need.sleepy",
                 wasSleepy,
                 sleepy,
+                Fatigue,
                 SleepyThreshold);
             RecordTransition(
                 "colonist.need.rest_preferred",
                 wasRestPreferred,
                 restPreferred,
+                Fatigue,
                 RestPreferredThreshold);
+            RecordTransition(
+                "colonist.need.stimulation",
+                wasStimulationNeeded,
+                stimulationNeeded,
+                StimulationNeed,
+                StimulationNeedThreshold);
+            RecordTransition(
+                "colonist.need.relaxation",
+                wasRelaxationNeeded,
+                relaxationNeeded,
+                RelaxationNeed,
+                RelaxationNeedThreshold);
 
             wasHungry = hungry;
             wasCriticallyHungry = criticallyHungry;
             wasSleepy = sleepy;
             wasRestPreferred = restPreferred;
+            wasStimulationNeeded = stimulationNeeded;
+            wasRelaxationNeeded = relaxationNeeded;
         }
 
         private void RecordTransition(
             string eventKey,
             bool wasActive,
             bool isActive,
+            float value,
             float threshold)
         {
             if (wasActive == isActive)
@@ -320,7 +513,7 @@ namespace AsteroidColony
                 this,
                 null,
                 new SimulationLogField("state", isActive ? "entered" : "exited"),
-                new SimulationLogField("value", eventKey.Contains("hunger") ? Hunger : Fatigue),
+                new SimulationLogField("value", value),
                 new SimulationLogField("threshold", threshold));
         }
 

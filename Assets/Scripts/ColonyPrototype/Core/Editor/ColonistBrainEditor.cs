@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Colony.Interactions;
 using UnityEditor;
 using UnityEngine;
@@ -65,6 +67,31 @@ namespace AsteroidColony
                 ReadOnlyLabel("Critical Hunger", stats.IsCriticallyHungry ? "YES" : "NO");
                 ReadOnlyLabel("Starvation Threshold", stats.StarvationThreshold.ToString("0.##"));
                 ReadOnlyLabel("Starving", stats.IsStarving ? "YES" : "NO");
+                ReadOnlyLabel("Stimulation Need", stats.StimulationNeed.ToString("0.##"));
+                ReadOnlyLabel(
+                    "Stimulation Baseline Rate",
+                    FormatRate(stats.BaselineStimulationNeedPerGameHour));
+                ReadOnlyLabel(
+                    "Stimulation Effective Rate",
+                    FormatRate(stats.EffectiveStimulationPerGameHour));
+                ReadOnlyLabel(
+                    "Stimulation Threshold",
+                    stats.StimulationNeedThreshold.ToString("0.##"));
+                ReadOnlyLabel("Needs Stimulation", stats.NeedsStimulation ? "YES" : "NO");
+                ReadOnlyLabel("Relaxation Need", stats.RelaxationNeed.ToString("0.##"));
+                ReadOnlyLabel(
+                    "Relaxation Baseline Rate",
+                    FormatRate(stats.BaselineRelaxationNeedPerGameHour));
+                ReadOnlyLabel(
+                    "Relaxation Effective Rate",
+                    FormatRate(stats.EffectiveRelaxationPerGameHour));
+                ReadOnlyLabel(
+                    "Relaxation Threshold",
+                    stats.RelaxationNeedThreshold.ToString("0.##"));
+                ReadOnlyLabel("Needs Relaxation", stats.NeedsRelaxation ? "YES" : "NO");
+                ReadOnlyLabel(
+                    "Preferred OffDuty Drive",
+                    FormatDrive(brain.PreferredOffDutyDrive));
             }
 
             EditorGUILayout.Space(2f);
@@ -77,11 +104,15 @@ namespace AsteroidColony
 
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("Eat Target", EditorStyles.boldLabel);
-            DrawEatTarget(resolver);
+            DrawEatTarget(resolver, identity, manager);
 
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("OffDuty Planning", EditorStyles.boldLabel);
             DrawOffDutyPlanning(brain);
+
+            EditorGUILayout.Space(2f);
+            EditorGUILayout.LabelField("Leisure Cooldowns", EditorStyles.boldLabel);
+            DrawCooldowns(brain, manager);
 
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("Interaction", EditorStyles.boldLabel);
@@ -295,7 +326,10 @@ namespace AsteroidColony
                 runner.ActiveFacility != null ? runner.ActiveFacility.name : "NONE");
         }
 
-        private static void DrawEatTarget(ColonistTargetResolver resolver)
+        private static void DrawEatTarget(
+            ColonistTargetResolver resolver,
+            ColonistIdentity identity,
+            SimulationManager simulation)
         {
             if (resolver == null)
             {
@@ -320,6 +354,31 @@ namespace AsteroidColony
             ReadOnlyLabel("Resolved", "YES");
             ReadOnlyLabel("Facility", target.Facility.name);
             ReadOnlyLabel("Activity", target.ActivityId);
+
+            float currentGameHour = simulation != null ? simulation.CurrentGameHour : 0f;
+            if (FoodManager.Instance == null ||
+                !FoodManager.Instance.TryGetFoodOpportunity(
+                    target,
+                    identity,
+                    currentGameHour,
+                    out FoodServiceOpportunity opportunity))
+            {
+                ReadOnlyLabel("Access Mode", "UNKNOWN");
+                return;
+            }
+
+            ReadOnlyLabel(
+                "Access Mode",
+                FoodManager.DescribeAccessMode(opportunity.AccessMode));
+            if (opportunity.Service != null)
+            {
+                ReadOnlyLabel(
+                    "Requires Staff",
+                    opportunity.Service.RequiresStaff ? "YES" : "NO");
+                ReadOnlyLabel(
+                    "Self Service Policy",
+                    opportunity.Service.SelfServicePolicy.ToString());
+            }
         }
 
         private static void DrawOffDutyPlanning(ColonistBrain brain)
@@ -341,6 +400,76 @@ namespace AsteroidColony
             ReadOnlyLabel(
                 "OffDuty Active Duration",
                 FormatDuration(brain.OffDutyActiveDuration));
+            ReadOnlyLabel("Active OffDuty Drive", FormatDrive(brain.ActiveOffDutyDrive));
+        }
+
+        private static void DrawCooldowns(
+            ColonistBrain brain,
+            SimulationManager simulation)
+        {
+            OffDutyCompletionHistory history = brain.OffDutyCompletionHistory;
+            if (history == null || history.Records.Count == 0)
+            {
+                ReadOnlyLabel("Cooldowns", "NONE");
+                return;
+            }
+
+            float currentGameHour = simulation != null ? simulation.CurrentGameHour : 0f;
+            for (int index = 0; index < history.Records.Count; index++)
+            {
+                OffDutyCompletionRecord record = history.Records[index];
+                float cooldownHours = FindAuthoredCooldownHours(record.CooldownKey);
+                float cooldownUntil =
+                    record.LastCompletedAbsoluteGameHour + cooldownHours;
+                ReadOnlyLabel(
+                    "Cooldown " + record.CooldownKey,
+                    cooldownHours > 0f && currentGameHour < cooldownUntil
+                        ? FormatDuration(cooldownUntil - currentGameHour) + " remaining"
+                        : "ready");
+            }
+        }
+
+        private static float FindAuthoredCooldownHours(string cooldownKey)
+        {
+            OffDutyManager manager = OffDutyManager.Instance;
+            if (manager == null || string.IsNullOrWhiteSpace(cooldownKey))
+                return 0f;
+
+            float hours = 0f;
+            IReadOnlyList<OffDutyComponent> providers = manager.Providers;
+            for (int providerIndex = 0; providerIndex < providers.Count; providerIndex++)
+            {
+                OffDutyComponent provider = providers[providerIndex];
+                if (provider == null)
+                    continue;
+
+                IReadOnlyList<OffDutyActivityBinding> activities = provider.Activities;
+                for (int activityIndex = 0; activityIndex < activities.Count; activityIndex++)
+                {
+                    OffDutyActivityBinding activity = activities[activityIndex];
+                    if (activity == null ||
+                        !string.Equals(
+                            activity.CooldownKey,
+                            cooldownKey,
+                            StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (activity.CooldownGameHours > hours)
+                        hours = activity.CooldownGameHours;
+                }
+            }
+
+            return hours;
+        }
+
+        private static string FormatDrive(OffDutyDrive? drive)
+        {
+            if (!drive.HasValue)
+                return "NONE";
+
+            return drive.Value == OffDutyDrive.Stimulation ? "stimulation" : "relaxation";
         }
 
         private static string FormatOccurrence(ScheduledWorkOccurrence occurrence)

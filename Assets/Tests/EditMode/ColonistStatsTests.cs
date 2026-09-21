@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using Colony.Interactions;
 using NUnit.Framework;
@@ -11,6 +12,8 @@ namespace AsteroidColony.Tests
         private ColonistStatsComponent stats;
         private GameObject runnerObject;
         private GameObject foodFacilityObject;
+        private GameObject offDutyFacilityObject;
+        private GameObject logManagerObject;
 
         [SetUp]
         public void SetUp()
@@ -27,7 +30,224 @@ namespace AsteroidColony.Tests
                 Object.DestroyImmediate(runnerObject);
             if (foodFacilityObject != null)
                 Object.DestroyImmediate(foodFacilityObject);
+            if (offDutyFacilityObject != null)
+                Object.DestroyImmediate(offDutyFacilityObject);
+            if (logManagerObject != null)
+                Object.DestroyImmediate(logManagerObject);
         }
+
+        [Test]
+        public void StimulationAndRelaxationAccumulateAtBaselineRates()
+        {
+            stats.SimulationTick(2f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(8f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(8f).Within(0.0001f));
+        }
+
+        [Test]
+        public void LeisureDrivesClampAtZero()
+        {
+            SetStimulationNeed(3f);
+            SetRelaxationNeed(3f);
+
+            stats.AdjustStimulationNeed(-10f);
+            stats.AdjustRelaxationNeed(-10f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(0f).Within(0.0001f));
+        }
+
+        [Test]
+        public void LeisureDrivesMayExceedTheirThresholds()
+        {
+            SetStimulationNeed(95f);
+            SetRelaxationNeed(95f);
+
+            stats.AdjustStimulationNeed(30f);
+            stats.AdjustRelaxationNeed(30f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(125f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(125f).Within(0.0001f));
+            Assert.That(stats.NeedsStimulation, Is.True);
+            Assert.That(stats.NeedsRelaxation, Is.True);
+        }
+
+        [Test]
+        public void LeisureThresholdsUseAuthoredValues()
+        {
+            Assert.That(
+                stats.BaselineStimulationNeedPerGameHour,
+                Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(
+                stats.BaselineRelaxationNeedPerGameHour,
+                Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(stats.StimulationNeedThreshold, Is.EqualTo(50f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeedThreshold, Is.EqualTo(50f).Within(0.0001f));
+
+            SetStimulationNeed(49f);
+            SetRelaxationNeed(49f);
+            Assert.That(stats.NeedsStimulation, Is.False);
+            Assert.That(stats.NeedsRelaxation, Is.False);
+
+            SetStimulationNeed(50f);
+            SetRelaxationNeed(50f);
+            Assert.That(stats.NeedsStimulation, Is.True);
+            Assert.That(stats.NeedsRelaxation, Is.True);
+        }
+
+        [Test]
+        public void InvalidValuesCannotPoisonLeisureDrivesOrRates()
+        {
+            SetStimulationNeed(20f);
+            SetRelaxationNeed(20f);
+
+            stats.AdjustStimulationNeed(float.NaN);
+            stats.AdjustStimulationNeed(float.PositiveInfinity);
+            stats.AdjustStimulationNeed(float.NegativeInfinity);
+            stats.AdjustRelaxationNeed(float.NaN);
+            stats.AdjustRelaxationNeed(float.PositiveInfinity);
+            stats.AdjustRelaxationNeed(float.NegativeInfinity);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(20f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(20f).Within(0.0001f));
+            Assert.That(
+                stats.EffectiveStimulationPerGameHour,
+                Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(
+                stats.EffectiveRelaxationPerGameHour,
+                Is.EqualTo(4f).Within(0.0001f));
+        }
+
+        [Test]
+        public void LeisureThresholdTransitionsAreLoggedOnlyOnStateChange()
+        {
+            logManagerObject = new GameObject("Simulation Log Manager Test");
+            SimulationLogManager log = logManagerObject.AddComponent<SimulationLogManager>();
+            Assert.That(SimulationLogManager.Instance, Is.SameAs(log));
+
+            SetStimulationNeed(50f);
+            stats.AdjustStimulationNeed(0f);
+            stats.AdjustStimulationNeed(10f);
+
+            Assert.That(CountEntries("colonist.need.stimulation"), Is.EqualTo(1));
+
+            SetStimulationNeed(0f);
+            stats.AdjustStimulationNeed(0f);
+
+            Assert.That(CountEntries("colonist.need.stimulation"), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ActivePlayReducesStimulationNeed()
+        {
+            CreateRunnerAndStats();
+            ActivateOffDutyActivity(
+                stimulationRecovery: 60f,
+                relaxationRecovery: 0f,
+                activityActive: true,
+                exitInProgress: false);
+            SetStimulationNeed(100f);
+
+            Assert.That(
+                stats.EffectiveStimulationPerGameHour,
+                Is.EqualTo(-56f).Within(0.0001f));
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(44f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ActiveRelaxingActivityReducesRelaxationNeedOnly()
+        {
+            CreateRunnerAndStats();
+            ActivateOffDutyActivity(0f, 50f, activityActive: true, exitInProgress: false);
+            SetStimulationNeed(100f);
+            SetRelaxationNeed(100f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(54f).Within(0.0001f));
+            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ActivitySatisfyingBothDrivesAffectsBoth()
+        {
+            CreateRunnerAndStats();
+            ActivateOffDutyActivity(10f, 30f, activityActive: true, exitInProgress: false);
+            SetStimulationNeed(100f);
+            SetRelaxationNeed(100f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(94f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(74f).Within(0.0001f));
+        }
+
+        [Test]
+        public void WalkingToPlayUsesBaselineLeisureRates()
+        {
+            CreateRunnerAndStats();
+            ActivateOffDutyActivity(60f, 60f, activityActive: false, exitInProgress: false);
+            SetStimulationNeed(100f);
+            SetRelaxationNeed(100f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(104f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ExitingPlayUsesBaselineLeisureRates()
+        {
+            CreateRunnerAndStats();
+            ActivateOffDutyActivity(60f, 60f, activityActive: true, exitInProgress: true);
+            SetStimulationNeed(100f);
+            SetRelaxationNeed(100f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(104f).Within(0.0001f));
+        }
+
+        [Test]
+        public void DisabledOffDutyActivityUsesBaselineLeisureRates()
+        {
+            CreateRunnerAndStats();
+            ActivateOffDutyActivity(
+                60f,
+                60f,
+                activityActive: true,
+                exitInProgress: false,
+                activityEnabled: false);
+            SetStimulationNeed(100f);
+            SetRelaxationNeed(100f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(104f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ActivityWithoutOffDutyBindingUsesBaselineLeisureRates()
+        {
+            CreateRunnerAndStats();
+            ColonistActivityRunner runner = runnerObject.GetComponent<ColonistActivityRunner>();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runner, sleep, activityActive: true, exitInProgress: false);
+            SetStimulationNeed(100f);
+            SetRelaxationNeed(100f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
+            Assert.That(stats.RelaxationNeed, Is.EqualTo(104f).Within(0.0001f));
+        }
+
 
         [Test]
         public void BaselineFatigueAccumulatesOverGameHours()
@@ -361,6 +581,77 @@ namespace AsteroidColony.Tests
             Assert.That(stats.Fatigue, Is.EqualTo(55f).Within(0.0001f));
         }
 
+        private void ActivateOffDutyActivity(
+            float stimulationRecovery,
+            float relaxationRecovery,
+            bool activityActive,
+            bool exitInProgress,
+            bool activityEnabled = true)
+        {
+            ColonistActivityRunner runner = runnerObject.GetComponent<ColonistActivityRunner>();
+            FacilityActivityBinding binding = CreateOffDutyFacility(
+                stimulationRecovery,
+                relaxationRecovery,
+                activityEnabled);
+            SetPrivateField(
+                runner,
+                "currentFacility",
+                offDutyFacilityObject.GetComponent<InteractableFacility>());
+            SetRunnerState(runner, binding, activityActive, exitInProgress);
+        }
+
+        private FacilityActivityBinding CreateOffDutyFacility(
+            float stimulationRecovery,
+            float relaxationRecovery,
+            bool activityEnabled)
+        {
+            offDutyFacilityObject = new GameObject("Recreation Facility Test");
+            InteractableFacility facility =
+                offDutyFacilityObject.AddComponent<InteractableFacility>();
+            Transform approach = new GameObject("Recreation Approach").transform;
+            approach.SetParent(offDutyFacilityObject.transform, false);
+            FacilityActivityBinding facilityBinding = new FacilityActivityBinding();
+            SetPrivateField(facilityBinding, "activityId", "play");
+            SetPrivateField(facilityBinding, "reservationGroup", "Play01");
+            SetPrivateField(facilityBinding, "externallyRequestable", true);
+            SetPrivateField(facilityBinding, "approachAnchor", approach);
+            SetPrivateField(facility, "activities", new[] { facilityBinding });
+
+            OffDutyComponent provider = offDutyFacilityObject.AddComponent<OffDutyComponent>();
+            OffDutyActivityBinding activity = new OffDutyActivityBinding();
+            SetPrivateField(activity, "activityId", "play");
+            SetPrivateField(activity, "plannedDurationGameHours", 1f);
+            SetPrivateField(activity, "enabled", activityEnabled);
+            SetPrivateField(activity, "cooldownGameHours", 12f);
+            SetPrivateField(activity, "cooldownKey", "play");
+            SetPrivateField(activity, "stimulationRecoveryPerGameHour", stimulationRecovery);
+            SetPrivateField(activity, "relaxationRecoveryPerGameHour", relaxationRecovery);
+            SetPrivateField(provider, "activities", new[] { activity });
+            return facilityBinding;
+        }
+
+        private static int CountEntries(string eventKey)
+        {
+            if (SimulationLogManager.Instance == null)
+                return 0;
+
+            int count = 0;
+            IReadOnlyList<SimulationLogEntry> entries = SimulationLogManager.Instance.Entries;
+            for (int index = 0; index < entries.Count; index++)
+            {
+                if (entries[index] != null &&
+                    string.Equals(
+                        entries[index].EventKey,
+                        eventKey,
+                        System.StringComparison.Ordinal))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
         private ColonistActivityRunner CreateRunner()
         {
             runnerObject = new GameObject("Colonist Activity Runner Test");
@@ -441,6 +732,22 @@ namespace AsteroidColony.Tests
                 "hunger", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(hunger, Is.Not.Null);
             hunger.SetValue(stats, value);
+        }
+
+        private void SetStimulationNeed(float value)
+        {
+            FieldInfo field = typeof(ColonistStatsComponent).GetField(
+                "stimulationNeed", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null);
+            field.SetValue(stats, value);
+        }
+
+        private void SetRelaxationNeed(float value)
+        {
+            FieldInfo field = typeof(ColonistStatsComponent).GetField(
+                "relaxationNeed", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null);
+            field.SetValue(stats, value);
         }
     }
 }

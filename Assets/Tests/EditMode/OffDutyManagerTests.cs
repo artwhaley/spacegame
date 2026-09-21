@@ -79,7 +79,164 @@ namespace AsteroidColony.Tests
             return managerObject.AddComponent<OffDutyManager>();
         }
 
+        [Test]
+        public void StimulatingActivityDoesNotSatisfyRelaxationDrive()
+        {
+            OffDutyManager manager = CreateManager();
+            CreateProvider("Recreation", Vector3.zero, 1f, 60f, 0f, "play", 12f);
+
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Stimulation, null, 0f),
+                    out OffDutyOpportunity stimulating),
+                Is.True);
+            Assert.That(stimulating.Activity.ActivityId, Is.EqualTo("play"));
+
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Relaxation, null, 0f),
+                    out OffDutyOpportunity relaxing),
+                Is.False);
+            Assert.That(relaxing, Is.Null);
+        }
+
+        [Test]
+        public void ActivitySatisfyingBothDrivesIsEligibleForEitherDrive()
+        {
+            OffDutyManager manager = CreateManager();
+            CreateProvider("Walk", Vector3.zero, 1f, 10f, 30f, "walk", 12f);
+
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Stimulation, null, 0f),
+                    out _),
+                Is.True);
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Relaxation, null, 0f),
+                    out _),
+                Is.True);
+        }
+
+        [Test]
+        public void CoolingActivityIsExcludedUntilTheCooldownExpires()
+        {
+            OffDutyManager manager = CreateManager();
+            CreateProvider("Recreation", Vector3.zero, 1f, 60f, 0f, "play", 12f);
+            OffDutyCompletionHistory history = new OffDutyCompletionHistory();
+            history.RecordCompletion("play", 10f);
+
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Stimulation, history, 15f),
+                    out _),
+                Is.False);
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Stimulation, history, 22f),
+                    out _),
+                Is.True);
+        }
+
+        [Test]
+        public void DifferentCooldownKeyRemainsEligible()
+        {
+            OffDutyManager manager = CreateManager();
+            CreateProvider("Bowling", Vector3.zero, 1f, 60f, 0f, "bowling", 12f);
+            OffDutyCompletionHistory history = new OffDutyCompletionHistory();
+            history.RecordCompletion("play", 10f);
+
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Stimulation, history, 11f),
+                    out OffDutyOpportunity opportunity),
+                Is.True);
+            Assert.That(opportunity.Activity.CooldownKey, Is.EqualTo("bowling"));
+        }
+
+        [Test]
+        public void SearchReportExplainsACooldownBlockedSearch()
+        {
+            OffDutyManager manager = CreateManager();
+            CreateProvider("Recreation", Vector3.zero, 1f, 60f, 0f, "play", 12f);
+            OffDutyCompletionHistory history = new OffDutyCompletionHistory();
+            history.RecordCompletion("play", 10f);
+
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Stimulation, history, 11f),
+                    out _,
+                    out OffDutySearchReport report),
+                Is.False);
+            Assert.That(report.ExcludedByCooldown, Is.EqualTo(1));
+            Assert.That(report.NoTargetReason, Is.EqualTo("cooldown"));
+        }
+
+        [Test]
+        public void SearchReportFallsBackToAggregateReasonWhenMixedExclusionsApply()
+        {
+            OffDutyManager manager = CreateManager();
+            OffDutyComponent cooling = CreateProvider(
+                "Cooling Recreation",
+                Vector3.zero,
+                1f,
+                60f,
+                0f,
+                "play",
+                12f);
+            CreateProvider(
+                "Reserved Recreation",
+                new Vector3(1f, 0f, 0f),
+                1f,
+                60f,
+                0f,
+                "bowling",
+                12f);
+            Assert.That(
+                cooling.Facility.TryAcquire("Play01", manager, out _),
+                Is.True);
+            OffDutyCompletionHistory history = new OffDutyCompletionHistory();
+            history.RecordCompletion("play", 10f);
+
+            Assert.That(
+                manager.TryFindOpportunity(
+                    CreateQuery(Vector3.zero, 1f, OffDutyDrive.Stimulation, history, 11f),
+                    out _,
+                    out OffDutySearchReport report),
+                Is.False);
+            Assert.That(report.ExcludedByCooldown, Is.EqualTo(1));
+            Assert.That(report.NoTargetReason, Is.EqualTo("no_fitting_opportunity"));
+        }
+
+        private static OffDutyQuery CreateQuery(
+            Vector3 position,
+            float duration,
+            OffDutyDrive drive,
+            OffDutyCompletionHistory history,
+            float currentGameHour)
+        {
+            return new OffDutyQuery(
+                null,
+                position,
+                duration,
+                drive,
+                history,
+                currentGameHour);
+        }
+
         private OffDutyComponent CreateProvider(string name, Vector3 position, float duration)
+        {
+            return CreateProvider(name, position, duration, 0f, 0f, null, 12f);
+        }
+
+        private OffDutyComponent CreateProvider(
+            string name,
+            Vector3 position,
+            float duration,
+            float stimulationRecovery,
+            float relaxationRecovery,
+            string cooldownKey,
+            float cooldownHours)
         {
             GameObject facilityObject = new GameObject(name);
             facilityObject.transform.position = position;
@@ -100,6 +257,10 @@ namespace AsteroidColony.Tests
             SetPrivateField(activity, "activityId", "play");
             SetPrivateField(activity, "plannedDurationGameHours", duration);
             SetPrivateField(activity, "enabled", true);
+            SetPrivateField(activity, "cooldownGameHours", cooldownHours);
+            SetPrivateField(activity, "cooldownKey", cooldownKey);
+            SetPrivateField(activity, "stimulationRecoveryPerGameHour", stimulationRecovery);
+            SetPrivateField(activity, "relaxationRecoveryPerGameHour", relaxationRecovery);
             SetPrivateField(provider, "activities", new[] { activity });
             OffDutyManager.Instance?.Register(provider);
             return provider;

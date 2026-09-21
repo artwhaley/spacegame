@@ -5,6 +5,15 @@ using UnityEngine;
 
 namespace AsteroidColony
 {
+    // Which soft discretionary drive a colonist is currently trying to satisfy.
+    // This is deliberately not an Active/Passive classification: the recovery rates
+    // authored on the activity are the behavioural truth.
+    public enum OffDutyDrive
+    {
+        Stimulation,
+        Relaxation
+    }
+
     [Serializable]
     public sealed class OffDutyActivityBinding
     {
@@ -15,6 +24,10 @@ namespace AsteroidColony
         [SerializeField] private WorkplaceComponent requiredWorkplace;
         [SerializeField] private JobRoleDefinition requiredRole;
         [SerializeField, Min(1)] private int minimumActiveWorkers = 1;
+        [SerializeField, Min(0f)] private float cooldownGameHours = 12f;
+        [SerializeField] private string cooldownKey;
+        [SerializeField, Min(0f)] private float stimulationRecoveryPerGameHour;
+        [SerializeField, Min(0f)] private float relaxationRecoveryPerGameHour;
 
         public string ActivityId => activityId;
         public float PlannedDurationGameHours => plannedDurationGameHours;
@@ -23,6 +36,33 @@ namespace AsteroidColony
         public WorkplaceComponent RequiredWorkplace => requiredWorkplace;
         public JobRoleDefinition RequiredRole => requiredRole;
         public int MinimumActiveWorkers => minimumActiveWorkers;
+        public float CooldownGameHours =>
+            IsFinite(cooldownGameHours) ? Mathf.Max(0f, cooldownGameHours) : 0f;
+        public float StimulationRecoveryPerGameHour =>
+            IsFinite(stimulationRecoveryPerGameHour)
+                ? Mathf.Max(0f, stimulationRecoveryPerGameHour)
+                : 0f;
+        public float RelaxationRecoveryPerGameHour =>
+            IsFinite(relaxationRecoveryPerGameHour)
+                ? Mathf.Max(0f, relaxationRecoveryPerGameHour)
+                : 0f;
+
+        // Cooldown is keyed by authored semantic identity, not by facility instance, so two
+        // bowling lanes can share one 'bowling' cooldown instead of letting a colonist dodge
+        // the cooldown by walking to the other lane.
+        public string CooldownKey =>
+            string.IsNullOrWhiteSpace(cooldownKey)
+                ? (activityId ?? string.Empty)
+                : cooldownKey.Trim();
+
+        public bool HasCooldown => CooldownGameHours > 0f;
+
+        public bool Satisfies(OffDutyDrive drive)
+        {
+            return drive == OffDutyDrive.Stimulation
+                ? StimulationRecoveryPerGameHour > 0f
+                : RelaxationRecoveryPerGameHour > 0f;
+        }
 
         public bool IsStructurallyValid =>
             !string.IsNullOrWhiteSpace(activityId) &&
@@ -30,6 +70,11 @@ namespace AsteroidColony
             !float.IsInfinity(plannedDurationGameHours) &&
             plannedDurationGameHours > 0f &&
             minimumActiveWorkers > 0;
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
     }
 
     [DisallowMultipleComponent]

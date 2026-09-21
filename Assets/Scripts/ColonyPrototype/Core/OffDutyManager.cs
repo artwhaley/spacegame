@@ -29,13 +29,73 @@ namespace AsteroidColony
     public sealed class OffDutyQuery
     {
         public OffDutyQuery(Vector3 seekerPosition, float maximumAllowedDurationGameHours)
+            : this(
+                null,
+                seekerPosition,
+                maximumAllowedDurationGameHours,
+                null,
+                null,
+                0f)
         {
-            SeekerPosition = seekerPosition;
-            MaximumAllowedDurationGameHours = maximumAllowedDurationGameHours;
         }
 
+        public OffDutyQuery(
+            ColonistIdentity seeker,
+            Vector3 seekerPosition,
+            float maximumAllowedDurationGameHours,
+            OffDutyDrive? desiredDrive,
+            OffDutyCompletionHistory completionHistory,
+            float currentAbsoluteGameHour)
+        {
+            Seeker = seeker;
+            SeekerPosition = seekerPosition;
+            MaximumAllowedDurationGameHours = maximumAllowedDurationGameHours;
+            DesiredDrive = desiredDrive;
+            CompletionHistory = completionHistory;
+            CurrentAbsoluteGameHour = currentAbsoluteGameHour;
+        }
+
+        public ColonistIdentity Seeker { get; }
         public Vector3 SeekerPosition { get; }
         public float MaximumAllowedDurationGameHours { get; }
+
+        // A null drive means "no drive constraint" (inspection and legacy callers).
+        // ColonistBrain always supplies the drive it is trying to satisfy.
+        public OffDutyDrive? DesiredDrive { get; }
+        public OffDutyCompletionHistory CompletionHistory { get; }
+        public float CurrentAbsoluteGameHour { get; }
+    }
+
+    public sealed class OffDutySearchReport
+    {
+        public int EvaluatedActivities { get; internal set; }
+        public int DriveMatchingActivities { get; internal set; }
+        public int ExcludedByAvailability { get; internal set; }
+        public int ExcludedByDuration { get; internal set; }
+        public int ExcludedByStaff { get; internal set; }
+        public int ExcludedByCooldown { get; internal set; }
+        public bool HasSelection { get; internal set; }
+
+        /// <summary>
+        /// A truthful explanation for an empty result: only reported as 'cooldown' when every
+        /// drive-matching activity was excluded by cooldown, otherwise the aggregate reason.
+        /// </summary>
+        public string NoTargetReason
+        {
+            get
+            {
+                if (HasSelection)
+                    return "selected";
+
+                if (DriveMatchingActivities > 0 &&
+                    ExcludedByCooldown == DriveMatchingActivities)
+                {
+                    return "cooldown";
+                }
+
+                return "no_fitting_opportunity";
+            }
+        }
     }
 
     [DisallowMultipleComponent]
@@ -88,7 +148,16 @@ namespace AsteroidColony
             OffDutyQuery query,
             out OffDutyOpportunity opportunity)
         {
+            return TryFindOpportunity(query, out opportunity, out _);
+        }
+
+        public bool TryFindOpportunity(
+            OffDutyQuery query,
+            out OffDutyOpportunity opportunity,
+            out OffDutySearchReport report)
+        {
             opportunity = null;
+            report = new OffDutySearchReport();
             if (query == null ||
                 float.IsNaN(query.MaximumAllowedDurationGameHours) ||
                 query.MaximumAllowedDurationGameHours <= 0f)
@@ -105,10 +174,38 @@ namespace AsteroidColony
                 for (int activityIndex = 0; activityIndex < activities.Count; activityIndex++)
                 {
                     OffDutyActivityBinding activity = activities[activityIndex];
-                    if (!provider.IsDiscoverable(activity) ||
-                        activity.PlannedDurationGameHours > query.MaximumAllowedDurationGameHours ||
-                        !HasRequiredStaff(activity))
+                    report.EvaluatedActivities++;
+
+                    if (query.DesiredDrive.HasValue &&
+                        !activity.Satisfies(query.DesiredDrive.Value))
                     {
+                        continue;
+                    }
+
+                    report.DriveMatchingActivities++;
+
+                    if (IsOnCooldown(activity, query))
+                    {
+                        report.ExcludedByCooldown++;
+                        continue;
+                    }
+
+                    if (!provider.IsDiscoverable(activity))
+                    {
+                        report.ExcludedByAvailability++;
+                        continue;
+                    }
+
+                    if (activity.PlannedDurationGameHours >
+                        query.MaximumAllowedDurationGameHours)
+                    {
+                        report.ExcludedByDuration++;
+                        continue;
+                    }
+
+                    if (!HasRequiredStaff(activity))
+                    {
+                        report.ExcludedByStaff++;
                         continue;
                     }
 
@@ -116,6 +213,7 @@ namespace AsteroidColony
                             activity.ActivityId,
                             out FacilityActivityBinding facilityBinding))
                     {
+                        report.ExcludedByAvailability++;
                         continue;
                     }
 
@@ -136,6 +234,7 @@ namespace AsteroidColony
                 }
             }
 
+            report.HasSelection = opportunity != null;
             return opportunity != null;
         }
 
@@ -147,6 +246,19 @@ namespace AsteroidColony
             return TryFindOpportunity(
                 new OffDutyQuery(seekerPosition, maximumAllowedDurationGameHours),
                 out opportunity);
+        }
+
+        private static bool IsOnCooldown(
+            OffDutyActivityBinding activity,
+            OffDutyQuery query)
+        {
+            if (query.CompletionHistory == null || !activity.HasCooldown)
+                return false;
+
+            return query.CompletionHistory.IsOnCooldown(
+                activity.CooldownKey,
+                activity.CooldownGameHours,
+                query.CurrentAbsoluteGameHour);
         }
 
         private bool HasRequiredStaff(OffDutyActivityBinding activity)

@@ -33,6 +33,9 @@ namespace AsteroidColony
         private ActivityTarget eatTargetInProgress;
         private OffDutyOpportunity opportunityInProgress;
         private float actualActiveOffDutyGameHours;
+        private OffDutyDrive? activeOffDutyDrive;
+        private readonly OffDutyCompletionHistory offDutyCompletionHistory =
+            new OffDutyCompletionHistory();
         private bool wakeRequested;
         private bool workStopRequested;
         private bool eatStopRequested;
@@ -54,6 +57,10 @@ namespace AsteroidColony
         public float OffDutyPlannedDuration =>
             opportunityInProgress != null ? opportunityInProgress.PlannedDurationGameHours : 0f;
         public float OffDutyActiveDuration => actualActiveOffDutyGameHours;
+        public OffDutyCompletionHistory OffDutyCompletionHistory =>
+            offDutyCompletionHistory;
+        public OffDutyDrive? ActiveOffDutyDrive => activeOffDutyDrive;
+        public OffDutyDrive? PreferredOffDutyDrive => ResolvePreferredDrive();
         public ScheduledWorkOccurrence NextWork
         {
             get
@@ -450,10 +457,18 @@ namespace AsteroidColony
 
         private void TickEatSeeking()
         {
-            if (!IsFoodTargetValid(eatTargetInProgress) ||
+            bool targetValid = IsFoodTargetValid(eatTargetInProgress);
+            bool accessValid = targetValid && CanRequesterStillAccessFood(eatTargetInProgress);
+            if (!targetValid ||
+                !accessValid ||
                 (HasCurrentWorkObligation() && !stats.IsCriticallyHungry))
             {
-                RequestEatStop();
+                RequestEatStop(
+                    !targetValid
+                        ? "food_target_invalid"
+                        : !accessValid
+                            ? "food_access_lost"
+                            : null);
                 if (!activityRunner.HasActiveRequest)
                     FinishEatLifecycle();
                 return;
@@ -475,12 +490,16 @@ namespace AsteroidColony
 
         private void TickEating()
         {
-            if (!IsFoodTargetValid(eatTargetInProgress) ||
-                !IsCurrentEatActivity() ||
+            bool targetInvalid = !IsFoodTargetValid(eatTargetInProgress) ||
+                                 !IsCurrentEatActivity();
+            // The meal itself is already served: only structural target validity matters here.
+            // Current staffing access is deliberately not re-checked, so a diner is never
+            // ejected because the waiter clocked out.
+            if (targetInvalid ||
                 stats.Hunger <= 0f ||
                 (HasCurrentWorkObligation() && !stats.IsCriticallyHungry))
             {
-                RequestEatStop();
+                RequestEatStop(targetInvalid ? "food_target_invalid" : null);
             }
 
             if (eatStopRequested)
@@ -513,18 +532,36 @@ namespace AsteroidColony
             return true;
         }
 
-        private void RequestEatStop()
+        private void RequestEatStop(string reason = null)
         {
             if (eatStopRequested)
                 return;
 
             eatStopRequested = true;
-            RecordDecision(
-                "colonist.decision.interrupted",
-                HasCurrentWorkObligation() ? "work_started" :
-                stats.IsCriticallyHungry ? "critical_hunger_satisfied" : "hunger_satisfied");
+            string stopReason = !string.IsNullOrEmpty(reason)
+                ? reason
+                : HasCurrentWorkObligation()
+                    ? "work_started"
+                    : stats.IsCriticallyHungry
+                        ? "critical_hunger_satisfied"
+                        : "hunger_satisfied";
+            RecordDecision("colonist.decision.interrupted", stopReason);
             if (activityRunner.HasActiveRequest)
                 activityRunner.Stop();
+        }
+
+        private bool CanRequesterStillAccessFood(ActivityTarget target)
+        {
+            if (FoodManager.Instance == null || target == null)
+                return false;
+
+            float currentGameHour = SimulationManager.Instance != null
+                ? SimulationManager.Instance.CurrentGameHour
+                : 0f;
+            return FoodManager.Instance.CanRequesterStillAccess(
+                target,
+                identity,
+                currentGameHour);
         }
 
         private bool IsCurrentEatActivity()
@@ -546,17 +583,29 @@ namespace AsteroidColony
 
         private void TryStartOffDuty()
         {
+            // OffDuty is the opportunity domain, not a need. With no unmet discretionary
+            // drive there is nothing to seek, even if a recreation facility is standing next
+            // to the colonist.
+            OffDutyDrive? primaryDrive = ResolvePreferredDrive();
+            if (!primaryDrive.HasValue)
+            {
+                activeOffDutyDrive = null;
+                RecordDecision("colonist.decision.blocked", "discretionary_needs_satisfied");
+                return;
+            }
+
             if (OffDutyManager.Instance == null || SimulationManager.Instance == null)
             {
                 RecordDecision("offduty.no_target", "manager_unavailable");
                 return;
             }
 
+            float currentGameHour = SimulationManager.Instance.CurrentGameHour;
             latestFreeTimePlan = ColonistFreeTimePlanner.Calculate(
                 stats,
                 identity,
                 GetComponent<ColonistAssignments>(),
-                SimulationManager.Instance.CurrentGameHour);
+                currentGameHour);
             if (!latestFreeTimePlan.HasBudget)
             {
                 RecordDecision(
@@ -569,15 +618,55 @@ namespace AsteroidColony
                 return;
             }
 
-            if (!OffDutyManager.Instance.TryFindOpportunity(
-                    new OffDutyQuery(transform.position, latestFreeTimePlan.MaximumSafeDiscretionaryDuration),
-                    out OffDutyOpportunity opportunity))
+            if (TryRequestOffDuty(primaryDrive.Value, currentGameHour, out string noTargetReason))
+                return;
+
+            // Secondary-drive fallback: only another drive that is itself above its own
+            // threshold may substitute. A relaxing activity is never chosen merely because
+            // "something recreational exists" while stimulation is the active drive.
+            OffDutyDrive? secondaryDrive = ResolveSecondaryDrive(primaryDrive.Value);
+            if (secondaryDrive.HasValue &&
+                TryRequestOffDuty(secondaryDrive.Value, currentGameHour, out _))
             {
-                RecordDecision("offduty.no_target", "no_fitting_opportunity");
                 return;
             }
 
+            RecordDecision("offduty.no_target", noTargetReason);
+        }
+
+        private bool TryRequestOffDuty(
+            OffDutyDrive drive,
+            float currentGameHour,
+            out string noTargetReason)
+        {
+            noTargetReason = "no_fitting_opportunity";
+            OffDutyManager manager = OffDutyManager.Instance;
+            if (manager == null)
+            {
+                noTargetReason = "manager_unavailable";
+                return false;
+            }
+
+            OffDutyQuery query = new OffDutyQuery(
+                identity,
+                transform.position,
+                latestFreeTimePlan.MaximumSafeDiscretionaryDuration,
+                drive,
+                offDutyCompletionHistory,
+                currentGameHour);
+            if (!manager.TryFindOpportunity(
+                    query,
+                    out OffDutyOpportunity opportunity,
+                    out OffDutySearchReport report))
+            {
+                noTargetReason = report != null
+                    ? report.NoTargetReason
+                    : "no_fitting_opportunity";
+                return false;
+            }
+
             opportunityInProgress = opportunity;
+            activeOffDutyDrive = drive;
             actualActiveOffDutyGameHours = 0f;
             offDutyStopRequested = false;
             if (!activityRunner.RequestActivity(
@@ -585,16 +674,30 @@ namespace AsteroidColony
                     opportunity.Target.ActivityId))
             {
                 opportunityInProgress = null;
+                activeOffDutyDrive = null;
+                noTargetReason = "request_failed";
                 RecordDecision("colonist.decision.blocked", "offduty_request_failed");
-                return;
+                return false;
             }
 
             state = ColonistBrainState.OffDutySeeking;
+            float need = drive == OffDutyDrive.Stimulation
+                ? stats.StimulationNeed
+                : stats.RelaxationNeed;
+            float threshold = drive == OffDutyDrive.Stimulation
+                ? stats.StimulationNeedThreshold
+                : stats.RelaxationNeedThreshold;
+            string driveLabel = DescribeDrive(drive);
+
             RecordDecision(
                 "colonist.decision.offduty",
                 "nearest_fitting_opportunity",
                 opportunity.Target.Facility,
+                new SimulationLogField("drive", driveLabel),
+                new SimulationLogField("need", need),
+                new SimulationLogField("threshold", threshold),
                 new SimulationLogField("activityId", opportunity.Target.ActivityId),
+                new SimulationLogField("cooldownKey", opportunity.Activity.CooldownKey),
                 new SimulationLogField("duration", opportunity.PlannedDurationGameHours));
             SimulationLogManager.RecordEvent(
                 "offduty.target_selected",
@@ -602,9 +705,65 @@ namespace AsteroidColony
                 "Info",
                 this,
                 opportunity.Target.Facility,
+                new SimulationLogField("drive", driveLabel),
+                new SimulationLogField("need", need),
+                new SimulationLogField("threshold", threshold),
                 new SimulationLogField("activityId", opportunity.Target.ActivityId),
+                new SimulationLogField("cooldownKey", opportunity.Activity.CooldownKey),
                 new SimulationLogField("reason", "nearest_fitting_opportunity"),
                 new SimulationLogField("duration", opportunity.PlannedDurationGameHours));
+            return true;
+        }
+
+        private OffDutyDrive? ResolvePreferredDrive()
+        {
+            if (stats == null)
+                return null;
+
+            bool wantsStimulation = stats.NeedsStimulation;
+            bool wantsRelaxation = stats.NeedsRelaxation;
+            if (!wantsStimulation && !wantsRelaxation)
+                return null;
+
+            if (wantsStimulation && !wantsRelaxation)
+                return OffDutyDrive.Stimulation;
+
+            if (wantsRelaxation && !wantsStimulation)
+                return OffDutyDrive.Relaxation;
+
+            float stimulationPressure =
+                NormalizedPressure(stats.StimulationNeed, stats.StimulationNeedThreshold);
+            float relaxationPressure =
+                NormalizedPressure(stats.RelaxationNeed, stats.RelaxationNeedThreshold);
+
+            // Deterministic tie break: stimulation wins an exact tie. No randomness yet.
+            return relaxationPressure > stimulationPressure
+                ? OffDutyDrive.Relaxation
+                : OffDutyDrive.Stimulation;
+        }
+
+        private OffDutyDrive? ResolveSecondaryDrive(OffDutyDrive primary)
+        {
+            OffDutyDrive other = primary == OffDutyDrive.Stimulation
+                ? OffDutyDrive.Relaxation
+                : OffDutyDrive.Stimulation;
+            bool active = other == OffDutyDrive.Stimulation
+                ? stats.NeedsStimulation
+                : stats.NeedsRelaxation;
+            return active ? other : (OffDutyDrive?)null;
+        }
+
+        private static float NormalizedPressure(float need, float threshold)
+        {
+            if (threshold <= 0f || float.IsNaN(threshold))
+                return need > 0f ? float.PositiveInfinity : 0f;
+
+            return need / threshold;
+        }
+
+        private static string DescribeDrive(OffDutyDrive drive)
+        {
+            return drive == OffDutyDrive.Stimulation ? "stimulation" : "relaxation";
         }
 
         private void TickOffDutySeeking()
@@ -685,22 +844,56 @@ namespace AsteroidColony
                 return;
 
             offDutyStopRequested = true;
+            bool completed = string.Equals(
+                reason,
+                "planned_duration_complete",
+                StringComparison.Ordinal);
+
+            // Cooldown starts only on a genuine full-duration completion. Discovery,
+            // reservation, walking, entry, becoming active and being interrupted early all
+            // leave the activity immediately eligible again.
+            string cooldownKey = string.Empty;
+            float cooldownUntil = 0f;
+            if (completed &&
+                opportunityInProgress != null &&
+                opportunityInProgress.Activity != null)
+            {
+                OffDutyActivityBinding completedActivity = opportunityInProgress.Activity;
+                cooldownKey = completedActivity.CooldownKey;
+                float currentGameHour = SimulationManager.Instance != null
+                    ? SimulationManager.Instance.CurrentGameHour
+                    : 0f;
+                offDutyCompletionHistory.RecordCompletion(cooldownKey, currentGameHour);
+                if (offDutyCompletionHistory.TryGetCooldownUntil(
+                        cooldownKey,
+                        completedActivity.CooldownGameHours,
+                        out float recordedUntil))
+                {
+                    cooldownUntil = recordedUntil;
+                }
+            }
+
             RecordDecision(
-                reason == "planned_duration_complete"
+                completed
                     ? "colonist.decision.reconsidered"
                     : "colonist.decision.interrupted",
                 reason,
                 opportunityInProgress != null ? opportunityInProgress.Target.Facility : null);
             SimulationLogManager.RecordEvent(
-                reason == "planned_duration_complete"
-                    ? "offduty.completed"
-                    : "offduty.interrupted",
+                completed ? "offduty.completed" : "offduty.interrupted",
                 "OffDuty",
                 "Info",
                 this,
                 opportunityInProgress != null ? opportunityInProgress.Target.Facility : null,
                 new SimulationLogField("reason", reason),
-                new SimulationLogField("activeDuration", actualActiveOffDutyGameHours));
+                new SimulationLogField("activeDuration", actualActiveOffDutyGameHours),
+                new SimulationLogField(
+                    "drive",
+                    activeOffDutyDrive.HasValue
+                        ? DescribeDrive(activeOffDutyDrive.Value)
+                        : "unknown"),
+                new SimulationLogField("cooldownKey", cooldownKey),
+                new SimulationLogField("cooldownUntil", cooldownUntil));
             if (activityRunner.HasActiveRequest)
                 activityRunner.Stop();
         }
@@ -710,6 +903,7 @@ namespace AsteroidColony
             opportunityInProgress = null;
             actualActiveOffDutyGameHours = 0f;
             offDutyStopRequested = false;
+            activeOffDutyDrive = null;
             state = ColonistBrainState.Idle;
         }
 

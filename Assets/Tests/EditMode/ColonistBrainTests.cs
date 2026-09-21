@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using Colony.Interactions;
 using NUnit.Framework;
@@ -14,7 +15,11 @@ namespace AsteroidColony.Tests
         private GameObject sleepFacilityObject;
         private GameObject foodManagerObject;
         private GameObject foodFacilityObject;
+        private GameObject offDutyManagerObject;
+        private readonly List<GameObject> recreationObjects = new List<GameObject>();
+        private GameObject staffedWorkplaceObject;
         private JobRoleDefinition role;
+        private JobRoleDefinition staffedRole;
 
         [TearDown]
         public void TearDown()
@@ -33,9 +38,197 @@ namespace AsteroidColony.Tests
                 Object.DestroyImmediate(foodManagerObject);
             if (foodFacilityObject != null)
                 Object.DestroyImmediate(foodFacilityObject);
+            if (offDutyManagerObject != null)
+                Object.DestroyImmediate(offDutyManagerObject);
+            for (int index = recreationObjects.Count - 1; index >= 0; index--)
+            {
+                if (recreationObjects[index] != null)
+                    Object.DestroyImmediate(recreationObjects[index]);
+            }
+
+            recreationObjects.Clear();
+            if (staffedWorkplaceObject != null)
+                Object.DestroyImmediate(staffedWorkplaceObject);
             if (role != null)
                 Object.DestroyImmediate(role);
+            if (staffedRole != null)
+                Object.DestroyImmediate(staffedRole);
         }
+
+        [Test]
+        public void DiscretionaryNeedsSatisfiedDoesNotSeekOffDuty()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateRecreationProvider(60f, 0f, "play");
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(
+                brain.LastDecisionReason,
+                Is.EqualTo("discretionary_needs_satisfied"));
+        }
+
+        [Test]
+        public void StimulationDriveSelectsAStimulatingActivity()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateRecreationProvider(60f, 0f, "play");
+            SetStimulationNeed(80f);
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
+            Assert.That(brain.ActiveOffDutyDrive, Is.EqualTo(OffDutyDrive.Stimulation));
+        }
+
+        [Test]
+        public void RelaxationDriveExcludesAStimulatingOnlyActivity()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateRecreationProvider(60f, 0f, "play");
+            SetRelaxationNeed(80f);
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecision, Is.EqualTo("offduty.no_target"));
+        }
+
+        [Test]
+        public void HigherNormalizedPressureIsTriedFirst()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateRecreationProvider(10f, 10f, "walk");
+            SetStimulationNeed(60f);
+            SetRelaxationNeed(100f);
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
+            Assert.That(brain.ActiveOffDutyDrive, Is.EqualTo(OffDutyDrive.Relaxation));
+        }
+
+        [Test]
+        public void CoolingPrimaryDriveFallsBackToTheSecondaryDrive()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateRecreationProvider(60f, 0f, "play");
+            CreateRecreationProvider(0f, 60f, "relax");
+            SetStimulationNeed(100f);
+            SetRelaxationNeed(60f);
+            brain.OffDutyCompletionHistory.RecordCompletion("play", 0f);
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
+            Assert.That(brain.ActiveOffDutyDrive, Is.EqualTo(OffDutyDrive.Relaxation));
+        }
+
+        [Test]
+        public void CompletedActivityStartsCooldownAndIsNotImmediatelyReselected()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateRecreationProvider(60f, 0f, "play");
+            SetStimulationNeed(80f);
+            brain.SimulationTick(0.1f);
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
+
+            // Genuine full-duration completion.
+            SetPrivateField(brain, "state", ColonistBrainState.OffDutyActive);
+            SetPrivateField(brain, "actualActiveOffDutyGameHours", 1f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That((bool)InvokePrivate(brain, "offDutyStopRequested"), Is.True);
+            Assert.That(
+                brain.OffDutyCompletionHistory.IsOnCooldown("play", 12f, 0f),
+                Is.True);
+
+            ResetOffDutyLifecycle(brain);
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("cooldown"));
+        }
+
+        [Test]
+        public void InterruptedActivityDoesNotStartCooldown()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateRecreationProvider(60f, 0f, "play");
+            SetStimulationNeed(80f);
+            brain.SimulationTick(0.1f);
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
+
+            SetPrivateField(brain, "state", ColonistBrainState.OffDutyActive);
+            SetPrivateField(brain, "actualActiveOffDutyGameHours", 0.25f);
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                80f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That((bool)InvokePrivate(brain, "offDutyStopRequested"), Is.True);
+            Assert.That(
+                brain.OffDutyCompletionHistory.IsOnCooldown("play", 12f, 0f),
+                Is.False);
+        }
+
+        [Test]
+        public void EatSeekingStopsWhenPublicFoodAccessIsLost()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(10f, null, false);
+            ConfigureStaffedFoodServiceRequiringAWorker();
+            ConfigurePendingEatRequest();
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                80f);
+            SetPrivateField(
+                brain,
+                "eatTargetInProgress",
+                new ActivityTarget(foodFacilityObject.GetComponent<InteractableFacility>(), "Eat"));
+            SetPrivateField(brain, "state", ColonistBrainState.EatSeeking);
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_access_lost"));
+        }
+
+        [Test]
+        public void EatingContinuesWhenPublicStaffingIsUnavailable()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(10f, null, false);
+            ConfigureStaffedFoodServiceRequiringAWorker();
+            ConfigureEatingLifecycle(brain, hunger: 80f);
+            FoodServiceComponent service =
+                foodFacilityObject.GetComponent<FoodServiceComponent>();
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+            Assert.That(service.HasActivePublicStaff(10f), Is.False);
+            Assert.That(
+                service.EvaluateAccess(
+                    colonistObject.GetComponent<ColonistIdentity>(),
+                    10f),
+                Is.EqualTo(FoodServiceAccessMode.Unavailable));
+            // Hunger recovery keeps applying to the diner even though the counter is closed.
+            Assert.That(
+                colonistObject.GetComponent<ColonistStatsComponent>().EffectiveHungerPerGameHour,
+                Is.EqualTo(-60f).Within(0.0001f));
+        }
+
 
         [Test]
         public void NotSleepyRemainsIdle()
@@ -442,6 +635,104 @@ namespace AsteroidColony.Tests
             Assert.That(
                 colonistObject.GetComponent<ColonistActivityRunner>().CurrentActivityId,
                 Is.EqualTo("Eat"));
+        }
+
+        private void ResetOffDutyLifecycle(ColonistBrain brain)
+        {
+            SetPrivateField(brain, "state", ColonistBrainState.Idle);
+            SetPrivateField(brain, "opportunityInProgress", null);
+            SetPrivateField(brain, "offDutyStopRequested", false);
+            SetPrivateField(brain, "activeOffDutyDrive", null);
+            SetPrivateField(brain, "actualActiveOffDutyGameHours", 0f);
+        }
+
+        private void SetStimulationNeed(float value)
+        {
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "stimulationNeed",
+                value);
+        }
+
+        private void SetRelaxationNeed(float value)
+        {
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "relaxationNeed",
+                value);
+        }
+
+        private void CreateRecreationProvider(
+            float stimulationRecovery,
+            float relaxationRecovery,
+            string cooldownKey)
+        {
+            if (offDutyManagerObject == null)
+            {
+                offDutyManagerObject = new GameObject("OffDuty Manager Test");
+                offDutyManagerObject.AddComponent<OffDutyManager>();
+            }
+
+            GameObject recreationObject = new GameObject("Recreation Test " + cooldownKey);
+            recreationObjects.Add(recreationObject);
+            InteractableFacility facility =
+                recreationObject.AddComponent<InteractableFacility>();
+            Transform approach = new GameObject("Play Approach").transform;
+            approach.SetParent(recreationObject.transform, false);
+            FacilityActivityBinding facilityBinding = new FacilityActivityBinding();
+            SetPrivateField(facilityBinding, "activityId", "play");
+            SetPrivateField(facilityBinding, "reservationGroup", "Play01");
+            SetPrivateField(facilityBinding, "externallyRequestable", true);
+            SetPrivateField(facilityBinding, "approachAnchor", approach);
+            SetPrivateField(facility, "activities", new[] { facilityBinding });
+
+            OffDutyComponent provider = recreationObject.AddComponent<OffDutyComponent>();
+            OffDutyActivityBinding activity = new OffDutyActivityBinding();
+            SetPrivateField(activity, "activityId", "play");
+            SetPrivateField(activity, "plannedDurationGameHours", 1f);
+            SetPrivateField(activity, "enabled", true);
+            SetPrivateField(activity, "cooldownGameHours", 12f);
+            SetPrivateField(activity, "cooldownKey", cooldownKey);
+            SetPrivateField(activity, "stimulationRecoveryPerGameHour", stimulationRecovery);
+            SetPrivateField(activity, "relaxationRecoveryPerGameHour", relaxationRecovery);
+            SetPrivateField(provider, "activities", new[] { activity });
+        }
+
+        private void ConfigureStaffedFoodServiceRequiringAWorker()
+        {
+            CreateFoodManagerAndService();
+
+            staffedRole = ScriptableObject.CreateInstance<JobRoleDefinition>();
+            SetPrivateField(staffedRole, "stableId", "cafeteria_worker");
+            SetPrivateField(staffedRole, "displayName", "Cafeteria Worker");
+
+            staffedWorkplaceObject = new GameObject("Cafeteria Workplace Test");
+            InteractableFacility workplaceFacility =
+                staffedWorkplaceObject.AddComponent<InteractableFacility>();
+            Transform approach = new GameObject("Serve Approach").transform;
+            approach.SetParent(staffedWorkplaceObject.transform, false);
+            FacilityActivityBinding serveBinding = new FacilityActivityBinding();
+            SetPrivateField(serveBinding, "activityId", "ServeFood");
+            SetPrivateField(serveBinding, "reservationGroup", "CafeteriaWorker01");
+            SetPrivateField(serveBinding, "externallyRequestable", true);
+            SetPrivateField(serveBinding, "approachAnchor", approach);
+            SetPrivateField(workplaceFacility, "activities", new[] { serveBinding });
+
+            WorkplaceRoleBinding roleBinding = new WorkplaceRoleBinding();
+            SetPrivateField(roleBinding, "role", staffedRole);
+            SetPrivateField(roleBinding, "activityId", "ServeFood");
+            SetPrivateField(roleBinding, "maximumConcurrentScheduledWorkers", 1);
+            WorkplaceComponent workplace =
+                staffedWorkplaceObject.AddComponent<WorkplaceComponent>();
+            SetPrivateField(workplace, "roles", new[] { roleBinding });
+
+            FoodServiceComponent service =
+                foodFacilityObject.GetComponent<FoodServiceComponent>();
+            SetPrivateField(service, "requiresStaff", true);
+            SetPrivateField(service, "requiredWorkplace", workplace);
+            SetPrivateField(service, "requiredRole", staffedRole);
+            SetPrivateField(service, "minimumActiveWorkers", 1);
+            SetPrivateField(service, "selfServicePolicy", FoodSelfServicePolicy.None);
         }
 
         private ColonistBrain CreateBrain(float fatigue)
