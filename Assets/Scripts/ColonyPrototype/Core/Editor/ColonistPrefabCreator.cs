@@ -340,8 +340,6 @@ namespace AsteroidColony
             animator.runtimeAnimatorController = controller;
             animator.applyRootMotion = false;
 
-            GetOrAdd<ColonistAgent>(instance);
-            GetOrAdd<ColonistStatusComponent>(instance);
             GetOrAdd<ColonistStatsComponent>(instance);
             GetOrAdd<ColonistAssignments>(instance);
             GetOrAdd<ColonistTargetResolver>(instance);
@@ -367,7 +365,6 @@ namespace AsteroidColony
             GetOrAdd<ColonistAnimationDriver>(instance);
             GetOrAdd<ColonistActivityRunner>(instance);
             GetOrAdd<ColonistBrain>(instance);
-            GetOrAdd<ColonistActor>(instance);
             EnsureOverheadDisplay(instance, "Colonist");
 
             GameObject prefab =
