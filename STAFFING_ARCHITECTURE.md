@@ -1,5 +1,12 @@
 # Staffing Architecture
 
+> **LEGACY ARCHITECTURE**
+>
+> This document describes the pre-canonical staffing implementation built
+> around `ColonistAgent` / `StaffingManager`. Do not extend this architecture
+> for the new Synty colonist path. See `WORKFORCE_ARCHITECTURE.md` for the
+> current direction.
+
 The staffing system answers one question for a facility without knowing anything
 about its recipes or resources: **is it operational, and how well is it
 performing right now?**

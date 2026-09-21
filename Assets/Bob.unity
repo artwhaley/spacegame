@@ -528,7 +528,7 @@ PrefabInstance:
       propertyPath: sleepTarget.activityId
       value: Sleep
       objectReference: {fileID: 0}
-    - target: {fileID: 9175071605609466718, guid: b6849b056c7b4474d93989bff971e110, type: 3}
+    - target: {fileID: 7346298053187492011, guid: b6849b056c7b4474d93989bff971e110, type: 3}
       propertyPath: displayName
       value: Bob
       objectReference: {fileID: 0}
@@ -1232,6 +1232,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1856994484}
   - component: {fileID: 1856994485}
+  - component: {fileID: 1856994486}
   m_Layer: 0
   m_Name: Farm
   m_TagString: Untagged
@@ -1308,6 +1309,23 @@ MonoBehaviour:
       placementEulerOffset: {x: 0, y: 0, z: 0}
       contacts: []
   sequences: []
+--- !u!114 &1856994486
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1856994483}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f067128934012345f067128934012345, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WorkplaceComponent
+  facility: {fileID: 1856994485}
+  roles:
+  - role: {fileID: 11400000, guid: cd34ef5601789012cd34ef5601789012, type: 2}
+    activityId: Farm
+    maximumConcurrentScheduledWorkers: 1
 --- !u!1 &1947619468
 GameObject:
   m_ObjectHideFlags: 0

@@ -10,7 +10,7 @@
 |---|---|---|
 | Resource quantity | `InventoryComponent` | Inventory APIs own on-hand, reserved, and capacity state. |
 | Facility operational state and effect multipliers | `FacilityPerformanceComponent` plus `IFacilityPerformanceProvider` implementations | Consumers ask for operational state/multipliers; recipe code does not count workers. |
-| Employment | `ColonistAgent.currentEmployment` / `EmploymentAssignment` and staffing commands | Assignment mutations go through the validated staffing API. |
+| Employment | **Legacy:** `ColonistAgent.currentEmployment` / `EmploymentAssignment` and staffing commands | This is the current pre-canonical implementation. Canonical colonist employment is planned to move to the future `WorkforceManager`; do not reconnect Bob to this legacy owner. |
 | Last arrived logical location | `ColonistAgent.currentLocation` | `BeginTransit`/`CompleteTransit` keep transit separate from arrival. |
 | Population-level consumption | `PopulationResourceConsumer` on a habitation/inventory | It consumes aggregate resources and reports aggregate shortage state; it does not model personal needs. |
 | Housing capacity/restfulness seam | `HabitationComponent.capacity` and `restfulnessMultiplier` | These are explicit fields; visual bed transforms do not automatically own capacity. |
@@ -40,3 +40,16 @@ presentation or UI layer described by historical packets.
 
 If an implementation needs a new authority, add it only with an observable that proves
 the current owner is insufficient and record the choice in `DECISION_BACKLOG.md`.
+
+## Near-term canonical workforce migration
+
+The canonical Synty colonist path is being built separately from the legacy
+staffing implementation. `ColonistIdentity` owns colonist identity;
+`JobRoleDefinition` owns job-role content; and `WorkplaceComponent` describes
+the regular work a facility offers. A future `WorkforceManager` will become the
+authoritative owner of regular employment and assignments. That manager does
+not exist yet, so this section records planned ownership rather than current
+runtime fact.
+
+Until that migration is implemented, do not add canonical employment data to
+`ColonistAgent`, `StaffingManager`, or `EmploymentAssignment`.

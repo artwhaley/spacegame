@@ -113,7 +113,7 @@ namespace AsteroidColony
             GameObject prefabContents = PrefabUtility.LoadPrefabContents(PrefabPath);
             try
             {
-                EnsureOverheadDisplay(prefabContents, "Colonist");
+                EnsureOverheadDisplay(prefabContents);
                 PrefabUtility.SaveAsPrefabAsset(prefabContents, PrefabPath);
             }
             finally
@@ -123,7 +123,7 @@ namespace AsteroidColony
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            AuthorBobSceneDisplayName();
+            AuthorBobSceneIdentity();
             Debug.Log($"Authored the colonist overhead display in {PrefabPath} and {BobScenePath}.");
         }
 
@@ -340,6 +340,7 @@ namespace AsteroidColony
             animator.runtimeAnimatorController = controller;
             animator.applyRootMotion = false;
 
+            GetOrAdd<ColonistIdentity>(instance);
             GetOrAdd<ColonistStatsComponent>(instance);
             GetOrAdd<ColonistAssignments>(instance);
             GetOrAdd<ColonistTargetResolver>(instance);
@@ -365,7 +366,7 @@ namespace AsteroidColony
             GetOrAdd<ColonistAnimationDriver>(instance);
             GetOrAdd<ColonistActivityRunner>(instance);
             GetOrAdd<ColonistBrain>(instance);
-            EnsureOverheadDisplay(instance, "Colonist");
+            EnsureOverheadDisplay(instance);
 
             GameObject prefab =
                 PrefabUtility.SaveAsPrefabAsset(instance, PrefabPath);
@@ -375,7 +376,7 @@ namespace AsteroidColony
             return prefab;
         }
 
-        private static void EnsureOverheadDisplay(GameObject colonist, string defaultDisplayName)
+        private static void EnsureOverheadDisplay(GameObject colonist)
         {
             EnsureFolderPath(OverheadMaterialFolder);
             TMP_FontAsset overheadFont = EnsureOverheadFontAsset();
@@ -384,6 +385,7 @@ namespace AsteroidColony
 
             Material nameMaterial = EnsureNameMaterial(overheadFont);
             Material sleepyMaterial = EnsureSleepyMaterial();
+            ColonistIdentity identity = GetOrAdd<ColonistIdentity>(colonist);
 
             Transform overheadTransform = GetOrCreateChild(
                 colonist.transform,
@@ -425,7 +427,6 @@ namespace AsteroidColony
             nameText.textWrappingMode = TextWrappingModes.NoWrap;
             nameText.overflowMode = TextOverflowModes.Overflow;
             nameText.color = Color.white;
-            nameText.text = defaultDisplayName;
             // Keep authoring independent of TMP's edit-time mesh rebuild. The
             // rebuild can invalidate prefab-content objects while Unity is
             // importing the asset. The legacy display was 0.2 world units;
@@ -481,7 +482,7 @@ namespace AsteroidColony
                 iconStack;
             serializedDisplay.FindProperty("sleepyIcon").objectReferenceValue =
                 sleepyTransform.gameObject;
-            serializedDisplay.FindProperty("displayName").stringValue = defaultDisplayName;
+            serializedDisplay.FindProperty("identity").objectReferenceValue = identity;
             serializedDisplay.FindProperty("iconSpacing").floatValue = 1.15f;
             serializedDisplay.FindProperty("billboardYawOffset").floatValue = 180f;
             serializedDisplay.ApplyModifiedPropertiesWithoutUndo();
@@ -616,29 +617,29 @@ namespace AsteroidColony
             return material;
         }
 
-        private static void AuthorBobSceneDisplayName()
+        private static void AuthorBobSceneIdentity()
         {
             Scene scene = EditorSceneManager.OpenScene(
                 BobScenePath,
                 OpenSceneMode.Single);
-            ColonistOverheadDisplay[] displays =
-                Resources.FindObjectsOfTypeAll<ColonistOverheadDisplay>();
+            ColonistIdentity[] identities =
+                Resources.FindObjectsOfTypeAll<ColonistIdentity>();
 
-            for (int index = 0; index < displays.Length; index++)
+            for (int index = 0; index < identities.Length; index++)
             {
-                ColonistOverheadDisplay display = displays[index];
-                if (display == null || display.gameObject.scene != scene)
+                ColonistIdentity identity = identities[index];
+                if (identity == null || identity.gameObject.scene != scene)
                     continue;
 
-                SerializedObject serializedDisplay = new SerializedObject(display);
-                serializedDisplay.FindProperty("displayName").stringValue = "Bob";
-                serializedDisplay.ApplyModifiedPropertiesWithoutUndo();
-                EditorUtility.SetDirty(display);
+                SerializedObject serializedIdentity = new SerializedObject(identity);
+                serializedIdentity.FindProperty("displayName").stringValue = "Bob";
+                serializedIdentity.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(identity);
                 EditorSceneManager.SaveScene(scene);
                 return;
             }
 
-            Debug.LogError("Bob scene did not contain a ColonistOverheadDisplay after prefab authoring.");
+            Debug.LogError("Bob scene did not contain a ColonistIdentity after prefab authoring.");
         }
 
         private static Transform GetOrCreateChild(Transform parent, string childName)

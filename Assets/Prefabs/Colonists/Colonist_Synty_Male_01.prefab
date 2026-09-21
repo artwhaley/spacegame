@@ -264,7 +264,7 @@ MonoBehaviour:
   nameText: {fileID: 5888246101396275489}
   iconStack: {fileID: 8281719990807253752}
   sleepyIcon: {fileID: 6799869122472827157}
-  displayName: Colonist
+  identity: {fileID: 7346298053187492011}
   iconSpacing: 1.15
   billboardYawOffset: 180
 --- !u!1001 &3999253086043534063
@@ -339,6 +339,9 @@ PrefabInstance:
       addedObject: {fileID: 3226046035262182063}
     - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
       insertIndex: -1
+      addedObject: {fileID: 7346298053187492011}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
       addedObject: {fileID: 8960515059240485046}
     - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
       insertIndex: -1
@@ -384,6 +387,19 @@ MonoBehaviour:
   activityRunner: {fileID: 0}
   sleepyThreshold: 70
   exhaustionThreshold: 100
+--- !u!114 &7346298053187492011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f3a1c9d74e2b4a6d8f0c1b5e7a9d3f21, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistIdentity
+  displayName: Colonist
 --- !u!195 &8960515059240485046
 NavMeshAgent:
   m_ObjectHideFlags: 0

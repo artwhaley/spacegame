@@ -22,7 +22,7 @@ namespace AsteroidColony
         private GameObject sleepyIcon;
 
         [SerializeField]
-        private string displayName = "Colonist";
+        private ColonistIdentity identity;
 
         [SerializeField, Min(0f)]
         private float iconSpacing = 0.25f;
@@ -49,6 +49,9 @@ namespace AsteroidColony
             if (stats == null)
                 stats = GetComponentInParent<ColonistStatsComponent>();
 
+            if (identity == null)
+                identity = GetComponentInParent<ColonistIdentity>();
+
             if (billboardRoot == null)
                 billboardRoot = transform;
 
@@ -73,7 +76,7 @@ namespace AsteroidColony
         private void RefreshPresentation()
         {
             if (nameText != null)
-                nameText.text = displayName;
+                nameText.text = identity != null ? identity.DisplayName : "Colonist";
 
             if (sleepyIcon != null)
             {

@@ -20,6 +20,7 @@ namespace AsteroidColony.Tests
         public void SleepyIconFollowsStatsAndNameIsDisplayed()
         {
             colonistObject = new GameObject("Colonist");
+            ColonistIdentity identity = colonistObject.AddComponent<ColonistIdentity>();
             ColonistStatsComponent stats = colonistObject.AddComponent<ColonistStatsComponent>();
 
             GameObject overheadObject = new GameObject("OverheadDisplay");
@@ -36,10 +37,11 @@ namespace AsteroidColony.Tests
             ColonistOverheadDisplay display =
                 overheadObject.AddComponent<ColonistOverheadDisplay>();
             SetPrivateField(display, "stats", stats);
+            SetPrivateField(display, "identity", identity);
             SetPrivateField(display, "nameText", nameText);
             SetPrivateField(display, "iconStack", stackObject.transform);
             SetPrivateField(display, "sleepyIcon", sleepyIcon);
-            SetPrivateField(display, "displayName", "Bob");
+            SetPrivateField(identity, "displayName", "Bob");
 
             SetPrivateField(stats, "fatigue", 69f);
             InvokePrivate(display, "RefreshPresentation");
