@@ -19,6 +19,9 @@
 | Local interaction authoring | `InteractableFacility` in `Packages/com.asteroidcolony.interactions` | Activities, anchors/targets, animation segments, placement corrections, sequences, and optional contacts are facility-owned. |
 | Local interaction execution | `ColonistActivityRunner`, `ColonistMotor`, `ColonistAnimationDriver` | The package drives local navigation/animation and reservation lifecycle; it does not own employment or production. |
 | Optional character contacts | `ContactRigDriver` and Animation Rigging targets/constraints | Contacts are optional per character and should not be required for ordinary activity execution. |
+| Personal hunger | `ColonistStatsComponent` | Hunger accumulation, thresholds, and physiological deltas live with the colonist's personal stats. |
+| Public food discovery | `FoodManager` and `FoodServiceComponent` | The manager exposes configured public Eat opportunities without moving, reserving, or mutating colonist state. |
+| Personal Eat decision | `ColonistBrain` | The explicit EatSeeking/Eating lifecycle decides when Hunger is satisfied and waits for physical release. |
 
 ## Dependency direction
 
@@ -59,3 +62,13 @@ manager does not wake, move, animate, or start activities for colonists.
 Legacy employment remains in `ColonistAgent`, `StaffingManager`, and
 `EmploymentAssignment` only for the old path. Canonical code must not add new
 employment data there.
+
+## Hunger and food ownership
+
+The canonical personal Hunger owner is `ColonistStatsComponent`; the decision
+owner is `ColonistBrain`; public Eat discovery belongs to `FoodManager`; and
+physical reservation/execution belongs to `ColonistActivityRunner`. Eat
+choreography remains owned by the Cafeteria's `InteractableFacility`. Nutrition
+is derived from a genuinely active matching Eat, not from brain state, proximity,
+or a reservation alone. Food inventory integration and `PopulationResourceConsumer`
+migration are intentionally outside this slice.

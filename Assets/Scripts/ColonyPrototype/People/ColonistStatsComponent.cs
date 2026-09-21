@@ -4,7 +4,7 @@ using Colony.Interactions;
 namespace AsteroidColony
 {
     [DisallowMultipleComponent]
-    public class ColonistStatsComponent : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
+    public sealed class ColonistStatsComponent : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         [SerializeField, Min(0f)]
         private float fatigue;
@@ -21,7 +21,23 @@ namespace AsteroidColony
         [SerializeField, Min(0f)]
         private float exhaustionThreshold = 100f;
 
+        [SerializeField, Min(0f)]
+        private float hunger;
+
+        [SerializeField]
+        private float baselineHungerPerGameHour = 8f;
+
+        [SerializeField, Min(0f)]
+        private float hungryThreshold = 60f;
+
+        [SerializeField, Min(0f)]
+        private float starvationThreshold = 100f;
+
         public float Fatigue => fatigue;
+
+        public float Hunger => hunger;
+
+        public float BaselineHungerPerGameHour => baselineHungerPerGameHour;
 
         public float BaselineFatiguePerGameHour => baselineFatiguePerGameHour;
 
@@ -45,13 +61,49 @@ namespace AsteroidColony
             }
         }
 
+        public float EffectiveHungerPerGameHour
+        {
+            get
+            {
+                if (activityRunner != null &&
+                    activityRunner.ActiveFacility != null &&
+                    string.Equals(
+                        activityRunner.ActiveActivityId,
+                        "Eat",
+                        System.StringComparison.Ordinal))
+                {
+                    FoodServiceComponent service =
+                        activityRunner.ActiveFacility.GetComponent<FoodServiceComponent>();
+                    if (service != null &&
+                        service.IsConfigured &&
+                        string.Equals(
+                            service.EatActivityId,
+                            activityRunner.ActiveActivityId,
+                            System.StringComparison.Ordinal))
+                    {
+                        return -service.HungerRecoveryPerGameHour;
+                    }
+                }
+
+                return baselineHungerPerGameHour;
+            }
+        }
+
         public float SleepyThreshold => sleepyThreshold;
 
         public float ExhaustionThreshold => exhaustionThreshold;
 
+        public float HungryThreshold => hungryThreshold;
+
+        public float StarvationThreshold => starvationThreshold;
+
         public bool IsSleepy => fatigue >= sleepyThreshold;
 
         public bool IsExhausted => fatigue >= exhaustionThreshold;
+
+        public bool IsHungry => hunger >= hungryThreshold;
+
+        public bool IsStarving => hunger >= starvationThreshold;
 
         public int SimulationTickPriority => 50;
 
@@ -77,10 +129,12 @@ namespace AsteroidColony
                 return;
 
             float fatigueChange = EffectiveFatiguePerGameHour * deltaGameHours;
-            if (!IsFinite(fatigueChange))
-                return;
+            if (IsFinite(fatigueChange))
+                ApplyFatigueDelta(fatigueChange);
 
-            ApplyFatigueDelta(fatigueChange);
+            float hungerChange = EffectiveHungerPerGameHour * deltaGameHours;
+            if (IsFinite(hungerChange))
+                ApplyHungerDelta(hungerChange);
         }
 
         public void AdjustFatigue(float amount)
@@ -89,6 +143,14 @@ namespace AsteroidColony
                 return;
 
             ApplyFatigueDelta(amount);
+        }
+
+        public void AdjustHunger(float amount)
+        {
+            if (!IsFinite(amount))
+                return;
+
+            ApplyHungerDelta(amount);
         }
 
         private void OnValidate()
@@ -108,6 +170,21 @@ namespace AsteroidColony
                 exhaustionThreshold = 0f;
             exhaustionThreshold = Mathf.Max(0f, exhaustionThreshold);
 
+            if (!IsFinite(hunger))
+                hunger = 0f;
+            hunger = Mathf.Max(0f, hunger);
+
+            if (!IsFinite(baselineHungerPerGameHour))
+                baselineHungerPerGameHour = 0f;
+
+            if (!IsFinite(hungryThreshold))
+                hungryThreshold = 0f;
+            hungryThreshold = Mathf.Max(0f, hungryThreshold);
+
+            if (!IsFinite(starvationThreshold))
+                starvationThreshold = 0f;
+            starvationThreshold = Mathf.Max(0f, starvationThreshold);
+
         }
 
         private void ApplyFatigueDelta(float amount)
@@ -120,6 +197,18 @@ namespace AsteroidColony
                 return;
 
             fatigue = Mathf.Max(0f, updatedFatigue);
+        }
+
+        private void ApplyHungerDelta(float amount)
+        {
+            if (!IsFinite(hunger))
+                hunger = 0f;
+
+            float updatedHunger = hunger + amount;
+            if (!IsFinite(updatedHunger))
+                return;
+
+            hunger = Mathf.Max(0f, updatedHunger);
         }
 
         private static bool IsFinite(float value)

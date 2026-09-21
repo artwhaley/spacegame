@@ -39,9 +39,9 @@ ColonistActivityRunner
     performs physical work
 ```
 
-The canonical types above are introduced incrementally. This document describes
-ownership and dependency direction; it does not claim that brain behavior or
-physical work execution has been connected to workforce facts.
+The canonical types above are introduced incrementally. The current Bob slice
+connects the workforce facts to the brain's explicit Work lifecycle while
+keeping physical execution in the interaction runner.
 
 ## Locked rules
 
@@ -84,7 +84,9 @@ semantics. Scheduled capacity is an employment planning constraint;
 `ScheduledWorkOccurrence` derives concrete absolute start/end hours from a
 recurring `WorkAssignment`. `WorkforceManager` can answer current, next, and
 current-or-next shift queries, including overnight occurrences. `ColonistBrain`
-is a future consumer of those facts; Bob's behavior is intentionally unchanged.
+consumes those facts: at shift start it resolves and requests Work, and at shift
+end it requests a physical Stop, remains in the Work lifecycle during exit,
+then returns Idle only after the runner releases the request and reservation.
 
 ## Implemented decision and resolution seam
 
@@ -97,6 +99,19 @@ knowledge or perform target lookup itself.
 `ColonistTargetResolver` resolves the Work purpose through the colonist's
 regular assignment, the assigned `WorkplaceComponent`, and its role binding.
 `ColonistActivityRunner` remains responsible for the physical request,
-reservation, navigation, and animation lifecycle. Shift-end stopping is not
-implemented yet; the current slice intentionally starts work without adding
-voluntary departure behavior.
+reservation, navigation, and animation lifecycle. Shift-end stopping is
+implemented as a graceful physical exit: the brain requests Stop, waits while
+the runner exits and releases the reservation, and only then becomes Idle.
+
+## Canonical hunger and food ownership
+
+`ColonistStatsComponent` owns personal Hunger and its physiological thresholds.
+`ColonistBrain` decides when Bob should Eat. `FoodManager` discovers available
+public `FoodServiceComponent` opportunities; it never moves Bob or reserves a
+station. `ColonistTargetResolver` converts that discovery into an `ActivityTarget`.
+`ColonistActivityRunner` owns reservation, navigation, entry, active execution,
+exit, and release. The Cafeteria's `InteractableFacility` owns Eat choreography,
+and Hunger recovery is applied only during a genuinely active matching Eat.
+
+Food inventory integration is intentionally deferred. `PopulationResourceConsumer`
+migration is not part of this slice.

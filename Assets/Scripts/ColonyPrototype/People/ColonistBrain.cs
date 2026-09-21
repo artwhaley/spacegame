@@ -10,7 +10,9 @@ namespace AsteroidColony
         SleepSeeking,
         Sleeping,
         WorkSeeking,
-        Working
+        Working,
+        EatSeeking,
+        Eating
     }
 
     [DisallowMultipleComponent]
@@ -35,8 +37,10 @@ namespace AsteroidColony
 
         private ActivityTarget sleepTargetInProgress;
         private ActivityTarget workTargetInProgress;
+        private ActivityTarget eatTargetInProgress;
         private bool wakeRequested;
         private bool workStopRequested;
+        private bool eatStopRequested;
 
         public ColonistBrainState State => state;
 
@@ -107,6 +111,14 @@ namespace AsteroidColony
                 case ColonistBrainState.Working:
                     TickWorking();
                     break;
+
+                case ColonistBrainState.EatSeeking:
+                    TickEatSeeking();
+                    break;
+
+                case ColonistBrainState.Eating:
+                    TickEating();
+                    break;
             }
         }
 
@@ -124,24 +136,14 @@ namespace AsteroidColony
             if (HasUpcomingObligationWithin(ObligationWakeLeadGameHours))
                 return;
 
-            if (!stats.IsSleepy)
-                return;
-
-            if (!targetResolver.TryResolveTarget(
-                    ActivityPurpose.Sleep,
-                    out ActivityTarget target) ||
-                target == null ||
-                !target.IsConfigured)
+            if (stats.IsSleepy)
             {
+                TryStartSleep();
                 return;
             }
 
-            if (!activityRunner.RequestActivity(target.Facility, target.ActivityId))
-                return;
-
-            sleepTargetInProgress = target;
-            wakeRequested = false;
-            state = ColonistBrainState.SleepSeeking;
+            if (stats.IsHungry)
+                TryStartEat();
         }
 
         private void TickSleepSeeking()
@@ -231,6 +233,26 @@ namespace AsteroidColony
             wakeRequested = false;
             sleepTargetInProgress = null;
             state = ColonistBrainState.Idle;
+        }
+
+        private bool TryStartSleep()
+        {
+            if (!targetResolver.TryResolveTarget(
+                    ActivityPurpose.Sleep,
+                    out ActivityTarget target) ||
+                target == null ||
+                !target.IsConfigured)
+            {
+                return false;
+            }
+
+            if (!activityRunner.RequestActivity(target.Facility, target.ActivityId))
+                return false;
+
+            sleepTargetInProgress = target;
+            wakeRequested = false;
+            state = ColonistBrainState.SleepSeeking;
+            return true;
         }
 
         private void TickWorkSeeking()
@@ -339,6 +361,118 @@ namespace AsteroidColony
         {
             workTargetInProgress = null;
             workStopRequested = false;
+            state = ColonistBrainState.Idle;
+        }
+
+        private void TickEatSeeking()
+        {
+            if (eatTargetInProgress == null ||
+                !eatTargetInProgress.IsConfigured ||
+                FoodManager.Instance == null ||
+                !FoodManager.Instance.IsFoodTargetLive(eatTargetInProgress))
+            {
+                RequestEatStop();
+                if (!activityRunner.HasActiveRequest)
+                    FinishEatLifecycle();
+                return;
+            }
+
+            if (HasUpcomingObligationWithin(ObligationWakeLeadGameHours))
+            {
+                RequestEatStop();
+                if (!activityRunner.HasActiveRequest)
+                    FinishEatLifecycle();
+                return;
+            }
+
+            if (activityRunner.IsActivityActive &&
+                string.Equals(
+                    activityRunner.ActiveActivityId,
+                    eatTargetInProgress.ActivityId,
+                    StringComparison.Ordinal))
+            {
+                state = ColonistBrainState.Eating;
+                return;
+            }
+
+            if (!activityRunner.HasActiveRequest)
+                FinishEatLifecycle();
+        }
+
+        private void TickEating()
+        {
+            if (eatTargetInProgress == null ||
+                !eatTargetInProgress.IsConfigured ||
+                FoodManager.Instance == null ||
+                !FoodManager.Instance.IsFoodTargetLive(eatTargetInProgress) ||
+                !IsCurrentEatActivity())
+            {
+                RequestEatStop();
+            }
+            else if (HasUpcomingObligationWithin(ObligationWakeLeadGameHours) ||
+                     stats.Hunger <= 0f)
+            {
+                RequestEatStop();
+            }
+
+            if (eatStopRequested)
+            {
+                if (!activityRunner.HasActiveRequest)
+                    FinishEatLifecycle();
+                return;
+            }
+
+            if (!activityRunner.HasActiveRequest)
+                FinishEatLifecycle();
+        }
+
+        private bool TryStartEat()
+        {
+            if (!stats.IsHungry ||
+                HasUpcomingObligationWithin(ObligationWakeLeadGameHours) ||
+                !targetResolver.TryResolveTarget(
+                    ActivityPurpose.Eat,
+                    out ActivityTarget target) ||
+                target == null ||
+                !target.IsConfigured ||
+                FoodManager.Instance == null ||
+                !FoodManager.Instance.IsFoodTargetLive(target))
+            {
+                return false;
+            }
+
+            if (!activityRunner.RequestActivity(target.Facility, target.ActivityId))
+                return false;
+
+            eatTargetInProgress = target;
+            eatStopRequested = false;
+            state = ColonistBrainState.EatSeeking;
+            return true;
+        }
+
+        private void RequestEatStop()
+        {
+            if (eatStopRequested)
+                return;
+
+            eatStopRequested = true;
+            if (activityRunner.HasActiveRequest)
+                activityRunner.Stop();
+        }
+
+        private bool IsCurrentEatActivity()
+        {
+            return activityRunner.HasActiveRequest &&
+                   string.Equals(
+                       activityRunner.CurrentActivityId,
+                       eatTargetInProgress.ActivityId,
+                       StringComparison.Ordinal);
+        }
+
+        private void FinishEatLifecycle()
+        {
+            eatTargetInProgress = null;
+            eatStopRequested = false;
             state = ColonistBrainState.Idle;
         }
 

@@ -1428,6 +1428,7 @@ GameObject:
   - component: {fileID: 1819463917}
   - component: {fileID: 1819463919}
   - component: {fileID: 1819463918}
+  - component: {fileID: 2050100011}
   m_Layer: 0
   m_Name: Cafeteria
   m_TagString: Untagged
@@ -1518,6 +1519,21 @@ MonoBehaviour:
       placementEulerOffset: {x: 0, y: 0, z: 0}
       contacts: []
   sequences: []
+--- !u!114 &2050100011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1819463916}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c6e1d6e2f4a8420a9f7d02e1a5c3b110, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.FoodServiceComponent
+  facility: {fileID: 1819463919}
+  eatActivityId: Eat
+  hungerRecoveryPerGameHour: 60
 --- !u!114 &1852747483 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 7346298053187492011, guid: b6849b056c7b4474d93989bff971e110, type: 3}
@@ -2004,6 +2020,51 @@ MonoBehaviour:
     shift:
       startHour: 16
       endHour: 20
+--- !u!1 &2050100014
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2050100015}
+  - component: {fileID: 2050100016}
+  m_Layer: 0
+  m_Name: FoodManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2050100015
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2050100014}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2050100016
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2050100014}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a4d2c7f18b9546938e0f1c6a2d7b5e90, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.FoodManager
+  services: []
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -2015,3 +2076,4 @@ SceneRoots:
   - {fileID: 258503281}
   - {fileID: 1947619470}
   - {fileID: 2050100002}
+  - {fileID: 2050100015}

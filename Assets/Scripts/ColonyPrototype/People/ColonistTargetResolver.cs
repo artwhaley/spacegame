@@ -5,7 +5,8 @@ namespace AsteroidColony
     public enum ActivityPurpose
     {
         Sleep,
-        Work
+        Work,
+        Eat
     }
 
     [DisallowMultipleComponent]
@@ -39,9 +40,14 @@ namespace AsteroidColony
                 return true;
             }
 
-            // FUTURE RESOLUTION STRATEGY:
-            // Unassigned public needs such as eating will discover
-            // and rank registered activity opportunities.
+            if (purpose == ActivityPurpose.Eat &&
+                FoodManager.Instance != null &&
+                FoodManager.Instance.TryFindFoodTarget(
+                    transform.position,
+                    out target))
+            {
+                return target != null && target.IsConfigured;
+            }
 
             target = null;
             return false;

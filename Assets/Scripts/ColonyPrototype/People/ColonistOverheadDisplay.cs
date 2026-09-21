@@ -22,6 +22,9 @@ namespace AsteroidColony
         private GameObject sleepyIcon;
 
         [SerializeField]
+        private GameObject hungryIcon;
+
+        [SerializeField]
         private ColonistIdentity identity;
 
         [SerializeField, Min(0f)]
@@ -71,6 +74,13 @@ namespace AsteroidColony
                 if (candidate != null)
                     sleepyIcon = candidate.gameObject;
             }
+
+            if (hungryIcon == null && iconStack != null)
+            {
+                Transform candidate = iconStack.Find("HungryFood");
+                if (candidate != null)
+                    hungryIcon = candidate.gameObject;
+            }
         }
 
         private void RefreshPresentation()
@@ -84,6 +94,13 @@ namespace AsteroidColony
                 sleepyIcon.SetActive(
                     stats != null &&
                     stats.IsSleepy);
+            }
+
+            if (hungryIcon != null)
+            {
+                hungryIcon.SetActive(
+                    stats != null &&
+                    stats.IsHungry);
             }
 
             RefreshIconLayout();

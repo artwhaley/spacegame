@@ -10,6 +10,7 @@ namespace AsteroidColony.Tests
         private GameObject statsObject;
         private ColonistStatsComponent stats;
         private GameObject runnerObject;
+        private GameObject foodFacilityObject;
 
         [SetUp]
         public void SetUp()
@@ -24,6 +25,8 @@ namespace AsteroidColony.Tests
             Object.DestroyImmediate(statsObject);
             if (runnerObject != null)
                 Object.DestroyImmediate(runnerObject);
+            if (foodFacilityObject != null)
+                Object.DestroyImmediate(foodFacilityObject);
         }
 
         [Test]
@@ -90,6 +93,194 @@ namespace AsteroidColony.Tests
 
             Assert.That(stats.Fatigue, Is.EqualTo(20f).Within(0.0001f));
             Assert.That(stats.EffectiveFatiguePerGameHour, Is.EqualTo(5f).Within(0.0001f));
+        }
+
+        [Test]
+        public void BaselineHungerAccumulatesOverGameHours()
+        {
+            SetHunger(20f);
+
+            stats.SimulationTick(2f);
+
+            Assert.That(stats.Hunger, Is.EqualTo(36f).Within(0.0001f));
+        }
+
+        [Test]
+        public void HungerCannotFallBelowZero()
+        {
+            SetHunger(3f);
+
+            stats.AdjustHunger(-10f);
+
+            Assert.That(stats.Hunger, Is.EqualTo(0f).Within(0.0001f));
+        }
+
+        [Test]
+        public void HungerMayExceedOneHundred()
+        {
+            SetHunger(95f);
+
+            stats.AdjustHunger(30f);
+
+            Assert.That(stats.Hunger, Is.EqualTo(125f).Within(0.0001f));
+        }
+
+        [Test]
+        public void HungryThresholdUsesSixtyPoints()
+        {
+            SetHunger(59f);
+            Assert.That(stats.IsHungry, Is.False);
+
+            SetHunger(60f);
+            Assert.That(stats.IsHungry, Is.True);
+        }
+
+        [Test]
+        public void StarvationThresholdUsesOneHundredPoints()
+        {
+            SetHunger(99f);
+            Assert.That(stats.IsStarving, Is.False);
+
+            SetHunger(100f);
+            Assert.That(stats.IsStarving, Is.True);
+
+            SetHunger(130f);
+            Assert.That(stats.IsStarving, Is.True);
+        }
+
+        [Test]
+        public void InvalidValuesCannotPoisonHungerOrRate()
+        {
+            SetHunger(20f);
+
+            stats.AdjustHunger(float.NaN);
+            stats.AdjustHunger(float.PositiveInfinity);
+            stats.AdjustHunger(float.NegativeInfinity);
+
+            Assert.That(stats.Hunger, Is.EqualTo(20f).Within(0.0001f));
+            Assert.That(stats.EffectiveHungerPerGameHour, Is.EqualTo(8f).Within(0.0001f));
+        }
+
+        [Test]
+        public void InvalidSimulationDeltaDoesNotChangePhysiology()
+        {
+            SetFatigue(20f);
+            SetHunger(30f);
+
+            stats.SimulationTick(0f);
+            stats.SimulationTick(float.NaN);
+            stats.SimulationTick(float.PositiveInfinity);
+
+            Assert.That(stats.Fatigue, Is.EqualTo(20f).Within(0.0001f));
+            Assert.That(stats.Hunger, Is.EqualTo(30f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ActiveSleepDoesNotRecoverHungerInProduction()
+        {
+            CreateRunnerAndStats();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runnerObject.GetComponent<ColonistActivityRunner>(), sleep,
+                activityActive: true, exitInProgress: false);
+            SetHunger(50f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ActiveFacilityIsExposedOnlyDuringGenuineActivity()
+        {
+            ColonistActivityRunner runner = CreateRunner();
+            InteractableFacility facility = CreateFoodFacility(
+                out _, out FacilityActivityBinding binding);
+            SetPrivateField(runner, "currentFacility", facility);
+            SetRunnerState(runner, binding, activityActive: true, exitInProgress: false);
+
+            Assert.That(runner.ActiveFacility, Is.SameAs(facility));
+
+            SetPrivateField(runner, "exitInProgress", true);
+            Assert.That(runner.ActiveFacility, Is.Null);
+        }
+
+        [Test]
+        public void ActiveEatUsesConfiguredFoodRecoveryRate()
+        {
+            CreateRunnerAndStats();
+            InteractableFacility facility = CreateFoodFacility(
+                out _, out FacilityActivityBinding binding);
+            ColonistActivityRunner runner = runnerObject.GetComponent<ColonistActivityRunner>();
+            SetPrivateField(runner, "currentFacility", facility);
+            SetRunnerState(runner, binding, activityActive: true, exitInProgress: false);
+            SetHunger(50f);
+
+            Assert.That(stats.EffectiveHungerPerGameHour, Is.EqualTo(-60f).Within(0.0001f));
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.Hunger, Is.EqualTo(0f).Within(0.0001f));
+        }
+
+        [Test]
+        public void EatEntryAndExitUseBaselineHungerRate()
+        {
+            CreateRunnerAndStats();
+            InteractableFacility facility = CreateFoodFacility(
+                out _, out FacilityActivityBinding binding);
+            ColonistActivityRunner runner = runnerObject.GetComponent<ColonistActivityRunner>();
+            SetPrivateField(runner, "currentFacility", facility);
+            SetRunnerState(runner, binding, activityActive: false, exitInProgress: false);
+            SetHunger(50f);
+
+            stats.SimulationTick(1f);
+            Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
+
+            SetPrivateField(runner, "activityActive", true);
+            SetPrivateField(runner, "exitInProgress", true);
+            SetHunger(50f);
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
+        }
+
+        [Test]
+        public void DisabledFoodServiceCannotControlHunger()
+        {
+            CreateRunnerAndStats();
+            InteractableFacility facility = CreateFoodFacility(
+                out FoodServiceComponent service,
+                out FacilityActivityBinding binding);
+            service.enabled = false;
+            ColonistActivityRunner runner = runnerObject.GetComponent<ColonistActivityRunner>();
+            SetPrivateField(runner, "currentFacility", facility);
+            SetRunnerState(runner, binding, activityActive: true, exitInProgress: false);
+            SetHunger(50f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ColonistActivityRunnerBindingIsNotActiveBeforeActivation()
+        {
+            ColonistActivityRunner runner = CreateRunner();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runner, sleep, activityActive: false, exitInProgress: false);
+
+            Assert.That(runner.IsActivityActive, Is.False);
+            Assert.That(runner.ActiveActivityBinding, Is.Null);
+        }
+
+        [Test]
+        public void EmptyFacilityActivityBindingWorksForStatsInspection()
+        {
+            ColonistActivityRunner runner = CreateRunner();
+            FacilityActivityBinding empty = new FacilityActivityBinding();
+            SetRunnerState(runner, empty, activityActive: false, exitInProgress: false);
+
+            Assert.That(runner.IsActivityActive, Is.False);
+            Assert.That(runner.ActiveActivityBinding, Is.Null);
         }
 
         [Test]
@@ -194,6 +385,28 @@ namespace AsteroidColony.Tests
             return binding;
         }
 
+        private InteractableFacility CreateFoodFacility(
+            out FoodServiceComponent service,
+            out FacilityActivityBinding binding)
+        {
+            foodFacilityObject = new GameObject("Food Facility Test");
+            InteractableFacility facility =
+                foodFacilityObject.AddComponent<InteractableFacility>();
+            Transform approach = new GameObject("Food Approach").transform;
+            approach.SetParent(foodFacilityObject.transform, false);
+            binding = new FacilityActivityBinding();
+            SetPrivateField(binding, "activityId", "Eat");
+            SetPrivateField(binding, "reservationGroup", "Eat01");
+            SetPrivateField(binding, "externallyRequestable", true);
+            SetPrivateField(binding, "approachAnchor", approach);
+            SetPrivateField(facility, "activities", new[] { binding });
+            service = foodFacilityObject.AddComponent<FoodServiceComponent>();
+            SetPrivateField(service, "facility", facility);
+            SetPrivateField(service, "eatActivityId", "Eat");
+            SetPrivateField(service, "hungerRecoveryPerGameHour", 60f);
+            return facility;
+        }
+
         private static void SetRunnerState(
             ColonistActivityRunner runner,
             FacilityActivityBinding binding,
@@ -218,7 +431,16 @@ namespace AsteroidColony.Tests
         {
             FieldInfo fatigue = typeof(ColonistStatsComponent).GetField(
                 "fatigue", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(fatigue, Is.Not.Null);
             fatigue.SetValue(stats, value);
+        }
+
+        private void SetHunger(float value)
+        {
+            FieldInfo hunger = typeof(ColonistStatsComponent).GetField(
+                "hunger", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(hunger, Is.Not.Null);
+            hunger.SetValue(stats, value);
         }
     }
 }

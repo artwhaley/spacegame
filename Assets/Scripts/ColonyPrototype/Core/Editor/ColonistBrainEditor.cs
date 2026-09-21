@@ -54,6 +54,13 @@ namespace AsteroidColony
                 ReadOnlyLabel("Effective Rate", FormatRate(stats.EffectiveFatiguePerGameHour));
                 ReadOnlyLabel("Sleepy", stats.IsSleepy ? "YES" : "NO");
                 ReadOnlyLabel("Exhausted", stats.IsExhausted ? "YES" : "NO");
+                ReadOnlyLabel("Hunger", stats.Hunger.ToString("0.##"));
+                ReadOnlyLabel("Baseline Hunger Rate", FormatRate(stats.BaselineHungerPerGameHour));
+                ReadOnlyLabel("Effective Hunger Rate", FormatRate(stats.EffectiveHungerPerGameHour));
+                ReadOnlyLabel("Hungry Threshold", stats.HungryThreshold.ToString("0.##"));
+                ReadOnlyLabel("Hungry", stats.IsHungry ? "YES" : "NO");
+                ReadOnlyLabel("Starvation Threshold", stats.StarvationThreshold.ToString("0.##"));
+                ReadOnlyLabel("Starving", stats.IsStarving ? "YES" : "NO");
             }
 
             EditorGUILayout.Space(2f);
@@ -63,6 +70,10 @@ namespace AsteroidColony
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("Work Target", EditorStyles.boldLabel);
             DrawWorkTarget(resolver);
+
+            EditorGUILayout.Space(2f);
+            EditorGUILayout.LabelField("Eat Target", EditorStyles.boldLabel);
+            DrawEatTarget(resolver);
 
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("Interaction", EditorStyles.boldLabel);
@@ -266,6 +277,36 @@ namespace AsteroidColony
             ReadOnlyLabel("Current Activity", runner.CurrentActivityId ?? "NONE");
             ReadOnlyLabel("Active Activity", runner.ActiveActivityId ?? "NONE");
             ReadOnlyLabel("Activity Active", runner.IsActivityActive ? "YES" : "NO");
+            ReadOnlyLabel(
+                "Active Facility",
+                runner.ActiveFacility != null ? runner.ActiveFacility.name : "NONE");
+        }
+
+        private static void DrawEatTarget(ColonistTargetResolver resolver)
+        {
+            if (resolver == null)
+            {
+                ReadOnlyLabel("Resolved", "NO");
+                ReadOnlyLabel("Resolver", "MISSING");
+                return;
+            }
+
+            if (!resolver.TryResolveTarget(ActivityPurpose.Eat, out ActivityTarget target) ||
+                target == null ||
+                !target.IsConfigured)
+            {
+                ReadOnlyLabel("Resolved", "NO");
+                ReadOnlyLabel(
+                    "Food Services",
+                    FoodManager.Instance != null
+                        ? FoodManager.Instance.Services.Count.ToString()
+                        : "MANAGER MISSING");
+                return;
+            }
+
+            ReadOnlyLabel("Resolved", "YES");
+            ReadOnlyLabel("Facility", target.Facility.name);
+            ReadOnlyLabel("Activity", target.ActivityId);
         }
 
         private static string FormatOccurrence(ScheduledWorkOccurrence occurrence)

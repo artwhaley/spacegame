@@ -51,6 +51,8 @@ namespace Colony.Interactions
             currentBinding != null;
         public FacilityActivityBinding ActiveActivityBinding =>
             IsActivityActive ? currentBinding : null;
+        public InteractableFacility ActiveFacility =>
+            IsActivityActive ? currentFacility : null;
         public string ActiveActivityId => ActiveActivityBinding?.ActivityId;
         public string PendingActivityId => pendingActivityId;
         public bool HasActiveRequest => reservation != null && !reservation.IsReleased;

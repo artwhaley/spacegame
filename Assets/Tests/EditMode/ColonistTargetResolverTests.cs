@@ -11,6 +11,8 @@ namespace AsteroidColony.Tests
         private GameObject facilityObject;
         private GameObject workplaceObject;
         private GameObject workforceObject;
+        private GameObject foodManagerObject;
+        private GameObject foodFacilityObject;
         private JobRoleDefinition role;
 
         [TearDown]
@@ -25,6 +27,10 @@ namespace AsteroidColony.Tests
                 Object.DestroyImmediate(workplaceObject);
             if (workforceObject != null)
                 Object.DestroyImmediate(workforceObject);
+            if (foodManagerObject != null)
+                Object.DestroyImmediate(foodManagerObject);
+            if (foodFacilityObject != null)
+                Object.DestroyImmediate(foodFacilityObject);
             if (role != null)
                 Object.DestroyImmediate(role);
         }
@@ -143,6 +149,58 @@ namespace AsteroidColony.Tests
             Assert.That(target, Is.Null);
         }
 
+        [Test]
+        public void EatResolvesRegisteredPublicFoodService()
+        {
+            colonistObject = new GameObject("Colonist Eat Resolver Test");
+            ColonistTargetResolver resolver =
+                colonistObject.AddComponent<ColonistTargetResolver>();
+            CreateFoodManagerAndService();
+
+            bool result = resolver.TryResolveTarget(
+                ActivityPurpose.Eat,
+                out ActivityTarget target);
+
+            Assert.That(result, Is.True);
+            Assert.That(target, Is.Not.Null);
+            Assert.That(target.ActivityId, Is.EqualTo("Eat"));
+            Assert.That(target.Facility, Is.SameAs(foodFacilityObject.GetComponent<InteractableFacility>()));
+        }
+
+        [Test]
+        public void EatWithoutFoodManagerFailsCleanly()
+        {
+            colonistObject = new GameObject("Eat Without Manager Test");
+            ColonistTargetResolver resolver =
+                colonistObject.AddComponent<ColonistTargetResolver>();
+
+            bool result = resolver.TryResolveTarget(
+                ActivityPurpose.Eat,
+                out ActivityTarget target);
+
+            Assert.That(result, Is.False);
+            Assert.That(target, Is.Null);
+        }
+
+        [Test]
+        public void EatWithReservedFoodServiceReturnsFalse()
+        {
+            colonistObject = new GameObject("Reserved Eat Resolver Test");
+            ColonistTargetResolver resolver =
+                colonistObject.AddComponent<ColonistTargetResolver>();
+            CreateFoodManagerAndService();
+            InteractableFacility facility =
+                foodFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(facility.TryAcquire("Eat01", foodManagerObject, out _), Is.True);
+
+            bool result = resolver.TryResolveTarget(
+                ActivityPurpose.Eat,
+                out ActivityTarget target);
+
+            Assert.That(result, Is.False);
+            Assert.That(target, Is.Null);
+        }
+
         private ColonistAssignments CreateAssignments()
         {
             colonistObject = new GameObject("Colonist Target Resolver Test");
@@ -182,6 +240,29 @@ namespace AsteroidColony.Tests
                 workplaceObject.AddComponent<WorkplaceComponent>();
             SetPrivateField(workplace, "roles", new[] { roleBinding });
             return workplace;
+        }
+
+        private void CreateFoodManagerAndService()
+        {
+            foodManagerObject = new GameObject("Food Manager Test");
+            foodManagerObject.AddComponent<FoodManager>();
+
+            foodFacilityObject = new GameObject("Food Facility Test");
+            InteractableFacility facility =
+                foodFacilityObject.AddComponent<InteractableFacility>();
+            Transform approach = new GameObject("Food Approach").transform;
+            approach.SetParent(foodFacilityObject.transform, false);
+            FacilityActivityBinding binding = new FacilityActivityBinding();
+            SetPrivateField(binding, "activityId", "Eat");
+            SetPrivateField(binding, "reservationGroup", "Eat01");
+            SetPrivateField(binding, "externallyRequestable", true);
+            SetPrivateField(binding, "approachAnchor", approach);
+            SetPrivateField(facility, "activities", new[] { binding });
+            FoodServiceComponent service =
+                foodFacilityObject.AddComponent<FoodServiceComponent>();
+            SetPrivateField(service, "facility", facility);
+            SetPrivateField(service, "eatActivityId", "Eat");
+            SetPrivateField(service, "hungerRecoveryPerGameHour", 60f);
         }
 
         private static ActivityTarget CreateTarget(
