@@ -1,7 +1,9 @@
 {
     "name": "ColonyPrototype.Runtime",
     "rootNamespace": "AsteroidColony",
-    "references": [],
+    "references": [
+        "Colony.Interactions.Runtime"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

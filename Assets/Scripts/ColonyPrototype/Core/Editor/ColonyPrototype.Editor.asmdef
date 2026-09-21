@@ -2,7 +2,8 @@
     "name": "ColonyPrototype.Editor",
     "rootNamespace": "AsteroidColony.Editor",
     "references": [
-        "ColonyPrototype.Runtime"
+        "ColonyPrototype.Runtime",
+        "Colony.Interactions.Runtime"
     ],
     "includePlatforms": [
         "Editor"

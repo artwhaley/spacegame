@@ -178,5 +178,18 @@ namespace AsteroidColony
             ReadinessHistory.Record("colonist.arrival", displayName, arrived.displayName);
             return true;
         }
+
+        /// <summary>Abandons a physical transit without changing the last arrived location.</summary>
+        public bool CancelTransit()
+        {
+            if (!inTransit)
+                return false;
+
+            transitOrigin = null;
+            transitDestination = null;
+            transitKind = string.Empty;
+            inTransit = false;
+            return true;
+        }
     }
 }

@@ -8,6 +8,7 @@ namespace Colony.Interactions
     public sealed class ColonistMotor : MonoBehaviour
     {
         private const string SpeedParameter = "Speed";
+        private const string TurnParameter = "Turn";
 
         [SerializeField] private NavMeshAgent agent;
         [SerializeField] private Animator animator;
@@ -15,6 +16,7 @@ namespace Colony.Interactions
         [SerializeField, Min(0f)] private float animatorDampTime = 0.1f;
         [SerializeField, Min(0.01f)] private float destinationSampleDistance = 1f;
         [SerializeField, Min(1f)] private float activityFacingSpeed = 360f;
+        [SerializeField, Range(10f, 180f)] private float turnBlendAngle = 70f;
 
         private NavMeshPath calculatedPath;
         private bool hasDestination;
@@ -33,6 +35,7 @@ namespace Colony.Interactions
         private Quaternion navigationReturnRotation;
         private bool activityFacingActive;
         private Quaternion activityFacingTarget;
+        private bool hasTurnParameter;
 
         public bool IsNavigating { get; private set; }
         public bool IsInActivityMotion => activityMotionActive;
@@ -61,12 +64,13 @@ namespace Colony.Interactions
             if (animator != null)
             {
                 animator.applyRootMotion = false;
+                hasTurnParameter = HasFloatParameter(animator, TurnParameter);
             }
 
             if (agent != null)
             {
                 agent.updatePosition = true;
-                agent.updateRotation = true;
+                ConfigureNavigationRotation();
             }
         }
 
@@ -155,6 +159,7 @@ namespace Colony.Interactions
             }
 
             SetAnimatorSpeed(0f);
+            SetAnimatorTurn(0f);
         }
 
         public bool BeginActivityMotion()
@@ -176,6 +181,7 @@ namespace Colony.Interactions
             navigationReturnTargetValid = false;
             activityMotionActive = true;
             SetAnimatorSpeed(0f);
+            SetAnimatorTurn(0f);
             return true;
         }
 
@@ -271,7 +277,7 @@ namespace Colony.Interactions
                 navigationReturnPosition,
                 navigationReturnRotation);
             agent.updatePosition = true;
-            agent.updateRotation = true;
+            ConfigureNavigationRotation();
             agent.isStopped = true;
             agent.ResetPath();
             navigationReturnTargetValid = false;
@@ -326,10 +332,11 @@ namespace Colony.Interactions
             activityMotionActive = false;
             transform.SetPositionAndRotation(resumePosition, resumeRotation);
             agent.updatePosition = true;
-            agent.updateRotation = true;
+            ConfigureNavigationRotation();
             agent.isStopped = true;
             agent.ResetPath();
             SetAnimatorSpeed(0f);
+            SetAnimatorTurn(0f);
             return true;
         }
 
@@ -385,6 +392,7 @@ namespace Colony.Interactions
             hasDestination = false;
             IsNavigating = false;
             SetAnimatorSpeed(0f);
+            SetAnimatorTurn(0f);
             Debug.LogWarning($"{nameof(ColonistMotor)} on {name}: {reason}", this);
             MoveFailed?.Invoke(reason);
             return false;
@@ -403,6 +411,38 @@ namespace Colony.Interactions
             float configuredWalkSpeed = Mathf.Max(agent.speed, 0.01f);
             float normalizedSpeed = Mathf.Clamp01(planarVelocity.magnitude / configuredWalkSpeed);
             SetAnimatorSpeed(normalizedSpeed);
+
+            if (!hasTurnParameter || activityMotionActive || !hasDestination || agent.isStopped)
+            {
+                SetAnimatorTurn(0f);
+                return;
+            }
+
+            Vector3 desiredVelocity = agent.desiredVelocity;
+            desiredVelocity.y = 0f;
+            if (desiredVelocity.sqrMagnitude <= 0.0001f)
+            {
+                SetAnimatorTurn(0f);
+                return;
+            }
+
+            float signedAngle = Vector3.SignedAngle(
+                transform.forward,
+                desiredVelocity.normalized,
+                Vector3.up);
+            float normalizedTurn = Mathf.Clamp(
+                signedAngle / Mathf.Max(turnBlendAngle, 1f),
+                -1f,
+                1f);
+            SetAnimatorTurn(normalizedTurn);
+
+            Quaternion desiredRotation = Quaternion.LookRotation(
+                desiredVelocity.normalized,
+                Vector3.up);
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                desiredRotation,
+                Mathf.Max(agent.angularSpeed, 1f) * Time.deltaTime);
         }
 
         private void SetAnimatorSpeed(float speed)
@@ -411,6 +451,41 @@ namespace Colony.Interactions
             {
                 animator.SetFloat(SpeedParameter, speed, animatorDampTime, Time.deltaTime);
             }
+        }
+
+        private void SetAnimatorTurn(float turn)
+        {
+            if (animator != null && hasTurnParameter)
+            {
+                animator.SetFloat(TurnParameter, turn, animatorDampTime, Time.deltaTime);
+            }
+        }
+
+        private void ConfigureNavigationRotation()
+        {
+            if (agent != null)
+            {
+                // A controller with a Turn parameter owns the visual turn blend;
+                // the motor rotates the actor toward the NavMesh steering vector.
+                // Older controllers retain Unity NavMeshAgent rotation.
+                agent.updateRotation = !hasTurnParameter;
+            }
+        }
+
+        private static bool HasFloatParameter(Animator targetAnimator, string parameterName)
+        {
+            AnimatorControllerParameter[] parameters = targetAnimator.parameters;
+            for (int index = 0; index < parameters.Length; index++)
+            {
+                AnimatorControllerParameter parameter = parameters[index];
+                if (parameter.name == parameterName &&
+                    parameter.type == AnimatorControllerParameterType.Float)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool BeginPlacementBlend(
