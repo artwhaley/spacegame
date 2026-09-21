@@ -10,7 +10,8 @@
 |---|---|---|
 | Resource quantity | `InventoryComponent` | Inventory APIs own on-hand, reserved, and capacity state. |
 | Facility operational state and effect multipliers | `FacilityPerformanceComponent` plus `IFacilityPerformanceProvider` implementations | Consumers ask for operational state/multipliers; recipe code does not count workers. |
-| Employment | **Legacy:** `ColonistAgent.currentEmployment` / `EmploymentAssignment` and staffing commands | This is the current pre-canonical implementation. Canonical colonist employment is planned to move to the future `WorkforceManager`; do not reconnect Bob to this legacy owner. |
+| Canonical regular employment | `WorkforceManager` and `WorkAssignment` | The manager owns the zero-or-one assignment registry, validates offered roles and scheduled capacity, and reports facts without moving or starting colonist activities. |
+| Legacy employment | `ColonistAgent.currentEmployment` / `EmploymentAssignment` and staffing commands | This remains the pre-canonical implementation for legacy code. Do not reconnect the canonical Synty colonist path to it. |
 | Last arrived logical location | `ColonistAgent.currentLocation` | `BeginTransit`/`CompleteTransit` keep transit separate from arrival. |
 | Population-level consumption | `PopulationResourceConsumer` on a habitation/inventory | It consumes aggregate resources and reports aggregate shortage state; it does not model personal needs. |
 | Housing capacity/restfulness seam | `HabitationComponent.capacity` and `restfulnessMultiplier` | These are explicit fields; visual bed transforms do not automatically own capacity. |
@@ -41,15 +42,20 @@ presentation or UI layer described by historical packets.
 If an implementation needs a new authority, add it only with an observable that proves
 the current owner is insufficient and record the choice in `DECISION_BACKLOG.md`.
 
-## Near-term canonical workforce migration
+## Canonical workforce ownership
 
 The canonical Synty colonist path is being built separately from the legacy
 staffing implementation. `ColonistIdentity` owns colonist identity;
 `JobRoleDefinition` owns job-role content; and `WorkplaceComponent` describes
-the regular work a facility offers. A future `WorkforceManager` will become the
-authoritative owner of regular employment and assignments. That manager does
-not exist yet, so this section records planned ownership rather than current
-runtime fact.
+the regular work a facility offers. `WorkforceManager` now owns the
+authoritative regular employment registry and `WorkAssignment` stores each
+colonist's workplace, role, and `DailyShiftWindow`.
 
-Until that migration is implemented, do not add canonical employment data to
-`ColonistAgent`, `StaffingManager`, or `EmploymentAssignment`.
+`ScheduledWorkOccurrence` is a derived query result, not a second authority.
+The manager's scheduled capacity is a planning constraint; physical
+`InteractableFacility` reservations remain separate runtime contention. The
+manager does not wake, move, animate, or start activities for colonists.
+
+Legacy employment remains in `ColonistAgent`, `StaffingManager`, and
+`EmploymentAssignment` only for the old path. Canonical code must not add new
+employment data there.

@@ -7,7 +7,7 @@ new workforce code must not reconnect Bob to it.
 ## Canonical colonist workforce path
 
 ```text
-Future WorkforceManager
+WorkforceManager
     authoritative regular employment registry
 
 ColonistIdentity
@@ -20,8 +20,14 @@ WorkplaceComponent
     declares roles offered by a facility and maps
     roles to physical InteractableFacility activities
 
-Future WorkAssignment
+WorkAssignment
     colonist + workplace + role + direct start/end hours
+
+DailyShiftWindow
+    owns daily recurring start/end schedule
+
+ScheduledWorkOccurrence
+    derived absolute instance of a recurring assignment
 
 ColonistBrain
     interprets current/next shift facts and decides behavior
@@ -33,9 +39,9 @@ ColonistActivityRunner
     performs physical work
 ```
 
-The future types named above are intentionally introduced incrementally. This
-document describes ownership and dependency direction; it does not claim that
-the future `WorkforceManager` or `WorkAssignment` already exists.
+The canonical types above are introduced incrementally. This document describes
+ownership and dependency direction; it does not claim that brain behavior or
+physical work execution has been connected to workforce facts.
 
 ## Locked rules
 
@@ -53,3 +59,29 @@ the future `WorkforceManager` or `WorkAssignment` already exists.
 The canonical path is separate from the legacy `StaffingManager`,
 `StaffingComponent`, `EmploymentAssignment`, and `ShiftPatternDefinition`
 architecture. Do not extend those legacy types for Bob's new workforce path.
+
+## Implemented scheduling primitive
+
+`DailyShiftWindow` is the canonical recurring per-worker schedule value. It
+stores a direct daily start hour and end hour, supports ordinary and overnight
+windows, uses half-open interval semantics, and rejects equal, non-finite, or
+out-of-range hours. Eight hours is not special, and no replacement shift
+assets or named Shift A/B/C vocabulary is part of this path.
+
+## Implemented regular employment facts
+
+`WorkforceManager` is the single canonical owner of the regular employment
+registry. A colonist has zero or one `WorkAssignment`, and valid assignment
+replacement is atomic. The manager reports employment facts only; it does not
+wake, move, animate, or start activities for colonists.
+
+`WorkplaceComponent` validates that a role is offered by a facility and maps it
+to a physical activity. `WorkforceManager` uses that public contract and
+enforces the role's scheduled capacity with half-open recurring-window overlap
+semantics. Scheduled capacity is an employment planning constraint;
+`InteractableFacility` reservation groups remain physical runtime contention.
+
+`ScheduledWorkOccurrence` derives concrete absolute start/end hours from a
+recurring `WorkAssignment`. `WorkforceManager` can answer current, next, and
+current-or-next shift queries, including overnight occurrences. `ColonistBrain`
+is a future consumer of those facts; Bob's behavior is intentionally unchanged.
