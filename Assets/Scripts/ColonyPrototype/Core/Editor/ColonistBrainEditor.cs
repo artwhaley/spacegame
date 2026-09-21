@@ -53,12 +53,16 @@ namespace AsteroidColony
                 ReadOnlyLabel("Baseline Rate", FormatRate(stats.BaselineFatiguePerGameHour));
                 ReadOnlyLabel("Effective Rate", FormatRate(stats.EffectiveFatiguePerGameHour));
                 ReadOnlyLabel("Sleepy", stats.IsSleepy ? "YES" : "NO");
+                ReadOnlyLabel("Rest Preferred", stats.ShouldPreferRest ? "YES" : "NO");
+                ReadOnlyLabel("Rest Preferred Threshold", stats.RestPreferredThreshold.ToString("0.##"));
                 ReadOnlyLabel("Exhausted", stats.IsExhausted ? "YES" : "NO");
                 ReadOnlyLabel("Hunger", stats.Hunger.ToString("0.##"));
                 ReadOnlyLabel("Baseline Hunger Rate", FormatRate(stats.BaselineHungerPerGameHour));
                 ReadOnlyLabel("Effective Hunger Rate", FormatRate(stats.EffectiveHungerPerGameHour));
                 ReadOnlyLabel("Hungry Threshold", stats.HungryThreshold.ToString("0.##"));
                 ReadOnlyLabel("Hungry", stats.IsHungry ? "YES" : "NO");
+                ReadOnlyLabel("Critical Hunger Threshold", stats.CriticalHungerThreshold.ToString("0.##"));
+                ReadOnlyLabel("Critical Hunger", stats.IsCriticallyHungry ? "YES" : "NO");
                 ReadOnlyLabel("Starvation Threshold", stats.StarvationThreshold.ToString("0.##"));
                 ReadOnlyLabel("Starving", stats.IsStarving ? "YES" : "NO");
             }
@@ -76,8 +80,17 @@ namespace AsteroidColony
             DrawEatTarget(resolver);
 
             EditorGUILayout.Space(2f);
+            EditorGUILayout.LabelField("OffDuty Planning", EditorStyles.boldLabel);
+            DrawOffDutyPlanning(brain);
+
+            EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("Interaction", EditorStyles.boldLabel);
             DrawInteraction(runner);
+
+            EditorGUILayout.Space(2f);
+            EditorGUILayout.LabelField("Decision", EditorStyles.boldLabel);
+            ReadOnlyLabel("Last Decision", brain.LastDecision);
+            ReadOnlyLabel("Last Decision Reason", brain.LastDecisionReason);
 
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("Navigation", EditorStyles.boldLabel);
@@ -307,6 +320,27 @@ namespace AsteroidColony
             ReadOnlyLabel("Resolved", "YES");
             ReadOnlyLabel("Facility", target.Facility.name);
             ReadOnlyLabel("Activity", target.ActivityId);
+        }
+
+        private static void DrawOffDutyPlanning(ColonistBrain brain)
+        {
+            ReadOnlyLabel("Next Work", brain.NextWork != null
+                ? FormatOccurrence(brain.NextWork)
+                : "NONE");
+            ReadOnlyLabel("Time Until Work", FormatDuration(brain.TimeUntilWork));
+            ReadOnlyLabel("Protected Sleep Required", FormatDuration(brain.ProtectedSleepRequired));
+            ReadOnlyLabel("Maximum Discretionary Duration", FormatDuration(brain.MaximumDiscretionaryDuration));
+            ReadOnlyLabel(
+                "OffDuty Target",
+                brain.OffDutyTarget != null && brain.OffDutyTarget.Target != null
+                    ? brain.OffDutyTarget.Target.Facility.name
+                    : "NONE");
+            ReadOnlyLabel(
+                "OffDuty Planned Duration",
+                FormatDuration(brain.OffDutyPlannedDuration));
+            ReadOnlyLabel(
+                "OffDuty Active Duration",
+                FormatDuration(brain.OffDutyActiveDuration));
         }
 
         private static string FormatOccurrence(ScheduledWorkOccurrence occurrence)

@@ -12,11 +12,17 @@ namespace AsteroidColony
         [SerializeField]
         private float baselineFatiguePerGameHour = 5f;
 
+        [SerializeField, Min(0f)]
+        private float preferredWorkStartFatigue = 30f;
+
         [SerializeField]
         private ColonistActivityRunner activityRunner;
 
         [SerializeField, Min(0f)]
         private float sleepyThreshold = 70f;
+
+        [SerializeField, Min(0f)]
+        private float restPreferredThreshold = 60f;
 
         [SerializeField, Min(0f)]
         private float exhaustionThreshold = 100f;
@@ -33,6 +39,15 @@ namespace AsteroidColony
         [SerializeField, Min(0f)]
         private float starvationThreshold = 100f;
 
+        [SerializeField, Min(0f)]
+        private float criticalHungerThreshold = 90f;
+
+        private bool thresholdStateInitialized;
+        private bool wasHungry;
+        private bool wasCriticallyHungry;
+        private bool wasSleepy;
+        private bool wasRestPreferred;
+
         public float Fatigue => fatigue;
 
         public float Hunger => hunger;
@@ -40,6 +55,8 @@ namespace AsteroidColony
         public float BaselineHungerPerGameHour => baselineHungerPerGameHour;
 
         public float BaselineFatiguePerGameHour => baselineFatiguePerGameHour;
+
+        public float PreferredWorkStartFatigue => preferredWorkStartFatigue;
 
         public float EffectiveFatiguePerGameHour
         {
@@ -91,17 +108,25 @@ namespace AsteroidColony
 
         public float SleepyThreshold => sleepyThreshold;
 
+        public float RestPreferredThreshold => restPreferredThreshold;
+
         public float ExhaustionThreshold => exhaustionThreshold;
 
         public float HungryThreshold => hungryThreshold;
 
         public float StarvationThreshold => starvationThreshold;
 
+        public float CriticalHungerThreshold => criticalHungerThreshold;
+
         public bool IsSleepy => fatigue >= sleepyThreshold;
+
+        public bool ShouldPreferRest => fatigue >= restPreferredThreshold;
 
         public bool IsExhausted => fatigue >= exhaustionThreshold;
 
         public bool IsHungry => hunger >= hungryThreshold;
+
+        public bool IsCriticallyHungry => hunger >= criticalHungerThreshold;
 
         public bool IsStarving => hunger >= starvationThreshold;
 
@@ -111,6 +136,8 @@ namespace AsteroidColony
         {
             if (activityRunner == null)
                 activityRunner = GetComponent<ColonistActivityRunner>();
+
+            CaptureThresholdState();
         }
 
         private void OnEnable()
@@ -162,9 +189,17 @@ namespace AsteroidColony
             if (!IsFinite(baselineFatiguePerGameHour))
                 baselineFatiguePerGameHour = 0f;
 
+            if (!IsFinite(preferredWorkStartFatigue))
+                preferredWorkStartFatigue = 0f;
+            preferredWorkStartFatigue = Mathf.Max(0f, preferredWorkStartFatigue);
+
             if (!IsFinite(sleepyThreshold))
                 sleepyThreshold = 0f;
             sleepyThreshold = Mathf.Max(0f, sleepyThreshold);
+
+            if (!IsFinite(restPreferredThreshold))
+                restPreferredThreshold = 0f;
+            restPreferredThreshold = Mathf.Clamp(restPreferredThreshold, 0f, sleepyThreshold);
 
             if (!IsFinite(exhaustionThreshold))
                 exhaustionThreshold = 0f;
@@ -185,6 +220,13 @@ namespace AsteroidColony
                 starvationThreshold = 0f;
             starvationThreshold = Mathf.Max(0f, starvationThreshold);
 
+            if (!IsFinite(criticalHungerThreshold))
+                criticalHungerThreshold = hungryThreshold;
+            criticalHungerThreshold = Mathf.Clamp(
+                criticalHungerThreshold,
+                hungryThreshold,
+                starvationThreshold);
+
         }
 
         private void ApplyFatigueDelta(float amount)
@@ -197,6 +239,7 @@ namespace AsteroidColony
                 return;
 
             fatigue = Mathf.Max(0f, updatedFatigue);
+            RecordThresholdTransitions();
         }
 
         private void ApplyHungerDelta(float amount)
@@ -209,6 +252,76 @@ namespace AsteroidColony
                 return;
 
             hunger = Mathf.Max(0f, updatedHunger);
+            RecordThresholdTransitions();
+        }
+
+        private void CaptureThresholdState()
+        {
+            wasHungry = IsHungry;
+            wasCriticallyHungry = IsCriticallyHungry;
+            wasSleepy = IsSleepy;
+            wasRestPreferred = ShouldPreferRest;
+            thresholdStateInitialized = true;
+        }
+
+        private void RecordThresholdTransitions()
+        {
+            if (!thresholdStateInitialized)
+            {
+                CaptureThresholdState();
+                return;
+            }
+
+            bool hungry = IsHungry;
+            bool criticallyHungry = IsCriticallyHungry;
+            bool sleepy = IsSleepy;
+            bool restPreferred = ShouldPreferRest;
+
+            RecordTransition(
+                "colonist.need.hungry",
+                wasHungry,
+                hungry,
+                HungryThreshold);
+            RecordTransition(
+                "colonist.need.critical_hunger",
+                wasCriticallyHungry,
+                criticallyHungry,
+                CriticalHungerThreshold);
+            RecordTransition(
+                "colonist.need.sleepy",
+                wasSleepy,
+                sleepy,
+                SleepyThreshold);
+            RecordTransition(
+                "colonist.need.rest_preferred",
+                wasRestPreferred,
+                restPreferred,
+                RestPreferredThreshold);
+
+            wasHungry = hungry;
+            wasCriticallyHungry = criticallyHungry;
+            wasSleepy = sleepy;
+            wasRestPreferred = restPreferred;
+        }
+
+        private void RecordTransition(
+            string eventKey,
+            bool wasActive,
+            bool isActive,
+            float threshold)
+        {
+            if (wasActive == isActive)
+                return;
+
+            SimulationLogManager.RecordEvent(
+                eventKey,
+                "Need",
+                "Info",
+                this,
+                null,
+                new SimulationLogField("state", isActive ? "entered" : "exited"),
+                new SimulationLogField("value", eventKey.Contains("hunger") ? Hunger : Fatigue),
+                new SimulationLogField("threshold", threshold));
         }
 
         private static bool IsFinite(float value)

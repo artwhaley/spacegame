@@ -119,6 +119,98 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &45583009
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 45583010}
+  - component: {fileID: 45583011}
+  - component: {fileID: 45583012}
+  m_Layer: 0
+  m_Name: Recreation
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &45583010
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 45583009}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0.9223792, z: -0, w: 0.38628566}
+  m_LocalPosition: {x: 0.59393644, y: 0, z: 8.588265}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 332701046}
+  - {fileID: 850371179}
+  m_Father: {fileID: 1535159107}
+  m_LocalEulerAnglesHint: {x: 0, y: -134.553, z: 0}
+--- !u!114 &45583011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 45583009}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a73e91c4d5f6428b9c0e1f2a3b4c5678, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Colony.Interactions.Runtime::Colony.Interactions.InteractableFacility
+  activities:
+  - activityId: play
+    reservationGroup: Play01
+    externallyRequestable: 1
+    completionMode: 0
+    overridesFatigueRate: 1
+    fatiguePerGameHour: 7
+    approachAnchor: {fileID: 195510227}
+    animationAnchor: {fileID: 1154771409}
+    exitAnchor: {fileID: 1342717786}
+    targets: {fileID: 1685033116}
+    entrySteps: []
+    loopStep:
+      clip: {fileID: -203655887218126122, guid: ca4e3bb4ee83d6f4bbd48578afae1be0, type: 3}
+      speed: 1
+      blendDuration: 1
+      placementReference: 0
+      customPlacementAnchor: {fileID: 0}
+      placementPositionOffset: {x: 0, y: 0, z: 0}
+      placementEulerOffset: {x: 0, y: 0, z: 0}
+      contacts: []
+    activeSteps: []
+    exitSteps: []
+  sequences: []
+--- !u!114 &45583012
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 45583009}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c4e1a9b2d6f4385a0e7c9d1b3f5a6e8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.OffDutyComponent
+  facility: {fileID: 45583011}
+  activities:
+  - activityId: play
+    plannedDurationGameHours: 1
+    enabled: 1
+    requiresStaff: 0
+    requiredWorkplace: {fileID: 0}
+    requiredRole: {fileID: 0}
+    minimumActiveWorkers: 1
 --- !u!1 &67356762
 GameObject:
   m_ObjectHideFlags: 0
@@ -444,6 +536,37 @@ Transform:
   m_Children: []
   m_Father: {fileID: 389525947}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &195510226
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 195510227}
+  m_Layer: 0
+  m_Name: ApproachAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &195510227
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 195510226}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0, y: 0, z: 0.85}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 332701046}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &258503281
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -574,6 +697,41 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1099281627}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &332701045
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 332701046}
+  m_Layer: 0
+  m_Name: ActivitySlot_Play
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &332701046
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 332701045}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -6.98, y: 0, z: -2.46}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 195510227}
+  - {fileID: 1154771409}
+  - {fileID: 1342717786}
+  - {fileID: 1685033116}
+  m_Father: {fileID: 45583010}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &389525946
 GameObject:
@@ -832,6 +990,68 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 4092842984698858, guid: ad0ef04a652ad7444a86447d95dc5007, type: 3}
   m_PrefabInstance: {fileID: 673035583}
   m_PrefabAsset: {fileID: 0}
+--- !u!1001 &850371178
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 45583010}
+    m_Modifications:
+    - target: {fileID: 1787366463712352, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_Name
+      value: SM_Prop_Monitor_01
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -7.16677
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -2.60563
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+--- !u!4 &850371179 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4667045883747842, guid: 2c9735ad03f2a774bb465d286fc257df, type: 3}
+  m_PrefabInstance: {fileID: 850371178}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &873505496
 GameObject:
   m_ObjectHideFlags: 0
@@ -961,6 +1181,37 @@ Transform:
   - {fileID: 1721634323}
   m_Father: {fileID: 1819463917}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1154771408
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1154771409}
+  m_Layer: 0
+  m_Name: AnimationAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1154771409
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1154771408}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0, y: 0, z: 0.64}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 332701046}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1249855768
 GameObject:
   m_ObjectHideFlags: 0
@@ -1022,6 +1273,37 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1739511745}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1342717785
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1342717786}
+  m_Layer: 0
+  m_Name: ExitAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1342717786
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1342717785}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 1.55}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 332701046}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1380790930
 GameObject:
@@ -1318,6 +1600,7 @@ Transform:
   - {fileID: 389525947}
   - {fileID: 1856994484}
   - {fileID: 1819463917}
+  - {fileID: 45583010}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1548527481
@@ -1350,6 +1633,37 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1739511745}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1685033115
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1685033116}
+  m_Layer: 0
+  m_Name: Targets
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1685033116
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1685033115}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 332701046}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1721634322
 GameObject:
@@ -1519,21 +1833,6 @@ MonoBehaviour:
       placementEulerOffset: {x: 0, y: 0, z: 0}
       contacts: []
   sequences: []
---- !u!114 &2050100011
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1819463916}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c6e1d6e2f4a8420a9f7d02e1a5c3b110, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.FoodServiceComponent
-  facility: {fileID: 1819463919}
-  eatActivityId: Eat
-  hungerRecoveryPerGameHour: 60
 --- !u!114 &1852747483 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 7346298053187492011, guid: b6849b056c7b4474d93989bff971e110, type: 3}
@@ -2020,6 +2319,21 @@ MonoBehaviour:
     shift:
       startHour: 16
       endHour: 20
+--- !u!114 &2050100011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1819463916}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c6e1d6e2f4a8420a9f7d02e1a5c3b110, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.FoodServiceComponent
+  facility: {fileID: 1819463919}
+  eatActivityId: Eat
+  hungerRecoveryPerGameHour: 60
 --- !u!1 &2050100014
 GameObject:
   m_ObjectHideFlags: 0
@@ -2062,9 +2376,102 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a4d2c7f18b9546938e0f1c6a2d7b5e90, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.FoodManager
   services: []
+--- !u!1 &2100000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2100000002}
+  - component: {fileID: 2100000003}
+  m_Layer: 0
+  m_Name: OffDutyManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2100000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2100000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2100000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2100000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8a6c4e2f0b14795a3c1e7d9f5b2a604, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.OffDutyManager
+  providers: []
+--- !u!1 &2100000011
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2100000012}
+  - component: {fileID: 2100000013}
+  m_Layer: 0
+  m_Name: SimulationLogManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2100000012
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2100000011}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2100000013
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2100000011}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5f2c7d9e4b14680b1c3d5e7f9a02468, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.SimulationLogManager
+  capacity: 2048
+  writeJsonl: 1
+  echoToConsole: 1
+  entries: []
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -2077,3 +2484,5 @@ SceneRoots:
   - {fileID: 1947619470}
   - {fileID: 2050100002}
   - {fileID: 2050100015}
+  - {fileID: 2100000002}
+  - {fileID: 2100000012}

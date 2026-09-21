@@ -386,9 +386,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistStatsComponent
   fatigue: 0
   baselineFatiguePerGameHour: 5
+  preferredWorkStartFatigue: 30
   activityRunner: {fileID: 0}
   sleepyThreshold: 70
+  restPreferredThreshold: 60
   exhaustionThreshold: 100
+  hunger: 0
+  baselineHungerPerGameHour: 8
+  hungryThreshold: 60
+  starvationThreshold: 100
+  criticalHungerThreshold: 90
 --- !u!114 &7346298053187492011
 MonoBehaviour:
   m_ObjectHideFlags: 0

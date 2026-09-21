@@ -13,6 +13,8 @@ namespace AsteroidColony
         [SerializeField]
         private List<FoodServiceComponent> services = new List<FoodServiceComponent>();
 
+        private string lastSelectionSignature;
+
         public IReadOnlyList<FoodServiceComponent> Services =>
             services ?? (IReadOnlyList<FoodServiceComponent>)Array.Empty<FoodServiceComponent>();
 
@@ -60,10 +62,22 @@ namespace AsteroidColony
             if (TryFindFoodService(seekerPosition, out FoodServiceComponent service))
             {
                 target = new ActivityTarget(service.Facility, service.EatActivityId);
+                RecordSelection(service);
                 return target.IsConfigured;
             }
 
             target = null;
+            if (!string.Equals(lastSelectionSignature, "none", StringComparison.Ordinal))
+            {
+                lastSelectionSignature = "none";
+                SimulationLogManager.RecordEvent(
+                    "food.no_target",
+                    "Food",
+                    "Info",
+                    this,
+                    null,
+                    new SimulationLogField("reason", "no_valid_food_service"));
+            }
             return false;
         }
 
@@ -165,6 +179,23 @@ namespace AsteroidColony
 
             int nameComparison = string.CompareOrdinal(candidate.name, current.name);
             return nameComparison < 0;
+        }
+
+        private void RecordSelection(FoodServiceComponent service)
+        {
+            string signature = service != null ? service.name : "none";
+            if (string.Equals(lastSelectionSignature, signature, StringComparison.Ordinal))
+                return;
+
+            lastSelectionSignature = signature;
+            SimulationLogManager.RecordEvent(
+                "food.target_selected",
+                "Food",
+                "Info",
+                this,
+                service != null ? service.Facility : null,
+                new SimulationLogField("activityId", service != null ? service.EatActivityId : string.Empty),
+                new SimulationLogField("reason", "nearest_available_service"));
         }
 
         private void PruneServices()

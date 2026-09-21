@@ -115,3 +115,30 @@ and Hunger recovery is applied only during a genuinely active matching Eat.
 
 Food inventory integration is intentionally deferred. `PopulationResourceConsumer`
 migration is not part of this slice.
+
+## OffDuty, biological priority, and canonical history
+
+`ColonistStatsComponent` exposes ordinary Hunger at 60, Critical Hunger at 90,
+hard Sleepiness at 70 Fatigue, and proactive Rest Preferred at 60 Fatigue.
+The explicit brain policy is: critical biological survival, current regular
+Work, hard Sleep, ordinary Hunger, proactive Rest, then discretionary OffDuty.
+Ordinary Eat remains permitted during the 0.5 game-hour Work preparation
+window; newly-started Sleep and OffDuty do not begin in that window. Critical
+Hunger may interrupt current Work or wake Sleep. The preparation window is a
+departure-policy boundary, not a period in which Bob must stand idle.
+
+`OffDutyComponent` authors discretionary facility activities and
+`OffDutyManager` discovers the nearest fitting opportunity without reserving
+it. `ColonistFreeTimePlanner` calculates a conservative discretionary budget
+from biological headroom and, when a next shift exists, the preparation window
+and authored Sleep recovery. Travel time is intentionally treated as zero for
+this first slice. Optional staffing requirements use physical active Work at
+the matching workplace/role, not schedule presence alone.
+
+`SimulationLogManager` is the canonical structured event/history seam. It owns
+bounded in-memory `SimulationLogEntry` records and JSONL output; each entry has
+sequence, game hour, real timestamp, semantic event key, category, severity,
+subjects, and structured fields. `ReadinessHistory` is only a compatibility
+adapter. Human-readable Console lines are renderings of structured records,
+not the authoritative data. The generic interaction package emits structured
+`ActivityLifecycleEvent` telemetry without depending on the game logger.

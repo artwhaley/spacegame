@@ -22,6 +22,9 @@
 | Personal hunger | `ColonistStatsComponent` | Hunger accumulation, thresholds, and physiological deltas live with the colonist's personal stats. |
 | Public food discovery | `FoodManager` and `FoodServiceComponent` | The manager exposes configured public Eat opportunities without moving, reserving, or mutating colonist state. |
 | Personal Eat decision | `ColonistBrain` | The explicit EatSeeking/Eating lifecycle decides when Hunger is satisfied and waits for physical release. |
+| Personal biological planning | `ColonistStatsComponent` and `ColonistFreeTimePlanner` | Stats own thresholds/rates; the focused planner calculates protected rest and discretionary budget without commanding activities. |
+| Discretionary activity authoring/discovery | `OffDutyComponent` and `OffDutyManager` | Facilities author OffDuty bindings; the manager reports nearest fitting opportunities without reserving them. |
+| Canonical structured simulation history | `SimulationLogManager`, `SimulationLogEntry`, `SimulationLogField` | One bounded structured stream owns JSONL and Console rendering; `ReadinessHistory` is compatibility-only. |
 
 ## Dependency direction
 
@@ -72,3 +75,14 @@ choreography remains owned by the Cafeteria's `InteractableFacility`. Nutrition
 is derived from a genuinely active matching Eat, not from brain state, proximity,
 or a reservation alone. Food inventory integration and `PopulationResourceConsumer`
 migration are intentionally outside this slice.
+
+## OffDuty and biological policy
+
+The current explicit priority is critical biological survival, current regular
+Work, hard Sleep, ordinary Hunger, proactive Rest, then OffDuty. Ordinary Eat
+is allowed during the 30-minute Work preparation window; newly-started Sleep
+and OffDuty are not. Critical Hunger can request a physical Work exit or wake
+Sleep. Discretionary planning intentionally ignores travel time and requires
+authored Sleep recovery when a future shift must be protected. Optional
+OffDuty staffing is derived from physically active matching Work, not from a
+schedule entry alone.

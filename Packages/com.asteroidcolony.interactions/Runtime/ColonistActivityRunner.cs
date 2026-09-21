@@ -4,6 +4,40 @@ using UnityEngine;
 
 namespace Colony.Interactions
 {
+    public enum ActivityLifecycleEventKind
+    {
+        Requested,
+        Reserved,
+        NavigationStarted,
+        ActiveStarted,
+        ExitStarted,
+        Released,
+        Failed
+    }
+
+    public sealed class ActivityLifecycleEvent
+    {
+        public ActivityLifecycleEvent(
+            ActivityLifecycleEventKind kind,
+            InteractableFacility facility,
+            string activityId,
+            string reservationGroup,
+            string reason)
+        {
+            Kind = kind;
+            Facility = facility;
+            ActivityId = activityId ?? string.Empty;
+            ReservationGroup = reservationGroup ?? string.Empty;
+            Reason = reason ?? string.Empty;
+        }
+
+        public ActivityLifecycleEventKind Kind { get; }
+        public InteractableFacility Facility { get; }
+        public string ActivityId { get; }
+        public string ReservationGroup { get; }
+        public string Reason { get; }
+    }
+
     public enum ActivityPhase
     {
         Idle,
@@ -64,6 +98,7 @@ namespace Colony.Interactions
         public bool HasActiveSequence => activeSequence != null;
 
         public event Action<string> StatusChanged;
+        public event Action<ActivityLifecycleEvent> ActivityLifecycleChanged;
 
         private void Awake()
         {
@@ -136,6 +171,11 @@ namespace Colony.Interactions
             // sequence.  Keep the current activity's graceful exit path, but do
             // not let the sequence advance to another step afterward.
             CancelSequenceIntent();
+            EmitLifecycle(
+                ActivityLifecycleEventKind.Requested,
+                facility,
+                binding,
+                string.Empty);
 
             if (HasActiveRequest)
             {
@@ -691,6 +731,11 @@ namespace Colony.Interactions
             {
                 activityActive = true;
                 StatusChanged?.Invoke($"Active: {currentBinding.ActivityId}.");
+                EmitLifecycle(
+                    ActivityLifecycleEventKind.ActiveStarted,
+                    currentFacility,
+                    currentBinding,
+                    string.Empty);
 
                 if (stopRequested)
                 {
@@ -806,6 +851,11 @@ namespace Colony.Interactions
             exitAnimationCompleted = false;
             exitPlacementCompleted = false;
             StatusChanged?.Invoke($"Exiting {currentBinding.ActivityId}.");
+            EmitLifecycle(
+                ActivityLifecycleEventKind.ExitStarted,
+                currentFacility,
+                currentBinding,
+                string.Empty);
 
             if (!animationDriver.PlaySequence(currentBinding.ExitSteps))
             {
@@ -1011,6 +1061,11 @@ namespace Colony.Interactions
             }
 
             ClearPendingRequest();
+            EmitLifecycle(
+                ActivityLifecycleEventKind.Failed,
+                currentFacility,
+                currentBinding,
+                reason);
             ReleaseReservation();
             currentFacility = null;
             currentBinding = null;
@@ -1097,6 +1152,11 @@ namespace Colony.Interactions
             exitPlacementCompleted = false;
             Phase = ActivityPhase.Reserved;
             StatusChanged?.Invoke($"Reserved {binding.ReservationGroup}.");
+            EmitLifecycle(
+                ActivityLifecycleEventKind.Reserved,
+                facility,
+                binding,
+                string.Empty);
 
             if (motor == null)
             {
@@ -1112,6 +1172,11 @@ namespace Colony.Interactions
 
             Phase = ActivityPhase.Navigating;
             StatusChanged?.Invoke($"Navigating to {binding.ActivityId}.");
+            EmitLifecycle(
+                ActivityLifecycleEventKind.NavigationStarted,
+                facility,
+                binding,
+                string.Empty);
             return true;
         }
 
@@ -1177,12 +1242,40 @@ namespace Colony.Interactions
         private void ReleaseReservation()
         {
             contactRigDriver?.ClearContacts();
+            InteractableFacility releasedFacility = currentFacility;
+            FacilityActivityBinding releasedBinding = currentBinding;
+            string releasedGroup = reservation?.ReservationGroup;
             if (reservation != null && currentFacility != null)
             {
                 currentFacility.Release(reservation);
             }
-
             reservation = null;
+            if (releasedFacility != null && releasedBinding != null && !string.IsNullOrEmpty(releasedGroup))
+            {
+                EmitLifecycle(
+                    ActivityLifecycleEventKind.Released,
+                    releasedFacility,
+                    releasedBinding,
+                    string.Empty);
+            }
+        }
+
+        private void EmitLifecycle(
+            ActivityLifecycleEventKind kind,
+            InteractableFacility facility,
+            FacilityActivityBinding binding,
+            string reason)
+        {
+            if (ActivityLifecycleChanged == null || binding == null)
+                return;
+
+            ActivityLifecycleChanged.Invoke(
+                new ActivityLifecycleEvent(
+                    kind,
+                    facility,
+                    binding.ActivityId,
+                    binding.ReservationGroup,
+                    reason));
         }
     }
 }

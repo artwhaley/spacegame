@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Colony.Interactions;
 using UnityEngine;
 
 namespace AsteroidColony
@@ -216,6 +217,58 @@ namespace AsteroidColony
                 return true;
 
             return TryGetNextShift(colonist, absoluteGameHour, out occurrence);
+        }
+
+        public bool HasEnoughActiveWorkers(
+            WorkplaceComponent workplace,
+            JobRoleDefinition role,
+            int minimumActiveWorkers,
+            float minimumRemainingHours,
+            float absoluteGameHour)
+        {
+            if (workplace == null ||
+                role == null ||
+                minimumActiveWorkers < 1 ||
+                !IsFinite(minimumRemainingHours) ||
+                minimumRemainingHours < 0f ||
+                !IsFinite(absoluteGameHour) ||
+                !workplace.TryGetRoleBinding(role, out WorkplaceRoleBinding binding))
+            {
+                return false;
+            }
+
+            int activeWorkers = 0;
+            IReadOnlyList<WorkAssignment> configuredAssignments = Assignments;
+            for (int index = 0; index < configuredAssignments.Count; index++)
+            {
+                WorkAssignment assignment = configuredAssignments[index];
+                if (assignment == null ||
+                    assignment.Colonist == null ||
+                    assignment.Workplace != workplace ||
+                    assignment.Role != role ||
+                    !TryGetCurrentShift(assignment.Colonist, absoluteGameHour, out ScheduledWorkOccurrence occurrence) ||
+                    occurrence.EndGameHour - absoluteGameHour < minimumRemainingHours)
+                {
+                    continue;
+                }
+
+                ColonistActivityRunner runner =
+                    assignment.Colonist.GetComponent<ColonistActivityRunner>();
+                if (runner != null &&
+                    runner.IsActivityActive &&
+                    runner.ActiveFacility == workplace.Facility &&
+                    string.Equals(
+                        runner.ActiveActivityId,
+                        binding.ActivityId,
+                        StringComparison.Ordinal))
+                {
+                    activeWorkers++;
+                    if (activeWorkers >= minimumActiveWorkers)
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         private bool TryGetConfiguredAssignment(
