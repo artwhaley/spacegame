@@ -91,6 +91,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
       insertIndex: -1
       addedObject: {fileID: 854698160499092778}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 9166048830011223344}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 8166048830011223344}
   m_SourcePrefab: {fileID: 100100000, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
 --- !u!1 &4001080797252171343 stripped
 GameObject:
@@ -282,3 +288,31 @@ MonoBehaviour:
   colonist: {fileID: 6106690560907089943}
   motor: {fileID: 1815059633108685950}
   activityRunner: {fileID: 4038971582978430938}
+--- !u!114 &9166048830011223344
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1768f2691ca74667812f4610e3fb916a, type: 3}
+  m_Name: ""
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistAssignments
+  sleepTarget:
+    facility: {fileID: 0}
+    activityId: ""
+--- !u!114 &8166048830011223344
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: befaf4b3c95c464dae35293395804c98, type: 3}
+  m_Name: ""
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistTargetResolver
+  assignments: {fileID: 9166048830011223344}
