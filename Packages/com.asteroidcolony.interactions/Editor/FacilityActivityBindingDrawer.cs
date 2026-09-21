@@ -8,6 +8,7 @@ public sealed class FacilityActivityBindingDrawer : PropertyDrawer
     private static readonly string[] PropertyNames =
     {
         "activityId", "reservationGroup", "externallyRequestable", "completionMode",
+        "overridesFatigueRate", "fatiguePerGameHour",
         "approachAnchor", "animationAnchor", "exitAnchor", "targets",
         "entrySteps", "loopStep", "activeSteps", "exitSteps"
     };
@@ -15,6 +16,7 @@ public sealed class FacilityActivityBindingDrawer : PropertyDrawer
     private static readonly string[] PropertyLabels =
     {
         "Activity Id", "Reservation Group", "Externally Requestable", "Completion Mode",
+        "Overrides Fatigue Rate", "Fatigue Per Game Hour",
         "Approach Anchor", "Animation Anchor", "Exit Anchor", "Targets",
         "Entry Steps", "Loop Step", "Active Steps", "Exit Steps"
     };

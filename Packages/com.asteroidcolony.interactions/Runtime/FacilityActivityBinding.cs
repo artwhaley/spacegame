@@ -10,6 +10,8 @@ namespace Colony.Interactions
         [SerializeField] private string reservationGroup;
         [SerializeField] private bool externallyRequestable = true;
         [SerializeField] private ActivityCompletionMode completionMode = ActivityCompletionMode.Sustained;
+        [SerializeField] private bool overridesFatigueRate;
+        [SerializeField] private float fatiguePerGameHour;
 
         [SerializeField] private Transform approachAnchor;
         [SerializeField] private Transform animationAnchor;
@@ -25,6 +27,8 @@ namespace Colony.Interactions
         public string ReservationGroup => reservationGroup;
         public bool ExternallyRequestable => externallyRequestable;
         public ActivityCompletionMode CompletionMode => completionMode;
+        public bool OverridesFatigueRate => overridesFatigueRate;
+        public float FatiguePerGameHour => fatiguePerGameHour;
         public Transform ApproachAnchor => approachAnchor;
         public Transform AnimationAnchor => animationAnchor;
         public Transform ExitAnchor => exitAnchor;
