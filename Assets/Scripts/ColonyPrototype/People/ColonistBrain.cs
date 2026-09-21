@@ -8,7 +8,9 @@ namespace AsteroidColony
     {
         Idle,
         SleepSeeking,
-        Sleeping
+        Sleeping,
+        WorkSeeking,
+        Working
     }
 
     [DisallowMultipleComponent]
@@ -20,6 +22,9 @@ namespace AsteroidColony
         private ColonistStatsComponent stats;
 
         [SerializeField]
+        private ColonistIdentity identity;
+
+        [SerializeField]
         private ColonistTargetResolver targetResolver;
 
         [SerializeField]
@@ -29,6 +34,7 @@ namespace AsteroidColony
         private ColonistBrainState state = ColonistBrainState.Idle;
 
         private ActivityTarget sleepTargetInProgress;
+        private ActivityTarget workTargetInProgress;
         private bool wakeRequested;
 
         public ColonistBrainState State => state;
@@ -40,6 +46,9 @@ namespace AsteroidColony
             if (stats == null)
                 stats = GetComponent<ColonistStatsComponent>();
 
+            if (identity == null)
+                identity = GetComponent<ColonistIdentity>();
+
             if (targetResolver == null)
                 targetResolver = GetComponent<ColonistTargetResolver>();
 
@@ -50,7 +59,8 @@ namespace AsteroidColony
             {
                 Debug.LogError(
                     $"{name}: ColonistBrain requires ColonistStatsComponent, " +
-                    "ColonistTargetResolver, and ColonistActivityRunner on the same GameObject.",
+                    "ColonistIdentity, ColonistTargetResolver, and " +
+                    "ColonistActivityRunner on the same GameObject.",
                     this);
             }
         }
@@ -88,12 +98,32 @@ namespace AsteroidColony
                 case ColonistBrainState.Sleeping:
                     TickSleeping();
                     break;
+
+                case ColonistBrainState.WorkSeeking:
+                    TickWorkSeeking();
+                    break;
+
+                case ColonistBrainState.Working:
+                    TickWorking();
+                    break;
             }
         }
 
         private void TickIdle()
         {
-            if (!stats.IsSleepy || activityRunner.HasActiveRequest)
+            if (activityRunner.HasActiveRequest)
+                return;
+
+            if (HasCurrentWorkObligation())
+            {
+                TryStartWork();
+                return;
+            }
+
+            if (HasUpcomingObligationWithin(ObligationWakeLeadGameHours))
+                return;
+
+            if (!stats.IsSleepy)
                 return;
 
             if (!targetResolver.TryResolveTarget(
@@ -120,6 +150,12 @@ namespace AsteroidColony
             {
                 FinishSleepLifecycle();
                 return;
+            }
+
+            if (!wakeRequested &&
+                HasUpcomingObligationWithin(ObligationWakeLeadGameHours))
+            {
+                RequestWake();
             }
 
             if (activityRunner.IsActivityActive &&
@@ -196,11 +232,114 @@ namespace AsteroidColony
             state = ColonistBrainState.Idle;
         }
 
+        private void TickWorkSeeking()
+        {
+            if (workTargetInProgress == null ||
+                !workTargetInProgress.IsConfigured)
+            {
+                FinishWorkLifecycle();
+                return;
+            }
+
+            if (activityRunner.IsActivityActive &&
+                string.Equals(
+                    activityRunner.ActiveActivityId,
+                    workTargetInProgress.ActivityId,
+                    StringComparison.Ordinal))
+            {
+                state = ColonistBrainState.Working;
+                return;
+            }
+
+            if (!activityRunner.HasActiveRequest)
+                FinishWorkLifecycle();
+        }
+
+        private void TickWorking()
+        {
+            if (workTargetInProgress == null ||
+                !workTargetInProgress.IsConfigured ||
+                !activityRunner.HasActiveRequest ||
+                !activityRunner.IsActivityActive ||
+                !string.Equals(
+                    activityRunner.ActiveActivityId,
+                    workTargetInProgress.ActivityId,
+                    StringComparison.Ordinal))
+            {
+                FinishWorkLifecycle();
+            }
+        }
+
+        private bool TryStartWork()
+        {
+            if (!targetResolver.TryResolveTarget(
+                    ActivityPurpose.Work,
+                    out ActivityTarget target) ||
+                target == null ||
+                !target.IsConfigured)
+            {
+                return false;
+            }
+
+            if (!activityRunner.RequestActivity(target.Facility, target.ActivityId))
+                return false;
+
+            workTargetInProgress = target;
+            state = ColonistBrainState.WorkSeeking;
+            return true;
+        }
+
+        private void FinishWorkLifecycle()
+        {
+            workTargetInProgress = null;
+            state = ColonistBrainState.Idle;
+        }
+
         private bool HasUpcomingObligationWithin(float gameHours)
         {
-            // Next slice: query the colonist's obligation/employment source.
-            // Wake early enough to prepare/travel for an upcoming obligation.
-            return false;
+            if (gameHours < 0f ||
+                float.IsNaN(gameHours) ||
+                float.IsInfinity(gameHours) ||
+                identity == null ||
+                WorkforceManager.Instance == null ||
+                SimulationManager.Instance == null)
+            {
+                return false;
+            }
+
+            float currentGameHour = SimulationManager.Instance.CurrentGameHour;
+            if (WorkforceManager.Instance.TryGetCurrentShift(
+                    identity,
+                    currentGameHour,
+                    out _))
+            {
+                return true;
+            }
+
+            if (!WorkforceManager.Instance.TryGetNextShift(
+                    identity,
+                    currentGameHour,
+                    out ScheduledWorkOccurrence nextShift))
+            {
+                return false;
+            }
+
+            return nextShift.TimeUntilStart(currentGameHour) <= gameHours;
+        }
+
+        private bool HasCurrentWorkObligation()
+        {
+            if (identity == null ||
+                WorkforceManager.Instance == null ||
+                SimulationManager.Instance == null)
+            {
+                return false;
+            }
+
+            return WorkforceManager.Instance.TryGetCurrentShift(
+                identity,
+                SimulationManager.Instance.CurrentGameHour,
+                out _);
         }
 
         private bool HasEmergencyWakeOverride()
@@ -211,7 +350,10 @@ namespace AsteroidColony
 
         private bool HasDependencies()
         {
-            return stats != null && targetResolver != null && activityRunner != null;
+            return stats != null &&
+                   identity != null &&
+                   targetResolver != null &&
+                   activityRunner != null;
         }
     }
 }

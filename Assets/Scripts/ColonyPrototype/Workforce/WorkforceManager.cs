@@ -23,8 +23,16 @@ namespace AsteroidColony
         [SerializeField]
         private List<WorkAssignment> assignments = new List<WorkAssignment>();
 
-        public IReadOnlyList<WorkAssignment> Assignments =>
-            assignments ?? Array.Empty<WorkAssignment>();
+        public IReadOnlyList<WorkAssignment> Assignments
+        {
+            get
+            {
+                if (assignments == null)
+                    return Array.Empty<WorkAssignment>();
+
+                return assignments;
+            }
+        }
 
         private void Awake()
         {

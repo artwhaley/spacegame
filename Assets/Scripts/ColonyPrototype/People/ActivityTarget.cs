@@ -13,6 +13,18 @@ namespace AsteroidColony
         [SerializeField]
         private string activityId;
 
+        public ActivityTarget()
+        {
+        }
+
+        public ActivityTarget(
+            InteractableFacility facility,
+            string activityId)
+        {
+            this.facility = facility;
+            this.activityId = activityId;
+        }
+
         public InteractableFacility Facility => facility;
         public string ActivityId => activityId;
 

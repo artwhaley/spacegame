@@ -518,6 +518,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistTargetResolver
   assignments: {fileID: 9166048830011223344}
+  identity: {fileID: 7346298053187492011}
 --- !u!114 &7166048830011223344
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -531,6 +532,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistBrain
   stats: {fileID: 3226046035262182063}
+  identity: {fileID: 7346298053187492011}
   targetResolver: {fileID: 8166048830011223344}
   activityRunner: {fileID: 4038971582978430938}
   state: 0

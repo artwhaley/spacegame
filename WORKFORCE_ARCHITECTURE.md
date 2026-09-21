@@ -85,3 +85,18 @@ semantics. Scheduled capacity is an employment planning constraint;
 recurring `WorkAssignment`. `WorkforceManager` can answer current, next, and
 current-or-next shift queries, including overnight occurrences. `ColonistBrain`
 is a future consumer of those facts; Bob's behavior is intentionally unchanged.
+
+## Implemented decision and resolution seam
+
+`ColonistBrain` now consumes the manager's current/next schedule facts. It
+wakes from Sleep for an active shift or a shift beginning within the 0.5 game-
+hour lead window, remains Idle during that preparation window, and chooses
+Work only when the shift is currently active. It does not contain Farm-specific
+knowledge or perform target lookup itself.
+
+`ColonistTargetResolver` resolves the Work purpose through the colonist's
+regular assignment, the assigned `WorkplaceComponent`, and its role binding.
+`ColonistActivityRunner` remains responsible for the physical request,
+reservation, navigation, and animation lifecycle. Shift-end stopping is not
+implemented yet; the current slice intentionally starts work without adding
+voluntary departure behavior.

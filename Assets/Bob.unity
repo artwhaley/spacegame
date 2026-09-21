@@ -452,6 +452,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 3226046035262182063, guid: b6849b056c7b4474d93989bff971e110, type: 3}
+      propertyPath: fatigue
+      value: 80
+      objectReference: {fileID: 0}
     - target: {fileID: 3572768465160103736, guid: b6849b056c7b4474d93989bff971e110, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -1460,6 +1464,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f067128934012345f067128934012345, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WorkplaceComponent
+  facility: {fileID: 1819463919}
+  roles: []
 --- !u!114 &1819463919
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1512,6 +1518,17 @@ MonoBehaviour:
       placementEulerOffset: {x: 0, y: 0, z: 0}
       contacts: []
   sequences: []
+--- !u!114 &1852747483 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 7346298053187492011, guid: b6849b056c7b4474d93989bff971e110, type: 3}
+  m_PrefabInstance: {fileID: 258503281}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f3a1c9d74e2b4a6d8f0c1b5e7a9d3f21, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistIdentity
 --- !u!1 &1856994483
 GameObject:
   m_ObjectHideFlags: 0
@@ -1980,7 +1997,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 579bdf12468ace02579bdf12468ace02, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WorkforceManager
-  assignments: []
+  assignments:
+  - colonist: {fileID: 1852747483}
+    workplace: {fileID: 1856994486}
+    role: {fileID: 11400000, guid: cd34ef5601789012cd34ef5601789012, type: 2}
+    shift:
+      startHour: 8
+      endHour: 16
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
