@@ -737,7 +737,7 @@ namespace Colony.Interactions
                     completedFirstLoop |= completedLoops >= 1;
                 }
 
-                elapsed += Time.deltaTime;
+                elapsed += PresentationTime.DeltaTime;
                 if (elapsed >= duration && (!hasLoop || completedFirstLoop))
                 {
                     CompleteSequenceStep();

@@ -179,8 +179,10 @@ namespace AsteroidColony.Tests
         private void CreateRunnerAndStats()
         {
             runnerObject = new GameObject("Colonist Activity Stats Test");
-            runnerObject.AddComponent<ColonistActivityRunner>();
+            ColonistActivityRunner runner =
+                runnerObject.AddComponent<ColonistActivityRunner>();
             stats = runnerObject.AddComponent<ColonistStatsComponent>();
+            SetPrivateField(stats, "activityRunner", runner);
         }
 
         private static FacilityActivityBinding CreateSleepBinding()

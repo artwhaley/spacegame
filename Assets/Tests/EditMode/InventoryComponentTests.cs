@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace AsteroidColony.Tests
 {
@@ -97,6 +98,9 @@ namespace AsteroidColony.Tests
         [Test]
         public void DiscreteInventoryRejectsFractionalRuntimeMutation()
         {
+            LogAssert.Expect(
+                LogType.Error,
+                "Rejected invalid Discrete Test inventory quantity: 0.2.");
             Assert.That(inventory.Add(discrete, 0.2f), Is.EqualTo(0f));
             Assert.That(inventory.GetOnHand(discrete), Is.EqualTo(0f));
             Assert.That(inventory.Add(discrete, 2.00001f), Is.EqualTo(2f));

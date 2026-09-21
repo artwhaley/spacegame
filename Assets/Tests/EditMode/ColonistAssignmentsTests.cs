@@ -28,8 +28,7 @@ namespace AsteroidColony.Tests
             bool result = assignments.TryGetSleepTarget(out ActivityTarget target);
 
             Assert.That(result, Is.False);
-            Assert.That(target, Is.Not.Null);
-            Assert.That(target.IsConfigured, Is.False);
+            Assert.That(target, Is.Null);
         }
 
         [Test]

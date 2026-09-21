@@ -36,6 +36,9 @@ namespace Colony.Interactions
         private bool activityFacingActive;
         private Quaternion activityFacingTarget;
         private bool hasTurnParameter;
+        private float baseNavigationSpeed;
+        private float baseNavigationAcceleration;
+        private float baseNavigationAngularSpeed;
 
         public bool IsNavigating { get; private set; }
         public bool IsInActivityMotion => activityMotionActive;
@@ -69,13 +72,18 @@ namespace Colony.Interactions
 
             if (agent != null)
             {
+                baseNavigationSpeed = agent.speed;
+                baseNavigationAcceleration = agent.acceleration;
+                baseNavigationAngularSpeed = agent.angularSpeed;
                 agent.updatePosition = true;
                 ConfigureNavigationRotation();
+                ApplyPresentationSpeed();
             }
         }
 
         private void Update()
         {
+            ApplyPresentationSpeed();
             UpdateLocomotionAnimation();
 
             if (!hasDestination || agent == null || agent.pathPending)
@@ -442,14 +450,18 @@ namespace Colony.Interactions
             transform.rotation = Quaternion.RotateTowards(
                 transform.rotation,
                 desiredRotation,
-                Mathf.Max(agent.angularSpeed, 1f) * Time.deltaTime);
+                Mathf.Max(agent.angularSpeed, 0f) * Time.unscaledDeltaTime);
         }
 
         private void SetAnimatorSpeed(float speed)
         {
             if (animator != null)
             {
-                animator.SetFloat(SpeedParameter, speed, animatorDampTime, Time.deltaTime);
+                animator.SetFloat(
+                    SpeedParameter,
+                    speed,
+                    animatorDampTime,
+                    PresentationTime.DeltaTime);
             }
         }
 
@@ -457,8 +469,23 @@ namespace Colony.Interactions
         {
             if (animator != null && hasTurnParameter)
             {
-                animator.SetFloat(TurnParameter, turn, animatorDampTime, Time.deltaTime);
+                animator.SetFloat(
+                    TurnParameter,
+                    turn,
+                    animatorDampTime,
+                    PresentationTime.DeltaTime);
             }
+        }
+
+        private void ApplyPresentationSpeed()
+        {
+            if (agent == null)
+                return;
+
+            float factor = PresentationTime.SpeedFactor;
+            agent.speed = baseNavigationSpeed * factor;
+            agent.angularSpeed = baseNavigationAngularSpeed * factor;
+            agent.acceleration = baseNavigationAcceleration * factor * factor;
         }
 
         private void ConfigureNavigationRotation()
@@ -526,7 +553,7 @@ namespace Colony.Interactions
             }
 
             placementBlendFrame = Time.frameCount;
-            placementBlendElapsed += Time.deltaTime;
+            placementBlendElapsed += PresentationTime.DeltaTime;
             float progress = Mathf.Clamp01(
                 placementBlendElapsed / placementBlendDuration);
             ApplyPlacementCorrection(progress);
@@ -557,7 +584,7 @@ namespace Colony.Interactions
             transform.rotation = Quaternion.RotateTowards(
                 transform.rotation,
                 activityFacingTarget,
-                activityFacingSpeed * Time.deltaTime);
+                activityFacingSpeed * PresentationTime.DeltaTime);
 
             if (Quaternion.Angle(transform.rotation, activityFacingTarget) > 0.1f)
             {

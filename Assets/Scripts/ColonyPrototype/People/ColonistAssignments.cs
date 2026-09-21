@@ -12,10 +12,14 @@ namespace AsteroidColony
 
         public bool TryGetSleepTarget(out ActivityTarget target)
         {
-            target = sleepTarget;
+            if (sleepTarget != null && sleepTarget.IsConfigured)
+            {
+                target = sleepTarget;
+                return true;
+            }
 
-            return target != null &&
-                   target.IsConfigured;
+            target = null;
+            return false;
         }
 
         private void OnValidate()

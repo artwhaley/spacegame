@@ -295,6 +295,8 @@ namespace AsteroidColony
             GetOrAdd<ColonistAgent>(instance);
             GetOrAdd<ColonistStatusComponent>(instance);
             GetOrAdd<ColonistStatsComponent>(instance);
+            GetOrAdd<ColonistAssignments>(instance);
+            GetOrAdd<ColonistTargetResolver>(instance);
 
             NavMeshAgent navMeshAgent = GetOrAdd<NavMeshAgent>(instance);
             navMeshAgent.radius = 0.35f;
@@ -316,6 +318,7 @@ namespace AsteroidColony
             GetOrAdd<ColonistMotor>(instance);
             GetOrAdd<ColonistAnimationDriver>(instance);
             GetOrAdd<ColonistActivityRunner>(instance);
+            GetOrAdd<ColonistBrain>(instance);
             GetOrAdd<ColonistActor>(instance);
 
             GameObject prefab =

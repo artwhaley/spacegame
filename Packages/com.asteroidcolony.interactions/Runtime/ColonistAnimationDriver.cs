@@ -78,6 +78,11 @@ namespace Colony.Interactions
             Initialize();
         }
 
+        private void Update()
+        {
+            ApplyPresentationSpeed();
+        }
+
         public bool PlaySequence(IReadOnlyList<AnimationSegment> segments)
         {
             if (!Initialize())
@@ -234,7 +239,7 @@ namespace Colony.Interactions
                 return;
             }
 
-            animator.speed = 1f;
+            ApplyPresentationSpeed();
             if (returnToLocomotion)
             {
                 animator.CrossFadeInFixedTime(
@@ -419,7 +424,7 @@ namespace Colony.Interactions
             CurrentSegment = loopSegment;
             CurrentSegmentIsLoop = true;
             activeSegmentBlendDuration = loopSegment.BlendDuration;
-            animator.speed = 1f;
+            ApplyPresentationSpeed();
             animator.SetFloat(
                 loopSlot == 0 ? "ActionASpeed" : "ActionBSpeed",
                 loopSegment.Speed);
@@ -450,7 +455,7 @@ namespace Colony.Interactions
                     yield break;
                 }
 
-                elapsed += Time.deltaTime;
+                elapsed += PresentationTime.DeltaTime;
                 yield return null;
             }
 
@@ -473,7 +478,7 @@ namespace Colony.Interactions
             CurrentSegment = segment;
             CurrentSegmentIsLoop = false;
             activeSegmentBlendDuration = segment.BlendDuration;
-            animator.speed = 1f;
+            ApplyPresentationSpeed();
             animator.SetFloat(slot == 0 ? "ActionASpeed" : "ActionBSpeed", segment.Speed);
             animator.CrossFadeInFixedTime(
                 stateHash,
@@ -500,7 +505,7 @@ namespace Colony.Interactions
                     break;
                 }
 
-                elapsed += Time.deltaTime;
+                elapsed += PresentationTime.DeltaTime;
                 yield return null;
             }
 
@@ -528,7 +533,7 @@ namespace Colony.Interactions
                     yield break;
                 }
 
-                elapsed += Time.deltaTime;
+                elapsed += PresentationTime.DeltaTime;
                 yield return null;
             }
 
@@ -543,7 +548,7 @@ namespace Colony.Interactions
             int locomotionHash = Animator.StringToHash(LocomotionState);
             blendDuration = Mathf.Max(0f, blendDuration);
 
-            animator.speed = 1f;
+            ApplyPresentationSpeed();
             animator.CrossFadeInFixedTime(
                 locomotionHash,
                 blendDuration,
@@ -566,7 +571,7 @@ namespace Colony.Interactions
                     yield break;
                 }
 
-                elapsed += Time.deltaTime;
+                elapsed += PresentationTime.DeltaTime;
                 yield return null;
             }
         }
@@ -577,6 +582,12 @@ namespace Colony.Interactions
                 ? animator.GetNextAnimatorStateInfo(BaseLayer)
                 : animator.GetCurrentAnimatorStateInfo(BaseLayer);
             return state.shortNameHash == Animator.StringToHash(ActionAState) ? 1 : 0;
+        }
+
+        private void ApplyPresentationSpeed()
+        {
+            if (animator != null)
+                animator.speed = PresentationTime.SpeedFactor;
         }
 
         private static bool IsValidSpeed(float speed)

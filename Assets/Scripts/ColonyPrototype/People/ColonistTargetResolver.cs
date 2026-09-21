@@ -45,6 +45,9 @@ namespace AsteroidColony
             target = null;
 
             if (assignments == null)
+                assignments = GetComponent<ColonistAssignments>();
+
+            if (assignments == null)
                 return false;
 
             switch (purpose)

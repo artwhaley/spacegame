@@ -97,6 +97,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8166048830011223344}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7166048830011223344}
   m_SourcePrefab: {fileID: 100100000, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
 --- !u!1 &4001080797252171343 stripped
 GameObject:
@@ -316,3 +319,19 @@ MonoBehaviour:
   m_Name: ""
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistTargetResolver
   assignments: {fileID: 9166048830011223344}
+--- !u!114 &7166048830011223344
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b4d2f6a89c70417db3e18c650e4a2f91, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistBrain
+  stats: {fileID: 3226046035262182063}
+  targetResolver: {fileID: 8166048830011223344}
+  activityRunner: {fileID: 4038971582978430938}
+  state: 0

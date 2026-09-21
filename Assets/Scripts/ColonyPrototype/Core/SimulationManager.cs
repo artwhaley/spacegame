@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Colony.Interactions;
 using UnityEngine;
 
 namespace AsteroidColony
@@ -20,7 +21,7 @@ namespace AsteroidColony
     /// objects. Components register their desired participation independently of
     /// manager creation order; there are no scene scans during a tick.
     /// </summary>
-    public class SimulationManager : MonoBehaviour
+    public class SimulationManager : MonoBehaviour, IPresentationSpeedSource
     {
         public static SimulationManager Instance { get; private set; }
 
@@ -56,6 +57,7 @@ namespace AsteroidColony
                 return;
             }
             Instance = this;
+            PresentationTime.RegisterSource(this);
             ReadinessHistory.BeginSession();
             PruneDesiredTickables();
             AdoptDesiredTickables();
@@ -65,6 +67,7 @@ namespace AsteroidColony
         {
             if (Instance != this)
                 return;
+            PresentationTime.UnregisterSource(this);
             Instance = null;
             tickables.Clear();
             pendingAdds.Clear();
@@ -76,6 +79,20 @@ namespace AsteroidColony
         public int CurrentDayIndex => SimulationTime.DayIndexAt(currentGameHour);
         public int CurrentDayNumber => SimulationTime.DayNumberAt(currentGameHour);
         public float CurrentHourOfDay => SimulationTime.HourOfDayAt(currentGameHour);
+
+        public float PresentationSpeedFactor
+        {
+            get
+            {
+                if (paused)
+                    return 0f;
+
+                if (float.IsNaN(speedMultiplier) || float.IsInfinity(speedMultiplier))
+                    return 1f;
+
+                return Mathf.Clamp(speedMultiplier, 0.1f, 10f);
+            }
+        }
 
         /// <summary>UI-safe pause command; does not mutate any simulation state.</summary>
         public void SetPaused(bool value) => paused = value;
