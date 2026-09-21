@@ -444,11 +444,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9166048830011223344, guid: b6849b056c7b4474d93989bff971e110, type: 3}
       propertyPath: sleepTarget.facility
-      value: ""
+      value: 
       objectReference: {fileID: 1535159106}
     - target: {fileID: 9166048830011223344, guid: b6849b056c7b4474d93989bff971e110, type: 3}
       propertyPath: sleepTarget.activityId
       value: Sleep
+      objectReference: {fileID: 0}
+    - target: {fileID: 9175071605609466718, guid: b6849b056c7b4474d93989bff971e110, type: 3}
+      propertyPath: displayName
+      value: Bob
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

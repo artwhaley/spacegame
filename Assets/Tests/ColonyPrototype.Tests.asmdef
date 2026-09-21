@@ -3,7 +3,8 @@
     "rootNamespace": "AsteroidColony.Tests",
     "references": [
         "ColonyPrototype.Runtime",
-        "Colony.Interactions.Runtime"
+        "Colony.Interactions.Runtime",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"

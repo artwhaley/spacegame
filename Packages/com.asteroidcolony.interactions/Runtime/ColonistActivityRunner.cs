@@ -54,6 +54,10 @@ namespace Colony.Interactions
         public string ActiveActivityId => ActiveActivityBinding?.ActivityId;
         public string PendingActivityId => pendingActivityId;
         public bool HasActiveRequest => reservation != null && !reservation.IsReleased;
+        public string CurrentReservationGroup =>
+            reservation != null && !reservation.IsReleased
+                ? reservation.ReservationGroup
+                : null;
         public bool HasPendingRequest => pendingFacility != null && !string.IsNullOrEmpty(pendingActivityId);
         public bool HasActiveSequence => activeSequence != null;
 

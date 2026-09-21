@@ -2,7 +2,8 @@
     "name": "ColonyPrototype.Runtime",
     "rootNamespace": "AsteroidColony",
     "references": [
-        "Colony.Interactions.Runtime"
+        "Colony.Interactions.Runtime",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

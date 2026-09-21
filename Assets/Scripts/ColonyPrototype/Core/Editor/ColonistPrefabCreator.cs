@@ -3,8 +3,11 @@ using System.Linq;
 using Colony.Interactions;
 using UnityEditor;
 using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.SceneManagement;
+using TMPro;
 
 namespace AsteroidColony
 {
@@ -21,6 +24,19 @@ namespace AsteroidColony
             "Assets/Animations/Colonists/ColonistHumanoid.controller";
         private const string PrefabPath =
             "Assets/Prefabs/Colonists/Colonist_Synty_Male_01.prefab";
+        private const string SleepyIconPrefabPath =
+            "Assets/PolygonIcons/Prefabs/SM_Icon_Text_Z.prefab";
+        private const string BobScenePath = "Assets/Bob.unity";
+        private const string OverheadMaterialFolder =
+            "Assets/Materials/ColonistOverhead";
+        private const string TmpSettingsPath =
+            "Assets/TextMesh Pro/Resources/TMP Settings.asset";
+        private const string OverheadFontAssetPath =
+            "Assets/Materials/ColonistOverhead/ColonistOverheadFont.asset";
+        private const string NameMaterialPath =
+            "Assets/Materials/ColonistOverhead/ColonistNameGlow.mat";
+        private const string SleepyMaterialPath =
+            "Assets/Materials/ColonistOverhead/ColonistSleepyGlow.mat";
 
         private const string IdleClipPath =
             "Assets/Animations/Colonists/Mixamo_POLYGON_Guy_Naked@Idle.fbx";
@@ -77,6 +93,38 @@ namespace AsteroidColony
                     $"Wired colonist locomotion animations into {ControllerPath}. " +
                     "The motor will drive Speed and signed Turn at runtime.");
             }
+        }
+
+        [MenuItem("Colony/People/Author Bob Overhead Display")]
+        public static void AuthorBobOverheadDisplay()
+        {
+            EnsureFolderPath("Assets/Prefabs/Colonists");
+            EnsureFolderPath(OverheadMaterialFolder);
+            EnsureTextMeshProSettings();
+
+            GameObject prefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+            if (prefab == null)
+            {
+                Debug.LogError($"Could not find the colonist prefab at {PrefabPath}.");
+                return;
+            }
+
+            GameObject prefabContents = PrefabUtility.LoadPrefabContents(PrefabPath);
+            try
+            {
+                EnsureOverheadDisplay(prefabContents, "Colonist");
+                PrefabUtility.SaveAsPrefabAsset(prefabContents, PrefabPath);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabContents);
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            AuthorBobSceneDisplayName();
+            Debug.Log($"Authored the colonist overhead display in {PrefabPath} and {BobScenePath}.");
         }
 
         private static AnimatorController CreateOrLoadController()
@@ -320,6 +368,7 @@ namespace AsteroidColony
             GetOrAdd<ColonistActivityRunner>(instance);
             GetOrAdd<ColonistBrain>(instance);
             GetOrAdd<ColonistActor>(instance);
+            EnsureOverheadDisplay(instance, "Colonist");
 
             GameObject prefab =
                 PrefabUtility.SaveAsPrefabAsset(instance, PrefabPath);
@@ -327,6 +376,283 @@ namespace AsteroidColony
 
             Debug.Log($"Created Synty colonist prefab at {PrefabPath}.");
             return prefab;
+        }
+
+        private static void EnsureOverheadDisplay(GameObject colonist, string defaultDisplayName)
+        {
+            EnsureFolderPath(OverheadMaterialFolder);
+            TMP_FontAsset overheadFont = EnsureOverheadFontAsset();
+            if (overheadFont == null)
+                return;
+
+            Material nameMaterial = EnsureNameMaterial(overheadFont);
+            Material sleepyMaterial = EnsureSleepyMaterial();
+
+            Transform overheadTransform = GetOrCreateChild(
+                colonist.transform,
+                "OverheadDisplay");
+            overheadTransform.localPosition = new Vector3(0f, 2.25f, 0f);
+            overheadTransform.localRotation = Quaternion.identity;
+            overheadTransform.localScale = Vector3.one;
+
+            Transform existingNameTransform = overheadTransform.Find("Name");
+            bool existingNameUsesTmp = existingNameTransform != null &&
+                existingNameTransform.GetComponent<TextMeshPro>() != null;
+            Transform nameTransform;
+            if (existingNameUsesTmp)
+            {
+                nameTransform = existingNameTransform;
+            }
+            else
+            {
+                if (existingNameTransform != null)
+                {
+                    existingNameTransform.name = "LegacyName";
+                    existingNameTransform.gameObject.SetActive(false);
+                }
+
+                GameObject nameObject = new GameObject("Name");
+                nameObject.transform.SetParent(overheadTransform, false);
+                nameTransform = nameObject.transform;
+            }
+            nameTransform.localPosition = Vector3.zero;
+            nameTransform.localRotation = Quaternion.identity;
+            nameTransform.localScale = Vector3.one;
+
+            TextMeshPro nameText = GetOrAdd<TextMeshPro>(nameTransform.gameObject);
+            nameText.font = overheadFont;
+            nameText.fontSharedMaterial = nameMaterial;
+            nameText.alignment = TextAlignmentOptions.Center;
+            nameText.fontSize = 90f;
+            nameText.fontStyle = FontStyles.Bold;
+            nameText.textWrappingMode = TextWrappingModes.NoWrap;
+            nameText.overflowMode = TextOverflowModes.Overflow;
+            nameText.color = Color.white;
+            nameText.text = defaultDisplayName;
+            // Keep authoring independent of TMP's edit-time mesh rebuild. The
+            // rebuild can invalidate prefab-content objects while Unity is
+            // importing the asset. The legacy display was 0.2 world units;
+            // this fixed scale is the requested one-third presentation size.
+            nameTransform.localScale = Vector3.one * 0.04f;
+
+            Transform iconStack = GetOrCreateChild(overheadTransform, "StatusIcons");
+            iconStack.localPosition = new Vector3(0f, 0.58f, 0f);
+            iconStack.localRotation = Quaternion.identity;
+            iconStack.localScale = Vector3.one;
+
+            Transform sleepyTransform = iconStack.Find("SleepyZ");
+            if (sleepyTransform == null)
+            {
+                GameObject sleepyPrefab =
+                    AssetDatabase.LoadAssetAtPath<GameObject>(SleepyIconPrefabPath);
+                if (sleepyPrefab == null)
+                {
+                    Debug.LogError(
+                        $"Could not find the sleepy icon prefab at {SleepyIconPrefabPath}.");
+                    return;
+                }
+
+                GameObject sleepyInstance =
+                    (GameObject)PrefabUtility.InstantiatePrefab(sleepyPrefab, iconStack);
+                sleepyInstance.name = "SleepyZ";
+                sleepyTransform = sleepyInstance.transform;
+            }
+
+            sleepyTransform.localPosition = Vector3.zero;
+            sleepyTransform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            sleepyTransform.localScale = Vector3.one * 1.05f;
+            sleepyTransform.gameObject.SetActive(false);
+            MeshRenderer sleepyRenderer = sleepyTransform.GetComponent<MeshRenderer>();
+            if (sleepyRenderer != null)
+                sleepyRenderer.sharedMaterial = sleepyMaterial;
+
+            ColonistOverheadDisplay previousDisplay =
+                overheadTransform.GetComponent<ColonistOverheadDisplay>();
+            if (previousDisplay != null)
+                UnityEngine.Object.DestroyImmediate(previousDisplay);
+
+            ColonistOverheadDisplay display =
+                overheadTransform.gameObject.AddComponent<ColonistOverheadDisplay>();
+            SerializedObject serializedDisplay = new SerializedObject(display);
+            serializedDisplay.FindProperty("stats").objectReferenceValue =
+                colonist.GetComponent<ColonistStatsComponent>();
+            serializedDisplay.FindProperty("billboardRoot").objectReferenceValue =
+                overheadTransform;
+            serializedDisplay.FindProperty("nameText").objectReferenceValue =
+                nameText;
+            serializedDisplay.FindProperty("iconStack").objectReferenceValue =
+                iconStack;
+            serializedDisplay.FindProperty("sleepyIcon").objectReferenceValue =
+                sleepyTransform.gameObject;
+            serializedDisplay.FindProperty("displayName").stringValue = defaultDisplayName;
+            serializedDisplay.FindProperty("iconSpacing").floatValue = 1.15f;
+            serializedDisplay.FindProperty("billboardYawOffset").floatValue = 180f;
+            serializedDisplay.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(display);
+        }
+
+        private static TMP_FontAsset EnsureOverheadFontAsset()
+        {
+            EnsureTextMeshProSettings();
+            TMP_FontAsset fontAsset =
+                AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(OverheadFontAssetPath);
+            if (fontAsset == null)
+            {
+                fontAsset = TMP_FontAsset.CreateFontAsset("Arial", "Regular", 90);
+                if (fontAsset == null)
+                    fontAsset = TMP_FontAsset.CreateFontAsset("Arial", "Normal", 90);
+                if (fontAsset == null)
+                {
+                    Debug.LogError("Could not create the colonist overhead TextMeshPro font asset.");
+                    return null;
+                }
+
+                fontAsset.name = "ColonistOverheadFont";
+                AssetDatabase.CreateAsset(fontAsset, OverheadFontAssetPath);
+
+                if (fontAsset.atlasTextures != null)
+                {
+                    for (int index = 0; index < fontAsset.atlasTextures.Length; index++)
+                    {
+                        Texture2D atlas = fontAsset.atlasTextures[index];
+                        if (atlas != null && !AssetDatabase.Contains(atlas))
+                            AssetDatabase.AddObjectToAsset(atlas, fontAsset);
+                    }
+                }
+
+                if (fontAsset.material != null && !AssetDatabase.Contains(fontAsset.material))
+                    AssetDatabase.AddObjectToAsset(fontAsset.material, fontAsset);
+            }
+
+            fontAsset.TryAddCharacters(
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _-", 
+                out string missingCharacters);
+            if (!string.IsNullOrEmpty(missingCharacters))
+                Debug.LogWarning("The colonist overhead font asset could not add every requested glyph.");
+
+            EditorUtility.SetDirty(fontAsset);
+            return fontAsset;
+        }
+
+        private static void EnsureTextMeshProSettings()
+        {
+            TMP_Settings settings =
+                AssetDatabase.LoadAssetAtPath<TMP_Settings>(TmpSettingsPath);
+            if (settings != null)
+                return;
+
+            // The TMP package ships the required settings, shaders, and default
+            // font assets together. Import that supported package resource rather
+            // than creating an empty settings asset that cannot create a font.
+            TMP_PackageResourceImporter.ImportResources(
+                importEssentials: true,
+                importExamples: false,
+                interactive: false);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            settings = AssetDatabase.LoadAssetAtPath<TMP_Settings>(TmpSettingsPath);
+            if (settings == null)
+                Debug.LogError(
+                    "TMP Essential Resources could not be imported, so the colonist overhead display cannot be authored.");
+        }
+
+        private static Material EnsureNameMaterial(TMP_FontAsset fontAsset)
+        {
+            Material material =
+                AssetDatabase.LoadAssetAtPath<Material>(NameMaterialPath);
+            if (material == null)
+            {
+                material = new Material(fontAsset.material)
+                {
+                    name = "ColonistNameGlow"
+                };
+                AssetDatabase.CreateAsset(material, NameMaterialPath);
+            }
+
+            material.SetColor(
+                ShaderUtilities.ID_FaceColor,
+                new Color(0.05f, 1f, 0.12f, 1f));
+            material.SetColor(
+                ShaderUtilities.ID_OutlineColor,
+                new Color(0f, 0.12f, 0.01f, 1f));
+            material.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.2f);
+            material.EnableKeyword(ShaderUtilities.Keyword_Glow);
+            material.SetColor(
+                ShaderUtilities.ID_GlowColor,
+                new Color(0.04f, 1f, 0.08f, 1f));
+            material.SetFloat(ShaderUtilities.ID_GlowOffset, 0f);
+            material.SetFloat(ShaderUtilities.ID_GlowOuter, 0.65f);
+            material.SetFloat(ShaderUtilities.ID_GlowPower, 0.8f);
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static Material EnsureSleepyMaterial()
+        {
+            Material material =
+                AssetDatabase.LoadAssetAtPath<Material>(SleepyMaterialPath);
+            if (material == null)
+            {
+                Shader shader = Shader.Find("HDRP/Unlit");
+                if (shader == null)
+                    shader = Shader.Find("Unlit/Color");
+
+                material = new Material(shader)
+                {
+                    name = "ColonistSleepyGlow"
+                };
+                AssetDatabase.CreateAsset(material, SleepyMaterialPath);
+            }
+
+            Color blue = new Color(0.02f, 0.2f, 1f, 1f);
+            if (material.HasProperty("_UnlitColor"))
+                material.SetColor("_UnlitColor", blue);
+            if (material.HasProperty("_Color"))
+                material.SetColor("_Color", blue);
+            if (material.HasProperty("_EmissiveColor"))
+                material.SetColor("_EmissiveColor", new Color(0.04f, 0.4f, 4f, 1f));
+            if (material.HasProperty("_EmissiveIntensity"))
+                material.SetFloat("_EmissiveIntensity", 4f);
+
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static void AuthorBobSceneDisplayName()
+        {
+            Scene scene = EditorSceneManager.OpenScene(
+                BobScenePath,
+                OpenSceneMode.Single);
+            ColonistOverheadDisplay[] displays =
+                Resources.FindObjectsOfTypeAll<ColonistOverheadDisplay>();
+
+            for (int index = 0; index < displays.Length; index++)
+            {
+                ColonistOverheadDisplay display = displays[index];
+                if (display == null || display.gameObject.scene != scene)
+                    continue;
+
+                SerializedObject serializedDisplay = new SerializedObject(display);
+                serializedDisplay.FindProperty("displayName").stringValue = "Bob";
+                serializedDisplay.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(display);
+                EditorSceneManager.SaveScene(scene);
+                return;
+            }
+
+            Debug.LogError("Bob scene did not contain a ColonistOverheadDisplay after prefab authoring.");
+        }
+
+        private static Transform GetOrCreateChild(Transform parent, string childName)
+        {
+            Transform existing = parent.Find(childName);
+            if (existing != null)
+                return existing;
+
+            GameObject child = new GameObject(childName);
+            child.transform.SetParent(parent, false);
+            return child.transform;
         }
 
         private static AnimationClip CreateControllerClip(
