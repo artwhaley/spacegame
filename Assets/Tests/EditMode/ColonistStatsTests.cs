@@ -1,4 +1,5 @@
 using System.Reflection;
+using Colony.Interactions;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -8,6 +9,7 @@ namespace AsteroidColony.Tests
     {
         private GameObject statsObject;
         private ColonistStatsComponent stats;
+        private GameObject runnerObject;
 
         [SetUp]
         public void SetUp()
@@ -20,6 +22,8 @@ namespace AsteroidColony.Tests
         public void TearDown()
         {
             Object.DestroyImmediate(statsObject);
+            if (runnerObject != null)
+                Object.DestroyImmediate(runnerObject);
         }
 
         [Test]
@@ -36,9 +40,8 @@ namespace AsteroidColony.Tests
         public void FatigueCannotFallBelowZero()
         {
             SetFatigue(3f);
-            stats.SetFatigueRateOverride(-10f);
 
-            stats.SimulationTick(1f);
+            stats.AdjustFatigue(-10f);
 
             Assert.That(stats.Fatigue, Is.EqualTo(0f).Within(0.0001f));
         }
@@ -77,30 +80,6 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
-        public void FatigueRateOverrideReplacesBaseline()
-        {
-            SetFatigue(50f);
-            stats.SetFatigueRateOverride(-10f);
-
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.Fatigue, Is.EqualTo(40f).Within(0.0001f));
-        }
-
-        [Test]
-        public void ClearingFatigueRateOverrideRestoresBaseline()
-        {
-            SetFatigue(50f);
-            stats.SetFatigueRateOverride(-10f);
-            stats.SimulationTick(1f);
-
-            stats.ClearFatigueRateOverride();
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.Fatigue, Is.EqualTo(45f).Within(0.0001f));
-        }
-
-        [Test]
         public void InvalidValuesCannotPoisonFatigueOrRate()
         {
             SetFatigue(20f);
@@ -108,13 +87,129 @@ namespace AsteroidColony.Tests
             stats.AdjustFatigue(float.NaN);
             stats.AdjustFatigue(float.PositiveInfinity);
             stats.AdjustFatigue(float.NegativeInfinity);
-            stats.SetFatigueRateOverride(float.NaN);
-            stats.SetFatigueRateOverride(float.PositiveInfinity);
-            stats.SetFatigueRateOverride(float.NegativeInfinity);
 
             Assert.That(stats.Fatigue, Is.EqualTo(20f).Within(0.0001f));
-            Assert.That(stats.HasFatigueRateOverride, Is.False);
             Assert.That(stats.EffectiveFatiguePerGameHour, Is.EqualTo(5f).Within(0.0001f));
+        }
+
+        [Test]
+        public void BindingIsNotActiveBeforeActivation()
+        {
+            ColonistActivityRunner runner = CreateRunner();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runner, sleep, activityActive: false, exitInProgress: false);
+
+            Assert.That(runner.IsActivityActive, Is.False);
+            Assert.That(runner.ActiveActivityBinding, Is.Null);
+        }
+
+        [Test]
+        public void ActiveSleepIsExposed()
+        {
+            ColonistActivityRunner runner = CreateRunner();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runner, sleep, activityActive: true, exitInProgress: false);
+
+            Assert.That(runner.IsActivityActive, Is.True);
+            Assert.That(runner.ActiveActivityBinding, Is.SameAs(sleep));
+            Assert.That(runner.ActiveActivityId, Is.EqualTo("Sleep"));
+        }
+
+        [Test]
+        public void ExitingSleepIsNotExposedAsActive()
+        {
+            ColonistActivityRunner runner = CreateRunner();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runner, sleep, activityActive: true, exitInProgress: true);
+
+            Assert.That(runner.CurrentActivityId, Is.EqualTo("Sleep"));
+            Assert.That(runner.IsActivityActive, Is.False);
+            Assert.That(runner.ActiveActivityBinding, Is.Null);
+            Assert.That(runner.ActiveActivityId, Is.Null);
+        }
+
+        [Test]
+        public void ActiveSleepUsesAuthoredFatigueRate()
+        {
+            CreateRunnerAndStats();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runnerObject.GetComponent<ColonistActivityRunner>(), sleep,
+                activityActive: true, exitInProgress: false);
+            SetFatigue(50f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.Fatigue, Is.EqualTo(40f).Within(0.0001f));
+        }
+
+        [Test]
+        public void SleepEntryUsesBaselineFatigueRate()
+        {
+            CreateRunnerAndStats();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runnerObject.GetComponent<ColonistActivityRunner>(), sleep,
+                activityActive: false, exitInProgress: false);
+            SetFatigue(50f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.Fatigue, Is.EqualTo(55f).Within(0.0001f));
+        }
+
+        [Test]
+        public void SleepExitUsesBaselineFatigueRateImmediately()
+        {
+            CreateRunnerAndStats();
+            FacilityActivityBinding sleep = CreateSleepBinding();
+            SetRunnerState(runnerObject.GetComponent<ColonistActivityRunner>(), sleep,
+                activityActive: true, exitInProgress: true);
+            SetFatigue(50f);
+
+            stats.SimulationTick(1f);
+
+            Assert.That(stats.Fatigue, Is.EqualTo(55f).Within(0.0001f));
+        }
+
+        private ColonistActivityRunner CreateRunner()
+        {
+            runnerObject = new GameObject("Colonist Activity Runner Test");
+            return runnerObject.AddComponent<ColonistActivityRunner>();
+        }
+
+        private void CreateRunnerAndStats()
+        {
+            runnerObject = new GameObject("Colonist Activity Stats Test");
+            runnerObject.AddComponent<ColonistActivityRunner>();
+            stats = runnerObject.AddComponent<ColonistStatsComponent>();
+        }
+
+        private static FacilityActivityBinding CreateSleepBinding()
+        {
+            FacilityActivityBinding binding = new FacilityActivityBinding();
+            SetPrivateField(binding, "activityId", "Sleep");
+            SetPrivateField(binding, "overridesFatigueRate", true);
+            SetPrivateField(binding, "fatiguePerGameHour", -10f);
+            return binding;
+        }
+
+        private static void SetRunnerState(
+            ColonistActivityRunner runner,
+            FacilityActivityBinding binding,
+            bool activityActive,
+            bool exitInProgress)
+        {
+            SetPrivateField(runner, "currentBinding", binding);
+            SetPrivateField(runner, "activityActive", activityActive);
+            SetPrivateField(runner, "exitInProgress", exitInProgress);
+        }
+
+        private static void SetPrivateField(object target, string fieldName, object value)
+        {
+            FieldInfo field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, $"Missing private field {fieldName}.");
+            field.SetValue(target, value);
         }
 
         private void SetFatigue(float value)

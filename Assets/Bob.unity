@@ -913,10 +913,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Colony.Interactions.Runtime::Colony.Interactions.InteractableFacility
   activities:
-  - activityId: Bed01
+  - activityId: Sleep
     reservationGroup: Bed01
     externallyRequestable: 1
     completionMode: 0
+    overridesFatigueRate: 1
+    fatiguePerGameHour: -10
     approachAnchor: {fileID: 873505497}
     animationAnchor: {fileID: 511732436}
     exitAnchor: {fileID: 1082399522}

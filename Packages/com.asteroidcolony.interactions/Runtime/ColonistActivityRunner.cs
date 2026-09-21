@@ -40,7 +40,18 @@ namespace Colony.Interactions
         private int sequenceCompletionVersion;
 
         public ActivityPhase Phase { get; private set; } = ActivityPhase.Idle;
+        // CurrentActivityId describes the activity request/lifecycle currently being handled,
+        // including reservation, navigation, entry, active, and exit.
         public string CurrentActivityId => currentBinding?.ActivityId;
+        // ActiveActivityId and ActiveActivityBinding describe the activity the colonist is
+        // genuinely performing right now, after entry has completed and before exit begins.
+        public bool IsActivityActive =>
+            activityActive &&
+            !exitInProgress &&
+            currentBinding != null;
+        public FacilityActivityBinding ActiveActivityBinding =>
+            IsActivityActive ? currentBinding : null;
+        public string ActiveActivityId => ActiveActivityBinding?.ActivityId;
         public string PendingActivityId => pendingActivityId;
         public bool HasActiveRequest => reservation != null && !reservation.IsReleased;
         public bool HasPendingRequest => pendingFacility != null && !string.IsNullOrEmpty(pendingActivityId);

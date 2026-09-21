@@ -1,4 +1,5 @@
 using UnityEngine;
+using Colony.Interactions;
 
 namespace AsteroidColony
 {
@@ -11,21 +12,38 @@ namespace AsteroidColony
         [SerializeField]
         private float baselineFatiguePerGameHour = 5f;
 
+        [SerializeField]
+        private ColonistActivityRunner activityRunner;
+
         [SerializeField, Min(0f)]
         private float sleepyThreshold = 70f;
 
         [SerializeField, Min(0f)]
         private float exhaustionThreshold = 100f;
 
-        private bool hasFatigueRateOverride;
-        private float fatigueRateOverride;
-
         public float Fatigue => fatigue;
 
         public float BaselineFatiguePerGameHour => baselineFatiguePerGameHour;
 
-        public float EffectiveFatiguePerGameHour =>
-            hasFatigueRateOverride ? fatigueRateOverride : baselineFatiguePerGameHour;
+        public float EffectiveFatiguePerGameHour
+        {
+            get
+            {
+                FacilityActivityBinding activity =
+                    activityRunner != null
+                        ? activityRunner.ActiveActivityBinding
+                        : null;
+
+                if (activity != null &&
+                    activity.OverridesFatigueRate &&
+                    IsFinite(activity.FatiguePerGameHour))
+                {
+                    return activity.FatiguePerGameHour;
+                }
+
+                return baselineFatiguePerGameHour;
+            }
+        }
 
         public float SleepyThreshold => sleepyThreshold;
 
@@ -35,9 +53,13 @@ namespace AsteroidColony
 
         public bool IsExhausted => fatigue >= exhaustionThreshold;
 
-        public bool HasFatigueRateOverride => hasFatigueRateOverride;
-
         public int SimulationTickPriority => 50;
+
+        private void Awake()
+        {
+            if (activityRunner == null)
+                activityRunner = GetComponent<ColonistActivityRunner>();
+        }
 
         private void OnEnable()
         {
@@ -69,20 +91,6 @@ namespace AsteroidColony
             ApplyFatigueDelta(amount);
         }
 
-        public void SetFatigueRateOverride(float fatiguePerGameHour)
-        {
-            if (!IsFinite(fatiguePerGameHour))
-                return;
-
-            fatigueRateOverride = fatiguePerGameHour;
-            hasFatigueRateOverride = true;
-        }
-
-        public void ClearFatigueRateOverride()
-        {
-            hasFatigueRateOverride = false;
-        }
-
         private void OnValidate()
         {
             if (!IsFinite(fatigue))
@@ -100,8 +108,6 @@ namespace AsteroidColony
                 exhaustionThreshold = 0f;
             exhaustionThreshold = Mathf.Max(0f, exhaustionThreshold);
 
-            if (hasFatigueRateOverride && !IsFinite(fatigueRateOverride))
-                hasFatigueRateOverride = false;
         }
 
         private void ApplyFatigueDelta(float amount)
