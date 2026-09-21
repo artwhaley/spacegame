@@ -69,6 +69,9 @@ PrefabInstance:
       addedObject: {fileID: 2506046035262182063}
     - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
       insertIndex: -1
+      addedObject: {fileID: 3226046035262182063}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
       addedObject: {fileID: 6106690560907089943}
     - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
       insertIndex: -1
@@ -133,6 +136,22 @@ MonoBehaviour:
     releaseRequested: 0
     releaseRequestedGameHour: 0
     releaseReason: 0
+--- !u!114 &3226046035262182063
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b1cd33aa1114f83b0c54c8d4e2a9f67, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistStatsComponent
+  fatigue: 0
+  baselineFatiguePerGameHour: 5
+  sleepyThreshold: 70
+  exhaustionThreshold: 100
 --- !u!114 &6106690560907089943
 MonoBehaviour:
   m_ObjectHideFlags: 0

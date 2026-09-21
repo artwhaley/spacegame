@@ -294,6 +294,7 @@ namespace AsteroidColony
 
             GetOrAdd<ColonistAgent>(instance);
             GetOrAdd<ColonistStatusComponent>(instance);
+            GetOrAdd<ColonistStatsComponent>(instance);
 
             NavMeshAgent navMeshAgent = GetOrAdd<NavMeshAgent>(instance);
             navMeshAgent.radius = 0.35f;
