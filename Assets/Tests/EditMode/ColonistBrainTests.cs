@@ -133,6 +133,79 @@ namespace AsteroidColony.Tests
             Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
         }
 
+        [Test]
+        public void ShiftEndRequestsWorkStopButKeepsBrainWorkingDuringPhysicalExit()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
+            ConfigureWorkingLifecycle(brain);
+            SetPrivateField(
+                simulationObject.GetComponent<SimulationManager>(),
+                "currentGameHour",
+                6f);
+
+            brain.SimulationTick(0.1f);
+
+            ColonistActivityRunner runner =
+                colonistObject.GetComponent<ColonistActivityRunner>();
+            Assert.That(
+                (bool)InvokePrivate(brain, "workStopRequested"),
+                Is.True);
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Working));
+            Assert.That(runner.HasActiveRequest, Is.True);
+            Assert.That(runner.IsActivityActive, Is.False);
+        }
+
+        [Test]
+        public void WorkExitCompletesOnlyAfterRunnerReleasesRequest()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
+            ConfigureWorkingLifecycle(brain);
+            SetPrivateField(
+                simulationObject.GetComponent<SimulationManager>(),
+                "currentGameHour",
+                6f);
+
+            ColonistActivityRunner runner =
+                colonistObject.GetComponent<ColonistActivityRunner>();
+            brain.SimulationTick(0.1f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Working));
+            Assert.That(runner.HasActiveRequest, Is.True);
+
+            SetPrivateField(runner, "reservation", null);
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+        }
+
+        [Test]
+        public void AssignmentDisappearingDuringWorkRequestsPhysicalStop()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
+            ConfigureWorkingLifecycle(brain);
+
+            WorkforceManager workforceManager =
+                workforceObject.GetComponent<WorkforceManager>();
+            ColonistIdentity identity = colonistObject.GetComponent<ColonistIdentity>();
+            Assert.That(
+                workforceManager.Unassign(identity),
+                Is.EqualTo(WorkAssignmentResult.Applied));
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That(
+                (bool)InvokePrivate(brain, "workStopRequested"),
+                Is.True);
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Working));
+            Assert.That(
+                colonistObject.GetComponent<ColonistActivityRunner>().HasActiveRequest,
+                Is.True);
+        }
+
         private ColonistBrain CreateBrain(float fatigue)
         {
             colonistObject = new GameObject("Colonist Brain Test");
@@ -233,11 +306,48 @@ namespace AsteroidColony.Tests
                 new ActivityTarget(facility, "Sleep"));
         }
 
+        private void ConfigureWorkingLifecycle(ColonistBrain brain)
+        {
+            ColonistActivityRunner runner =
+                colonistObject.GetComponent<ColonistActivityRunner>();
+            InteractableFacility facility =
+                workplaceObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                facility.TryGetBinding("Farm", out FacilityActivityBinding binding),
+                Is.True);
+            Assert.That(
+                facility.TryAcquire(
+                    binding.ReservationGroup,
+                    runner,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            SetPrivateField(runner, "currentFacility", facility);
+            SetPrivateField(runner, "currentBinding", binding);
+            SetPrivateField(runner, "reservation", token);
+            SetPrivateField(runner, "activityActive", true);
+            SetPrivateField(runner, "exitInProgress", true);
+            SetPrivateProperty(runner, "Phase", ActivityPhase.Busy);
+
+            SetPrivateField(
+                brain,
+                "workTargetInProgress",
+                new ActivityTarget(facility, "Farm"));
+            SetPrivateField(brain, "workStopRequested", false);
+            SetPrivateField(brain, "state", ColonistBrainState.Working);
+        }
+
         private static object InvokePrivate(
             object target,
             string methodName,
             params object[] arguments)
         {
+            FieldInfo field = target.GetType().GetField(
+                methodName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field != null)
+                return field.GetValue(target);
+
             MethodInfo method = target.GetType().GetMethod(
                 methodName,
                 BindingFlags.Instance | BindingFlags.NonPublic);
@@ -252,6 +362,20 @@ namespace AsteroidColony.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, $"Missing private field {fieldName}.");
             field.SetValue(target, value);
+        }
+
+        private static void SetPrivateProperty(
+            object target,
+            string propertyName,
+            object value)
+        {
+            PropertyInfo property = target.GetType().GetProperty(
+                propertyName,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            Assert.That(property, Is.Not.Null, $"Missing property {propertyName}.");
+            MethodInfo setter = property.GetSetMethod(true);
+            Assert.That(setter, Is.Not.Null, $"Property {propertyName} is not writable.");
+            setter.Invoke(target, new[] { value });
         }
     }
 }

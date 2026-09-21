@@ -484,7 +484,7 @@ namespace Colony.Interactions
                 stateHash,
                 segment.BlendDuration,
                 BaseLayer,
-                segment.Speed < 0f ? playbackClip.length : 0f);
+                segment.Speed < 0f ? 1f : 0f);
             SegmentStarted?.Invoke(segment);
             StatusChanged?.Invoke($"Playing {playbackClip.name} in {stateName}.");
 

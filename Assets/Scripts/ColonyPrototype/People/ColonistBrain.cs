@@ -36,6 +36,7 @@ namespace AsteroidColony
         private ActivityTarget sleepTargetInProgress;
         private ActivityTarget workTargetInProgress;
         private bool wakeRequested;
+        private bool workStopRequested;
 
         public ColonistBrainState State => state;
 
@@ -237,7 +238,17 @@ namespace AsteroidColony
             if (workTargetInProgress == null ||
                 !workTargetInProgress.IsConfigured)
             {
-                FinishWorkLifecycle();
+                RequestWorkStop();
+                if (!activityRunner.HasActiveRequest)
+                    FinishWorkLifecycle();
+                return;
+            }
+
+            if (!HasCurrentWorkObligation())
+            {
+                RequestWorkStop();
+                if (!activityRunner.HasActiveRequest)
+                    FinishWorkLifecycle();
                 return;
             }
 
@@ -258,13 +269,28 @@ namespace AsteroidColony
         private void TickWorking()
         {
             if (workTargetInProgress == null ||
-                !workTargetInProgress.IsConfigured ||
-                !activityRunner.HasActiveRequest ||
-                !activityRunner.IsActivityActive ||
-                !string.Equals(
-                    activityRunner.ActiveActivityId,
-                    workTargetInProgress.ActivityId,
-                    StringComparison.Ordinal))
+                !workTargetInProgress.IsConfigured)
+            {
+                RequestWorkStop();
+                if (!activityRunner.HasActiveRequest)
+                    FinishWorkLifecycle();
+                return;
+            }
+
+            if (!workStopRequested &&
+                (!HasCurrentWorkObligation() || !IsCurrentWorkActivity()))
+            {
+                RequestWorkStop();
+            }
+
+            if (workStopRequested)
+            {
+                if (!activityRunner.HasActiveRequest)
+                    FinishWorkLifecycle();
+                return;
+            }
+
+            if (!activityRunner.HasActiveRequest)
             {
                 FinishWorkLifecycle();
             }
@@ -285,13 +311,34 @@ namespace AsteroidColony
                 return false;
 
             workTargetInProgress = target;
+            workStopRequested = false;
             state = ColonistBrainState.WorkSeeking;
             return true;
+        }
+
+        private void RequestWorkStop()
+        {
+            if (workStopRequested)
+                return;
+
+            workStopRequested = true;
+            if (activityRunner.HasActiveRequest)
+                activityRunner.Stop();
+        }
+
+        private bool IsCurrentWorkActivity()
+        {
+            return activityRunner.HasActiveRequest &&
+                   string.Equals(
+                       activityRunner.CurrentActivityId,
+                       workTargetInProgress.ActivityId,
+                       StringComparison.Ordinal);
         }
 
         private void FinishWorkLifecycle()
         {
             workTargetInProgress = null;
+            workStopRequested = false;
             state = ColonistBrainState.Idle;
         }
 

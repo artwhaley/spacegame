@@ -73,6 +73,10 @@ public sealed class FacilityControllerCreator : EditorWindow
         AnimatorState actionB = stateMachine.AddState("ActionB");
         actionA.motion = placeholderA;
         actionB.motion = placeholderB;
+        actionA.speedParameterActive = true;
+        actionA.speedParameter = "ActionASpeed";
+        actionB.speedParameterActive = true;
+        actionB.speedParameter = "ActionBSpeed";
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Selection.activeObject = controller;

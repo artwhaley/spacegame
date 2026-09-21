@@ -2002,8 +2002,8 @@ MonoBehaviour:
     workplace: {fileID: 1856994486}
     role: {fileID: 11400000, guid: cd34ef5601789012cd34ef5601789012, type: 2}
     shift:
-      startHour: 8
-      endHour: 16
+      startHour: 16
+      endHour: 20
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
