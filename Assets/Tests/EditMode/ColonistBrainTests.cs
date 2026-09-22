@@ -448,7 +448,7 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
-        public void ImminentWorkRequestsEatStopAndWorkWinsAfterRelease()
+        public void ImminentWorkAllowsMealUntilWorkMealThresholdAndWorkWinsAfterRelease()
         {
             ColonistBrain brain = CreateBrain(0f);
             CreateSchedule(1.6f, new DailyShiftWindow(2f, 6f), true);
@@ -466,6 +466,13 @@ namespace AsteroidColony.Tests
                 simulationObject.GetComponent<SimulationManager>(),
                 "currentGameHour",
                 2f);
+            brain.SimulationTick(0.1f);
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                39f);
             brain.SimulationTick(0.1f);
             Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
 
@@ -546,6 +553,133 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void CriticalHungerWakesSleepingColonistWithoutFoodReservation()
+        {
+            ColonistBrain brain = CreateBrain(80f);
+            CreateSchedule(0f, null, false);
+            ConfigureSleepTarget();
+            CreateFoodManagerAndService();
+            ConfigureSleepingLifecycle(brain, hunger: 95f);
+
+            GameObject foodReservationBlocker =
+                new GameObject("Food Reservation Blocker");
+            foodReservationBlocker.transform.SetParent(foodFacilityObject.transform, false);
+            InteractableFacility foodFacility =
+                foodFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                foodFacility.TryAcquire(
+                    "Eat01",
+                    foodReservationBlocker,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            ColonistActivityRunner runner =
+                colonistObject.GetComponent<ColonistActivityRunner>();
+            brain.SimulationTick(0.1f);
+
+            Assert.That((bool)InvokePrivate(brain, "wakeRequested"), Is.True);
+            SetPrivateField(runner, "reservation", null);
+            brain.SimulationTick(0.1f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_target_unavailable"));
+            Assert.That(token.IsReleased, Is.False);
+        }
+
+        [Test]
+        public void CriticalHungerDuringSleepSeekingUnwindsSleepAndStaysAwake()
+        {
+            ColonistBrain brain = CreateBrain(80f);
+            CreateSchedule(0f, null, false);
+            ConfigureSleepTarget();
+            CreateFoodManagerAndService();
+            ConfigureSleepSeekingLifecycle(brain, hunger: 95f);
+
+            GameObject foodReservationBlocker =
+                new GameObject("Food Reservation Blocker");
+            foodReservationBlocker.transform.SetParent(foodFacilityObject.transform, false);
+            InteractableFacility foodFacility =
+                foodFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                foodFacility.TryAcquire(
+                    "Eat01",
+                    foodReservationBlocker,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            brain.SimulationTick(0.1f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_target_unavailable"));
+            Assert.That(token.IsReleased, Is.False);
+        }
+
+        [Test]
+        public void CriticalHungerDoesNotFallThroughToWorkWhenFoodIsUnavailable()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
+            CreateFoodManagerAndService();
+
+            GameObject foodReservationBlocker =
+                new GameObject("Food Reservation Blocker");
+            foodReservationBlocker.transform.SetParent(foodFacilityObject.transform, false);
+            InteractableFacility foodFacility =
+                foodFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                foodFacility.TryAcquire(
+                    "Eat01",
+                    foodReservationBlocker,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                95f);
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_target_unavailable"));
+            Assert.That(token.IsReleased, Is.False);
+        }
+
+        [Test]
+        public void CriticalHungerDoesNotStartSleepWhenFoodIsUnavailable()
+        {
+            ColonistBrain brain = CreateBrain(80f);
+            CreateSchedule(0f, null, false);
+            ConfigureSleepTarget();
+            CreateFoodManagerAndService();
+
+            GameObject foodReservationBlocker =
+                new GameObject("Food Reservation Blocker");
+            foodReservationBlocker.transform.SetParent(foodFacilityObject.transform, false);
+            InteractableFacility foodFacility =
+                foodFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                foodFacility.TryAcquire(
+                    "Eat01",
+                    foodReservationBlocker,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                95f);
+
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_target_unavailable"));
+            Assert.That(token.IsReleased, Is.False);
+        }
+
+        [Test]
         public void CriticalHungerWinsBeforeBeginningCurrentWork()
         {
             ColonistBrain brain = CreateBrain(0f);
@@ -567,6 +701,18 @@ namespace AsteroidColony.Tests
             ColonistBrain brain = CreateBrain(0f);
             CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
             ConfigureWorkingLifecycle(brain);
+            CreateFoodManagerAndService();
+            GameObject foodReservationBlocker =
+                new GameObject("Food Reservation Blocker");
+            foodReservationBlocker.transform.SetParent(foodFacilityObject.transform, false);
+            InteractableFacility foodFacility =
+                foodFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                foodFacility.TryAcquire(
+                    "Eat01",
+                    foodReservationBlocker,
+                    out FacilityReservationToken token),
+                Is.True);
             SetPrivateField(
                 colonistObject.GetComponent<ColonistStatsComponent>(),
                 "hunger",
@@ -576,10 +722,53 @@ namespace AsteroidColony.Tests
 
             Assert.That((bool)InvokePrivate(brain, "workStopRequested"), Is.True);
             Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Working));
+
+            ColonistActivityRunner runner =
+                colonistObject.GetComponent<ColonistActivityRunner>();
+            SetPrivateField(runner, "reservation", null);
+            brain.SimulationTick(0.1f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_target_unavailable"));
+            Assert.That(token.IsReleased, Is.False);
         }
 
         [Test]
-        public void OrdinaryEatingStopsWhenWorkBecomesCurrent()
+        public void CriticalHungerDuringWorkSeekingDoesNotRestartWork()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
+            CreateFoodManagerAndService();
+            ConfigureWorkSeekingLifecycle(brain);
+
+            GameObject foodReservationBlocker =
+                new GameObject("Food Reservation Blocker");
+            foodReservationBlocker.transform.SetParent(foodFacilityObject.transform, false);
+            InteractableFacility foodFacility =
+                foodFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                foodFacility.TryAcquire(
+                    "Eat01",
+                    foodReservationBlocker,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                95f);
+
+            brain.SimulationTick(0.1f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_target_unavailable"));
+            Assert.That(token.IsReleased, Is.False);
+        }
+
+        [Test]
+        public void OrdinaryEatingContinuesUntilWorkMealThresholdWhenWorkBecomesCurrent()
         {
             ColonistBrain brain = CreateBrain(0f);
             CreateSchedule(1.6f, new DailyShiftWindow(2f, 6f), true);
@@ -595,11 +784,28 @@ namespace AsteroidColony.Tests
                 2f);
             brain.SimulationTick(0.1f);
 
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                55f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                39f);
+            brain.SimulationTick(0.1f);
+
             Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_ended_for_work"));
         }
 
         [Test]
-        public void CriticalEatingContinuesUntilBelowCriticalThreshold()
+        public void CriticalEatingContinuesUntilWorkMealThreshold()
         {
             ColonistBrain brain = CreateBrain(0f);
             CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
@@ -615,7 +821,98 @@ namespace AsteroidColony.Tests
                 89f);
             brain.SimulationTick(0.1f);
 
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                41f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                39f);
+            brain.SimulationTick(0.1f);
+
             Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_ended_for_work"));
+        }
+
+        [Test]
+        public void EatingWithoutWorkContinuesUntilZero()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateFoodManagerAndService();
+            ConfigureEatingLifecycle(brain, hunger: 60f);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                40f);
+            brain.SimulationTick(0.1f);
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                20f);
+            brain.SimulationTick(0.1f);
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                5f);
+            brain.SimulationTick(0.1f);
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                0f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_completed_fully"));
+        }
+
+        [Test]
+        public void CriticalHungerInterruptsOffDutyAndDoesNotRestartIt()
+        {
+            ColonistBrain brain = CreateBrain(0f);
+            CreateSchedule(0f, null, false);
+            CreateRecreationProvider(60f, 0f, "play");
+            CreateFoodManagerAndService();
+            SetStimulationNeed(80f);
+            brain.SimulationTick(0.1f);
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
+
+            GameObject foodReservationBlocker =
+                new GameObject("Food Reservation Blocker");
+            foodReservationBlocker.transform.SetParent(foodFacilityObject.transform, false);
+            InteractableFacility foodFacility =
+                foodFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                foodFacility.TryAcquire(
+                    "Eat01",
+                    foodReservationBlocker,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                95f);
+            brain.SimulationTick(0.1f);
+            brain.SimulationTick(0.1f);
+
+            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_target_unavailable"));
+            Assert.That(token.IsReleased, Is.False);
         }
 
         [Test]
@@ -866,6 +1163,37 @@ namespace AsteroidColony.Tests
             SetPrivateField(brain, "state", ColonistBrainState.Working);
         }
 
+        private void ConfigureWorkSeekingLifecycle(ColonistBrain brain)
+        {
+            ColonistActivityRunner runner =
+                colonistObject.GetComponent<ColonistActivityRunner>();
+            InteractableFacility facility =
+                workplaceObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                facility.TryGetBinding("Farm", out FacilityActivityBinding binding),
+                Is.True);
+            Assert.That(
+                facility.TryAcquire(
+                    binding.ReservationGroup,
+                    runner,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            SetPrivateField(runner, "currentFacility", facility);
+            SetPrivateField(runner, "currentBinding", binding);
+            SetPrivateField(runner, "reservation", token);
+            SetPrivateField(runner, "activityActive", false);
+            SetPrivateField(runner, "exitInProgress", false);
+            SetPrivateProperty(runner, "Phase", ActivityPhase.Reserved);
+
+            SetPrivateField(
+                brain,
+                "workTargetInProgress",
+                new ActivityTarget(facility, "Farm"));
+            SetPrivateField(brain, "workStopRequested", false);
+            SetPrivateField(brain, "state", ColonistBrainState.WorkSeeking);
+        }
+
         private void ConfigureEatingLifecycle(ColonistBrain brain, float hunger)
         {
             ColonistActivityRunner runner =
@@ -899,6 +1227,76 @@ namespace AsteroidColony.Tests
                 new ActivityTarget(facility, "Eat"));
             SetPrivateField(brain, "eatStopRequested", false);
             SetPrivateField(brain, "state", ColonistBrainState.Eating);
+        }
+
+        private void ConfigureSleepSeekingLifecycle(ColonistBrain brain, float hunger)
+        {
+            ColonistActivityRunner runner =
+                colonistObject.GetComponent<ColonistActivityRunner>();
+            InteractableFacility facility =
+                sleepFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                facility.TryGetBinding("Sleep", out FacilityActivityBinding binding),
+                Is.True);
+            Assert.That(
+                facility.TryAcquire(
+                    binding.ReservationGroup,
+                    runner,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            SetPrivateField(runner, "currentFacility", facility);
+            SetPrivateField(runner, "currentBinding", binding);
+            SetPrivateField(runner, "reservation", token);
+            SetPrivateField(runner, "activityActive", false);
+            SetPrivateField(runner, "exitInProgress", false);
+            SetPrivateProperty(runner, "Phase", ActivityPhase.Reserved);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                hunger);
+            SetPrivateField(
+                brain,
+                "sleepTargetInProgress",
+                new ActivityTarget(facility, "Sleep"));
+            SetPrivateField(brain, "wakeRequested", false);
+            SetPrivateField(brain, "state", ColonistBrainState.SleepSeeking);
+        }
+
+        private void ConfigureSleepingLifecycle(ColonistBrain brain, float hunger)
+        {
+            ColonistActivityRunner runner =
+                colonistObject.GetComponent<ColonistActivityRunner>();
+            InteractableFacility facility =
+                sleepFacilityObject.GetComponent<InteractableFacility>();
+            Assert.That(
+                facility.TryGetBinding("Sleep", out FacilityActivityBinding binding),
+                Is.True);
+            Assert.That(
+                facility.TryAcquire(
+                    binding.ReservationGroup,
+                    runner,
+                    out FacilityReservationToken token),
+                Is.True);
+
+            SetPrivateField(runner, "currentFacility", facility);
+            SetPrivateField(runner, "currentBinding", binding);
+            SetPrivateField(runner, "reservation", token);
+            SetPrivateField(runner, "activityActive", true);
+            SetPrivateField(runner, "exitInProgress", true);
+            SetPrivateProperty(runner, "Phase", ActivityPhase.Busy);
+
+            SetPrivateField(
+                colonistObject.GetComponent<ColonistStatsComponent>(),
+                "hunger",
+                hunger);
+            SetPrivateField(
+                brain,
+                "sleepTargetInProgress",
+                new ActivityTarget(facility, "Sleep"));
+            SetPrivateField(brain, "wakeRequested", false);
+            SetPrivateField(brain, "state", ColonistBrainState.Sleeping);
         }
 
         private void ConfigurePendingEatRequest()

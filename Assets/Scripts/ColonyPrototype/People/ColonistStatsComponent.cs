@@ -6,6 +6,8 @@ namespace AsteroidColony
     [DisallowMultipleComponent]
     public sealed class ColonistStatsComponent : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
+        private const float MaximumHunger = 100f;
+
         [SerializeField, Min(0f)]
         private float fatigue;
 
@@ -34,7 +36,7 @@ namespace AsteroidColony
         private float hunger;
 
         [SerializeField]
-        private float baselineHungerPerGameHour = 8f;
+        private float baselineHungerPerGameHour = 5f;
 
         [SerializeField, Min(0f)]
         private float hungryThreshold = 60f;
@@ -199,6 +201,10 @@ namespace AsteroidColony
             if (identity == null)
                 identity = GetComponent<ColonistIdentity>();
 
+            if (!IsFinite(hunger))
+                hunger = 0f;
+            hunger = Mathf.Clamp(hunger, 0f, MaximumHunger);
+
             CaptureThresholdState();
         }
 
@@ -293,7 +299,7 @@ namespace AsteroidColony
 
             if (!IsFinite(hunger))
                 hunger = 0f;
-            hunger = Mathf.Max(0f, hunger);
+            hunger = Mathf.Clamp(hunger, 0f, MaximumHunger);
 
             if (!IsFinite(baselineHungerPerGameHour))
                 baselineHungerPerGameHour = 0f;
@@ -304,7 +310,7 @@ namespace AsteroidColony
 
             if (!IsFinite(starvationThreshold))
                 starvationThreshold = 0f;
-            starvationThreshold = Mathf.Max(0f, starvationThreshold);
+            starvationThreshold = Mathf.Clamp(starvationThreshold, 0f, MaximumHunger);
 
             if (!IsFinite(criticalHungerThreshold))
                 criticalHungerThreshold = hungryThreshold;
@@ -358,7 +364,7 @@ namespace AsteroidColony
             if (!IsFinite(updatedHunger))
                 return;
 
-            hunger = Mathf.Max(0f, updatedHunger);
+            hunger = Mathf.Clamp(updatedHunger, 0f, MaximumHunger);
             RecordThresholdTransitions();
         }
 

@@ -13,6 +13,7 @@ namespace AsteroidColony
         [SerializeField, Min(1)] private int capacity = 2048;
         [SerializeField] private bool writeJsonl = true;
         [SerializeField] private bool echoToConsole = true;
+        [SerializeField] private bool writeEditorLogsToProjectFolder = true;
         [SerializeField] private List<SimulationLogEntry> entries =
             new List<SimulationLogEntry>();
 
@@ -47,15 +48,16 @@ namespace AsteroidColony
         public void BeginSession()
         {
             string sessionId = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'");
-            jsonlPath = Path.Combine(
-                Application.persistentDataPath,
-                $"spacegame-simulation-log-{sessionId}.jsonl");
+            jsonlPath = ResolveJsonlPath(sessionId);
 
             if (!writeJsonl)
                 return;
 
             try
             {
+                string directory = Path.GetDirectoryName(jsonlPath);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
                 File.WriteAllText(jsonlPath, string.Empty);
             }
             catch (Exception exception)
@@ -70,6 +72,27 @@ namespace AsteroidColony
                 new SimulationLogSubject(name, "SimulationLogManager"),
                 null,
                 new[] { new SimulationLogField("path", jsonlPath) });
+        }
+
+        private string ResolveJsonlPath(string sessionId)
+        {
+#if UNITY_EDITOR
+            if (writeEditorLogsToProjectFolder)
+            {
+                DirectoryInfo projectDirectory = Directory.GetParent(Application.dataPath);
+                if (projectDirectory != null)
+                {
+                    return Path.Combine(
+                        projectDirectory.FullName,
+                        "SimulationLogs",
+                        $"spacegame-simulation-log-{sessionId}.jsonl");
+                }
+            }
+#endif
+
+            return Path.Combine(
+                Application.persistentDataPath,
+                $"spacegame-simulation-log-{sessionId}.jsonl");
         }
 
         public SimulationLogEntry Record(

@@ -21,6 +21,9 @@ namespace AsteroidColony
     public sealed class ColonistBrain : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         private const float ObligationWakeLeadGameHours = 0.5f;
+        private const float WorkMealReleaseHungerThreshold = 40f;
+        private const string MealEndedForWorkReason = "meal_ended_for_work";
+        private const string MealCompletedFullyReason = "meal_completed_fully";
 
         [SerializeField] private ColonistStatsComponent stats;
         [SerializeField] private ColonistIdentity identity;
@@ -180,13 +183,17 @@ namespace AsteroidColony
 
             if (stats.IsCriticallyHungry)
             {
-                RecordDecision(
-                    "colonist.decision.eat",
-                    "critical_hunger",
-                    null,
-                    new SimulationLogField("hunger", stats.Hunger));
                 if (TryStartEat())
-                    return;
+                {
+                    RecordDecision(
+                        "colonist.decision.eat",
+                        "critical_hunger",
+                        null,
+                        new SimulationLogField("hunger", stats.Hunger));
+                }
+                // Critical hunger is a hard lock. A failed food request must not fall
+                // through into work, sleep, or discretionary activity.
+                return;
             }
 
             if (HasCurrentWorkObligation())
@@ -213,12 +220,14 @@ namespace AsteroidColony
 
             if (stats.IsHungry)
             {
-                RecordDecision(
-                    "colonist.decision.eat",
-                    "hungry",
-                    null,
-                    new SimulationLogField("hunger", stats.Hunger));
-                TryStartEat();
+                if (TryStartEat())
+                {
+                    RecordDecision(
+                        "colonist.decision.eat",
+                        "hungry",
+                        null,
+                        new SimulationLogField("hunger", stats.Hunger));
+                }
                 return;
             }
 
@@ -306,7 +315,7 @@ namespace AsteroidColony
             wakeRequested = true;
             RecordDecision(
                 "colonist.decision.interrupted",
-                stats.IsCriticallyHungry ? "critical_hunger" :
+                stats.IsCriticallyHungry ? "sleep_interrupted_for_critical_hunger" :
                 HasCurrentWorkObligation() ? "current_work" : "work_preparation");
             activityRunner.Stop();
         }
@@ -320,7 +329,8 @@ namespace AsteroidColony
 
         private bool TryStartSleep()
         {
-            if (HasWorkStartingWithinPreparationWindow() ||
+            if (stats.IsCriticallyHungry ||
+                HasWorkStartingWithinPreparationWindow() ||
                 !targetResolver.TryResolveTarget(
                     ActivityPurpose.Sleep,
                     out ActivityTarget target) ||
@@ -422,7 +432,9 @@ namespace AsteroidColony
                 stats.IsCriticallyHungry
                     ? "colonist.decision.interrupted"
                     : "colonist.decision.reconsidered",
-                stats.IsCriticallyHungry ? "critical_hunger" : "work_ended");
+                stats.IsCriticallyHungry
+                    ? "work_interrupted_for_critical_hunger"
+                    : "work_ended");
             if (stats.IsCriticallyHungry)
             {
                 SimulationLogManager.RecordEvent(
@@ -431,7 +443,7 @@ namespace AsteroidColony
                     "Warning",
                     LogSubject,
                     workTargetInProgress != null ? workTargetInProgress.Facility : null,
-                    new SimulationLogField("reason", "critical_hunger"),
+                    new SimulationLogField("reason", "work_interrupted_for_critical_hunger"),
                     new SimulationLogField("hunger", stats.Hunger));
             }
             if (activityRunner.HasActiveRequest)
@@ -459,16 +471,19 @@ namespace AsteroidColony
         {
             bool targetValid = IsFoodTargetValid(eatTargetInProgress);
             bool accessValid = targetValid && CanRequesterStillAccessFood(eatTargetInProgress);
+            bool workMealFloorReached = HasReachedWorkMealFloor();
             if (!targetValid ||
                 !accessValid ||
-                (HasCurrentWorkObligation() && !stats.IsCriticallyHungry))
+                workMealFloorReached)
             {
                 RequestEatStop(
                     !targetValid
                         ? "food_target_invalid"
                         : !accessValid
                             ? "food_access_lost"
-                            : null);
+                            : workMealFloorReached
+                                ? MealEndedForWorkReason
+                                : null);
                 if (!activityRunner.HasActiveRequest)
                     FinishEatLifecycle();
                 return;
@@ -492,14 +507,22 @@ namespace AsteroidColony
         {
             bool targetInvalid = !IsFoodTargetValid(eatTargetInProgress) ||
                                  !IsCurrentEatActivity();
+            bool workMealFloorReached = HasReachedWorkMealFloor();
             // The meal itself is already served: only structural target validity matters here.
             // Current staffing access is deliberately not re-checked, so a diner is never
-            // ejected because the waiter clocked out.
+            // ejected because the waiter clocked out. A colonist with work pressure may
+            // finish enough of the meal to reach the work-release threshold, but should
+            // not be forced to stop merely because Critical Hunger has cleared.
             if (targetInvalid ||
                 stats.Hunger <= 0f ||
-                (HasCurrentWorkObligation() && !stats.IsCriticallyHungry))
+                workMealFloorReached)
             {
-                RequestEatStop(targetInvalid ? "food_target_invalid" : null);
+                RequestEatStop(
+                    targetInvalid
+                        ? "food_target_invalid"
+                        : workMealFloorReached
+                            ? MealEndedForWorkReason
+                            : null);
             }
 
             if (eatStopRequested)
@@ -540,14 +563,60 @@ namespace AsteroidColony
             eatStopRequested = true;
             string stopReason = !string.IsNullOrEmpty(reason)
                 ? reason
-                : HasCurrentWorkObligation()
-                    ? "work_started"
-                    : stats.IsCriticallyHungry
-                        ? "critical_hunger_satisfied"
-                        : "hunger_satisfied";
-            RecordDecision("colonist.decision.interrupted", stopReason);
+                : stats.Hunger <= 0f
+                    ? MealCompletedFullyReason
+                    : HasReachedWorkMealFloor()
+                        ? MealEndedForWorkReason
+                        : HasCurrentWorkObligation()
+                            ? "work_started"
+                            : stats.IsCriticallyHungry
+                                ? "critical_hunger_satisfied"
+                                : "hunger_satisfied";
+            if (string.Equals(stopReason, MealEndedForWorkReason, StringComparison.Ordinal))
+            {
+                RecordDecision(
+                    "colonist.decision.interrupted",
+                    stopReason,
+                    null,
+                    new SimulationLogField("hunger", stats.Hunger),
+                    new SimulationLogField(
+                        "workMealReleaseThreshold",
+                        WorkMealReleaseHungerThreshold));
+                SimulationLogManager.RecordEvent(
+                    MealEndedForWorkReason,
+                    "Food",
+                    "Info",
+                    LogSubject,
+                    eatTargetInProgress != null ? eatTargetInProgress.Facility : null,
+                    new SimulationLogField("hunger", stats.Hunger),
+                    new SimulationLogField(
+                        "workMealReleaseThreshold",
+                        WorkMealReleaseHungerThreshold));
+            }
+            else
+            {
+                RecordDecision("colonist.decision.interrupted", stopReason);
+                if (string.Equals(stopReason, MealCompletedFullyReason, StringComparison.Ordinal))
+                {
+                    SimulationLogManager.RecordEvent(
+                        MealCompletedFullyReason,
+                        "Food",
+                        "Info",
+                        LogSubject,
+                        eatTargetInProgress != null ? eatTargetInProgress.Facility : null,
+                        new SimulationLogField("hunger", stats.Hunger));
+                }
+            }
             if (activityRunner.HasActiveRequest)
                 activityRunner.Stop();
+        }
+
+        private bool HasReachedWorkMealFloor()
+        {
+            return (HasCurrentWorkObligation() ||
+                    HasWorkStartingWithinPreparationWindow()) &&
+                   stats != null &&
+                   stats.Hunger <= WorkMealReleaseHungerThreshold;
         }
 
         private bool CanRequesterStillAccessFood(ActivityTarget target)
@@ -776,7 +845,7 @@ namespace AsteroidColony
                 stats.IsCriticallyHungry)
             {
                 RequestOffDutyStop(
-                    stats.IsCriticallyHungry ? "critical_hunger" :
+                    stats.IsCriticallyHungry ? "offduty_interrupted_for_critical_hunger" :
                     stats.IsSleepy ? "sleepy" :
                     stats.IsHungry ? "hungry" :
                     HasCurrentWorkObligation() ? "current_work" :
@@ -807,7 +876,7 @@ namespace AsteroidColony
                 HasWorkStartingWithinPreparationWindow())
             {
                 RequestOffDutyStop(
-                    stats.IsCriticallyHungry ? "critical_hunger" :
+                    stats.IsCriticallyHungry ? "offduty_interrupted_for_critical_hunger" :
                     stats.IsSleepy ? "sleepy" :
                     stats.IsHungry ? "hungry" :
                     HasCurrentWorkObligation() ? "current_work" :

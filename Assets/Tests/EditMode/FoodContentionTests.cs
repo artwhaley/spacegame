@@ -84,7 +84,7 @@ namespace AsteroidColony.Tests
             SetWorkerPhysicallyServing(alice, cafeteria);
 
             Assert.That(
-                manager.TryFindFoodTarget(new FoodQuery(bob, Vector3.zero, 10f), out ActivityTarget bobTarget),
+                manager.TryFindFoodTarget(new FoodQuery(bob.Identity, Vector3.zero, 10f), out ActivityTarget bobTarget),
                 Is.True);
             Assert.That(bobTarget.ActivityId, Is.EqualTo("Eat"));
 
@@ -94,7 +94,7 @@ namespace AsteroidColony.Tests
                 Is.True);
 
             Assert.That(
-                manager.TryFindFoodTarget(new FoodQuery(dana, Vector3.zero, 10f), out ActivityTarget danaTarget),
+                manager.TryFindFoodTarget(new FoodQuery(dana.Identity, Vector3.zero, 10f), out ActivityTarget danaTarget),
                 Is.False);
             Assert.That(danaTarget, Is.Null);
 
@@ -109,7 +109,7 @@ namespace AsteroidColony.Tests
             Assert.That(cafeteria.Facility.Release(bobSeat), Is.True);
             Assert.That(
                 manager.TryFindFoodService(
-                    new FoodQuery(dana, Vector3.zero, 10f),
+                    new FoodQuery(dana.Identity, Vector3.zero, 10f),
                     out FoodServiceOpportunity opportunity),
                 Is.True);
             Assert.That(opportunity.AccessMode, Is.EqualTo(FoodServiceAccessMode.PublicStaffed));
@@ -132,12 +132,12 @@ namespace AsteroidColony.Tests
 
             Assert.That(
                 manager.TryFindFoodService(
-                    new FoodQuery(bob, Vector3.zero, 10f),
+                    new FoodQuery(bob.Identity, Vector3.zero, 10f),
                     out FoodServiceOpportunity bobOpportunity),
                 Is.True);
             Assert.That(
                 manager.TryFindFoodService(
-                    new FoodQuery(dana, Vector3.zero, 10f),
+                    new FoodQuery(dana.Identity, Vector3.zero, 10f),
                     out FoodServiceOpportunity danaOpportunity),
                 Is.True);
 
@@ -169,7 +169,7 @@ namespace AsteroidColony.Tests
             Assert.That(cafeteria.Service.HasActivePublicStaff(10f), Is.True);
             Assert.That(
                 manager.TryFindFoodService(
-                    new FoodQuery(bob, Vector3.zero, 10f),
+                    new FoodQuery(bob.Identity, Vector3.zero, 10f),
                     out FoodServiceOpportunity publicOpportunity),
                 Is.True);
             Assert.That(
@@ -187,7 +187,7 @@ namespace AsteroidColony.Tests
             Assert.That(cafeteria.Service.HasActivePublicStaff(10f), Is.False);
             Assert.That(
                 manager.TryFindFoodService(
-                    new FoodQuery(bob, Vector3.zero, 10f),
+                    new FoodQuery(bob.Identity, Vector3.zero, 10f),
                     out FoodServiceOpportunity closedOpportunity),
                 Is.False);
             Assert.That(closedOpportunity, Is.Null);
@@ -240,7 +240,7 @@ namespace AsteroidColony.Tests
                 Is.EqualTo(FoodServiceAccessMode.Unavailable));
             Assert.That(
                 manager.TryFindFoodService(
-                    new FoodQuery(dana, Vector3.zero, 10f),
+                    new FoodQuery(dana.Identity, Vector3.zero, 10f),
                     out FoodServiceOpportunity refusedOpportunity),
                 Is.False);
             Assert.That(refusedOpportunity, Is.Null);

@@ -322,7 +322,7 @@ namespace AsteroidColony.Tests
 
             stats.SimulationTick(2f);
 
-            Assert.That(stats.Hunger, Is.EqualTo(36f).Within(0.0001f));
+            Assert.That(stats.Hunger, Is.EqualTo(30f).Within(0.0001f));
         }
 
         [Test]
@@ -330,19 +330,29 @@ namespace AsteroidColony.Tests
         {
             SetHunger(3f);
 
-            stats.AdjustHunger(-10f);
+            stats.AdjustHunger(-1000f);
 
             Assert.That(stats.Hunger, Is.EqualTo(0f).Within(0.0001f));
         }
 
         [Test]
-        public void HungerMayExceedOneHundred()
+        public void HungerIsCappedAtStarvationThreshold()
         {
             SetHunger(95f);
 
-            stats.AdjustHunger(30f);
+            stats.AdjustHunger(1000f);
 
-            Assert.That(stats.Hunger, Is.EqualTo(125f).Within(0.0001f));
+            Assert.That(stats.Hunger, Is.EqualTo(100f).Within(0.0001f));
+        }
+
+        [Test]
+        public void SerializedHungerIsClampedAtRuntimeInitialization()
+        {
+            SetHunger(150f);
+
+            InvokePrivate(stats, "Awake");
+
+            Assert.That(stats.Hunger, Is.EqualTo(100f).Within(0.0001f));
         }
 
         [Test]
@@ -378,7 +388,7 @@ namespace AsteroidColony.Tests
             stats.AdjustHunger(float.NegativeInfinity);
 
             Assert.That(stats.Hunger, Is.EqualTo(20f).Within(0.0001f));
-            Assert.That(stats.EffectiveHungerPerGameHour, Is.EqualTo(8f).Within(0.0001f));
+            Assert.That(stats.EffectiveHungerPerGameHour, Is.EqualTo(5f).Within(0.0001f));
         }
 
         [Test]
@@ -716,6 +726,15 @@ namespace AsteroidColony.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, $"Missing private field {fieldName}.");
             field.SetValue(target, value);
+        }
+
+        private static void InvokePrivate(object target, string methodName)
+        {
+            MethodInfo method = target.GetType().GetMethod(
+                methodName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null, $"Missing private method {methodName}.");
+            method.Invoke(target, null);
         }
 
         private void SetFatigue(float value)
