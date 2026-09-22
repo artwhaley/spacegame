@@ -469,6 +469,15 @@ namespace AsteroidColony.Stress.Editor
                 property.boolValue = boolValue;
             else if (value is string stringValue)
                 property.stringValue = stringValue;
+            else if (value is Enum enumValue)
+            {
+                string enumName = enumValue.ToString();
+                int enumIndex = Array.IndexOf(property.enumNames, enumName);
+                if (enumIndex < 0)
+                    throw new InvalidOperationException(
+                        target.name + " has no enum value " + enumName + " for " + field + ".");
+                property.enumValueIndex = enumIndex;
+            }
             else if (value is UnityEngine.Object objectValue)
                 property.objectReferenceValue = objectValue;
             else if (value is ActivityTarget targetValue)
