@@ -102,6 +102,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4405975613294257934}
+  - component: {fileID: 969655069485326135}
   m_Layer: 0
   m_Name: nodeConnect
   m_TagString: Untagged
@@ -121,9 +122,26 @@ Transform:
   m_LocalPosition: {x: -2.4954467, y: 1.0147734, z: -5.008}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 5013709253473997922}
   m_Father: {fileID: 7847060932058898521}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &969655069485326135
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 979295337510449013}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 655347513f60ca04e86f476a5347d271, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ModuleConnectionPoint
+  ownerSurface: {fileID: 4255992808382033865}
+  walkAnchor: {fileID: 5013709253473997922}
+  maxPartnerDistance: 0.25
+  linkWidth: 0.5
 --- !u!1 &1076228286609689930
 GameObject:
   m_ObjectHideFlags: 0
@@ -532,6 +550,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1743904034958187301}
+  - component: {fileID: 629278699877978537}
   m_Layer: 0
   m_Name: nodeConnect
   m_TagString: Untagged
@@ -551,9 +570,26 @@ Transform:
   m_LocalPosition: {x: -2.4954438, y: 1.0147734, z: 10.242001}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 6660087682698977096}
   m_Father: {fileID: 7847060932058898521}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &629278699877978537
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4858520282364189547}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 655347513f60ca04e86f476a5347d271, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ModuleConnectionPoint
+  ownerSurface: {fileID: 4255992808382033865}
+  walkAnchor: {fileID: 6660087682698977096}
+  maxPartnerDistance: 0.25
+  linkWidth: 0.5
 --- !u!1 &4900671870362552936
 GameObject:
   m_ObjectHideFlags: 0
@@ -655,6 +691,37 @@ Transform:
   - {fileID: 7201616647962436390}
   m_Father: {fileID: 7847060932058898521}
   m_LocalEulerAnglesHint: {x: 0, y: -90, z: 0}
+--- !u!1 &5398360921100496404
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5013709253473997922}
+  m_Layer: 0
+  m_Name: WalkAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5013709253473997922
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5398360921100496404}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0.00000008940697, y: 0, z: -0.5}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4405975613294257934}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5573618911916312905
 GameObject:
   m_ObjectHideFlags: 0
@@ -700,6 +767,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7847060932058898521}
   - component: {fileID: 8065966129557036690}
+  - component: {fileID: 4255992808382033865}
   m_Layer: 0
   m_Name: CommandCenter
   m_TagString: Untagged
@@ -925,6 +993,38 @@ MonoBehaviour:
     activeSteps: []
     exitSteps: []
   sequences: []
+--- !u!114 &4255992808382033865
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5599945464254458722}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a5ac11cc976e418e8d13136b07e1f52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshSurface
+  m_SerializedVersion: 0
+  m_AgentTypeID: 0
+  m_CollectObjects: 2
+  m_Size: {x: 10, y: 10, z: 10}
+  m_Center: {x: 0, y: 2, z: 0}
+  m_LayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_UseGeometry: 1
+  m_DefaultArea: 0
+  m_GenerateLinks: 0
+  m_IgnoreNavMeshAgent: 1
+  m_IgnoreNavMeshObstacle: 1
+  m_OverrideTileSize: 0
+  m_TileSize: 256
+  m_OverrideVoxelSize: 0
+  m_VoxelSize: 0.16666667
+  m_MinRegionArea: 1
+  m_NavMeshData: {fileID: 23800000, guid: d23f6c64ac55cd240a2e8724bd7da9ea, type: 2}
+  m_BuildHeightMesh: 0
 --- !u!1 &5736868598580546604
 GameObject:
   m_ObjectHideFlags: 0
@@ -1170,6 +1270,37 @@ Transform:
   m_Children: []
   m_Father: {fileID: 3384099933074236601}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &6715329599656325233
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6660087682698977096}
+  m_Layer: 0
+  m_Name: WalkAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6660087682698977096
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6715329599656325233}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: -0.5}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1743904034958187301}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6912588242610368930
 GameObject:
   m_ObjectHideFlags: 0
@@ -1369,7 +1500,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5479032359971334394}
-  - component: {fileID: 54056479283621919}
   m_Layer: 0
   m_Name: Navigation
   m_TagString: Untagged
@@ -1393,38 +1523,6 @@ Transform:
   - {fileID: 1415053401916284721}
   m_Father: {fileID: 7847060932058898521}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &54056479283621919
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7683806741880255264}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7a5ac11cc976e418e8d13136b07e1f52, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshSurface
-  m_SerializedVersion: 0
-  m_AgentTypeID: 0
-  m_CollectObjects: 0
-  m_Size: {x: 10, y: 10, z: 10}
-  m_Center: {x: 0, y: 2, z: 0}
-  m_LayerMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  m_UseGeometry: 1
-  m_DefaultArea: 0
-  m_GenerateLinks: 0
-  m_IgnoreNavMeshAgent: 1
-  m_IgnoreNavMeshObstacle: 1
-  m_OverrideTileSize: 0
-  m_TileSize: 256
-  m_OverrideVoxelSize: 0
-  m_VoxelSize: 0.16666667
-  m_MinRegionArea: 1
-  m_NavMeshData: {fileID: 23800000, guid: 535e5ec792f22f94fa83477930e3acf0, type: 2}
-  m_BuildHeightMesh: 0
 --- !u!1 &7821515360305439273
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,6 +1,6 @@
 # Module connections — executable ticket stack
 
-Status: M01-M02 IMPLEMENTED; M03-M04 AWAITING UNITY EDITOR AUTHORING/VALIDATION; M05 PARTIAL. See `tickets/MODULE_CONNECTION_POINTS_IMPLEMENTATION_REPORT.md` for evidence.
+Status: M01-M03 IMPLEMENTED; M04 STATIC-SCENE TRAVERSAL AWAITING AN ALIGNED VALIDATION LAYOUT; M05 PARTIAL. See `tickets/MODULE_CONNECTION_POINTS_IMPLEMENTATION_REPORT.md` for evidence.
 Execute M01–M05 in order after the current phase. Keep implementation within this small static-scene slice.
 
 ## Outcome and decisions

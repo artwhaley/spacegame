@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace AsteroidColony.Editor
 {
@@ -94,12 +96,8 @@ namespace AsteroidColony.Editor
                     EditorUtility.SetDirty(point);
                 }
 
-                // Clear before building so an old whole-scene asset cannot mask a
-                // failed or stale prefab bake. The old asset remains in the project
-                // until no other asset references it and it can be safely retired.
-                surface.navMeshData = null;
                 surface.collectObjects = CollectObjects.Children;
-                surface.BuildNavMesh();
+                BakeAndPersistNavMesh(surface, prefabPath, contents);
                 EditorUtility.SetDirty(surface);
                 PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
                 Debug.Log("Authored and baked " + prefabPath + " with " + connectionTransforms.Length + " connection point(s).");
@@ -113,7 +111,6 @@ namespace AsteroidColony.Editor
                 PrefabUtility.UnloadPrefabContents(contents);
             }
         }
-
         private static NavMeshSurface EnsureRootSurface(GameObject root, string prefabPath)
         {
             NavMeshSurface rootSurface = root.GetComponent<NavMeshSurface>();
@@ -143,6 +140,47 @@ namespace AsteroidColony.Editor
             if (rootSurface.agentTypeID < 0)
                 rootSurface.agentTypeID = 0;
             return rootSurface;
+        }
+
+        private static void BakeAndPersistNavMesh(
+            NavMeshSurface surface,
+            string prefabPath,
+            GameObject contents)
+        {
+            // BuildNavMesh creates an in-memory NavMeshData. A prefab asset cannot
+            // serialize that transient object, so persist it beside the prefab
+            // before SaveAsPrefabAsset writes the surface reference.
+            surface.navMeshData = null;
+            surface.BuildNavMesh();
+
+            NavMeshData bakedData = surface.navMeshData;
+            if (bakedData == null)
+            {
+                throw new InvalidOperationException(
+                    "Unity produced no NavMeshData for " + prefabPath + ". Check the room's walkable geometry and surface bounds.");
+            }
+
+            string directory = Path.GetDirectoryName(prefabPath);
+            string assetPath = Path.Combine(directory, "NavMesh-" + SanitizeAssetName(contents.name) + ".asset")
+                .Replace('\\', '/');
+
+            NavMeshData previousData = AssetDatabase.LoadAssetAtPath<NavMeshData>(assetPath);
+            if (previousData != null)
+                AssetDatabase.DeleteAsset(assetPath);
+
+            AssetDatabase.CreateAsset(bakedData, assetPath);
+            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+            surface.navMeshData = bakedData;
+            EditorUtility.SetDirty(bakedData);
+            AssetDatabase.SaveAssets();
+        }
+
+        private static string SanitizeAssetName(string value)
+        {
+            foreach (char invalidCharacter in Path.GetInvalidFileNameChars())
+                value = value.Replace(invalidCharacter.ToString(), "_");
+
+            return string.IsNullOrEmpty(value) ? "Module" : value;
         }
 
         private static void CopySurfaceSettings(NavMeshSurface source, NavMeshSurface destination)
@@ -222,6 +260,11 @@ namespace AsteroidColony.Editor
                 if (surface == null)
                 {
                     Debug.LogError(prefabPath + " has no root NavMeshSurface.", contents);
+                    errors++;
+                }
+                else if (surface.navMeshData == null)
+                {
+                    Debug.LogError(prefabPath + " root NavMeshSurface has no persisted NavMeshData bake.", surface);
                     errors++;
                 }
                 else if (surface.collectObjects != CollectObjects.Children)
