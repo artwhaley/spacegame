@@ -681,7 +681,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   paused: 0
-  speedMultiplier: 1
+  speedMultiplier: 10
   gameHoursPerRealSecond: 1
   tickIntervalSeconds: 0.1
   currentGameHour: 0

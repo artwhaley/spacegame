@@ -23,6 +23,11 @@ namespace AsteroidColony
     /// </summary>
     public class SimulationManager : MonoBehaviour, IPresentationSpeedSource
     {
+        private const float SecondsPerGameHour = 3600f;
+        private const float MinSpeedMultiplier = 1f;
+        private const float MaxSpeedMultiplier = 1000f;
+        private const float DefaultSpeedMultiplier = 10f;
+
         public static SimulationManager Instance { get; private set; }
 
         private static readonly HashSet<ISimulationTickable> desiredTickables =
@@ -33,8 +38,12 @@ namespace AsteroidColony
 
         [Header("Control")]
         public bool paused;
-        [Range(0.1f, 10f)]
-        public float speedMultiplier = 1f;
+        [Range(MinSpeedMultiplier, MaxSpeedMultiplier)]
+        public float speedMultiplier = DefaultSpeedMultiplier;
+
+        // Retained so older scenes deserialize cleanly. Simulation time is now
+        // derived directly from real seconds and speedMultiplier.
+        [HideInInspector]
         public float gameHoursPerRealSecond = 1f;
         public float tickIntervalSeconds = 0.1f;
 
@@ -87,10 +96,7 @@ namespace AsteroidColony
                 if (paused)
                     return 0f;
 
-                if (float.IsNaN(speedMultiplier) || float.IsInfinity(speedMultiplier))
-                    return 1f;
-
-                return Mathf.Clamp(speedMultiplier, 0.1f, 10f);
+                return EffectiveSpeedMultiplier;
             }
         }
 
@@ -98,7 +104,7 @@ namespace AsteroidColony
         public void SetPaused(bool value) => paused = value;
 
         /// <summary>UI-safe speed command with the same authoring bounds as the Inspector.</summary>
-        public void SetSpeedMultiplier(float value) => speedMultiplier = Mathf.Clamp(value, 0.1f, 10f);
+        public void SetSpeedMultiplier(float value) => speedMultiplier = ClampSpeedMultiplier(value);
 
         public void TogglePaused() => paused = !paused;
 
@@ -154,18 +160,16 @@ namespace AsteroidColony
                 currentGameHour = 0f;
             currentGameHour = Mathf.Max(0f, currentGameHour);
 
-            if (float.IsNaN(gameHoursPerRealSecond) || float.IsInfinity(gameHoursPerRealSecond))
-                gameHoursPerRealSecond = 0f;
-            gameHoursPerRealSecond = Mathf.Max(0f, gameHoursPerRealSecond);
+            speedMultiplier = ClampSpeedMultiplier(speedMultiplier);
 
             if (float.IsNaN(tickIntervalSeconds) || float.IsInfinity(tickIntervalSeconds))
                 tickIntervalSeconds = 0.1f;
             tickIntervalSeconds = Mathf.Max(0.0001f, tickIntervalSeconds);
         }
 
-        private void AdvanceTick(float interval)
+        private void AdvanceTick(float realDeltaSeconds)
         {
-            float deltaGameHours = gameHoursPerRealSecond * speedMultiplier * interval;
+            float deltaGameHours = realDeltaSeconds * EffectiveSpeedMultiplier / SecondsPerGameHour;
             currentGameHour += deltaGameHours;
             currentTick++;
 
@@ -180,6 +184,15 @@ namespace AsteroidColony
             }
             ticking = false;
             FlushPending();
+        }
+
+        private float EffectiveSpeedMultiplier => ClampSpeedMultiplier(speedMultiplier);
+
+        private static float ClampSpeedMultiplier(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                return DefaultSpeedMultiplier;
+            return Mathf.Clamp(value, MinSpeedMultiplier, MaxSpeedMultiplier);
         }
 
         private void AdoptDesiredTickables()
