@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -34,7 +35,6 @@ namespace AsteroidColony.Tests
             managerObject = new GameObject("Simulation Manager");
             SimulationManager manager = managerObject.AddComponent<SimulationManager>();
             manager.tickIntervalSeconds = 0.001f;
-            manager.gameHoursPerRealSecond = 1f;
             yield return new WaitForSeconds(0.05f);
             Assert.That(probe.tickCount, Is.GreaterThan(0));
 
@@ -54,7 +54,6 @@ namespace AsteroidColony.Tests
             managerObject = new GameObject("Simulation Manager");
             SimulationManager manager = managerObject.AddComponent<SimulationManager>();
             manager.tickIntervalSeconds = 0.001f;
-            manager.gameHoursPerRealSecond = 1f;
 
             probeObject = new GameObject("Lifecycle Probe");
             LifecycleProbe probe = probeObject.AddComponent<LifecycleProbe>();
@@ -69,7 +68,6 @@ namespace AsteroidColony.Tests
             managerObject = new GameObject("Replacement Simulation Manager");
             SimulationManager replacement = managerObject.AddComponent<SimulationManager>();
             replacement.tickIntervalSeconds = 0.001f;
-            replacement.gameHoursPerRealSecond = 1f;
             yield return new WaitForSeconds(0.05f);
             Assert.That(probe.tickCount, Is.GreaterThan(beforeReplacement));
         }
@@ -88,7 +86,6 @@ namespace AsteroidColony.Tests
             managerObject = new GameObject("Simulation Manager");
             SimulationManager manager = managerObject.AddComponent<SimulationManager>();
             manager.tickIntervalSeconds = 0.001f;
-            manager.gameHoursPerRealSecond = 1f;
             yield return new WaitForSeconds(0.05f);
 
             Assert.That(OrderingProbe.Calls.Count, Is.GreaterThanOrEqualTo(2));
@@ -101,16 +98,25 @@ namespace AsteroidColony.Tests
         {
             managerObject = new GameObject("Simulation Manager");
             SimulationManager manager = managerObject.AddComponent<SimulationManager>();
-            manager.tickIntervalSeconds = 0.001f;
-            manager.gameHoursPerRealSecond = 1000f;
             manager.speedMultiplier = 10f;
 
-            yield return new WaitForSeconds(0.05f);
+            AdvanceTick(manager, 5f * 3600f);
 
             Assert.That(manager.CurrentGameHour, Is.GreaterThan(48f));
             Assert.That(manager.CurrentDayNumber, Is.GreaterThanOrEqualTo(3));
             Assert.That(manager.CurrentHourOfDay, Is.GreaterThanOrEqualTo(0f));
             Assert.That(manager.CurrentHourOfDay, Is.LessThan(24f));
+
+            yield return null;
+        }
+
+        private static void AdvanceTick(SimulationManager simulationManager, float realDeltaSeconds)
+        {
+            MethodInfo method = typeof(SimulationManager).GetMethod(
+                "AdvanceTick",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            method.Invoke(simulationManager, new object[] { realDeltaSeconds });
         }
 
         private sealed class LifecycleProbe : MonoBehaviour, ISimulationTickable, ISimulationTickPriority

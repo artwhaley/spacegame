@@ -455,7 +455,7 @@ namespace Colony.Interactions
                     yield break;
                 }
 
-                elapsed += PresentationTime.DeltaTime;
+                elapsed += Time.unscaledDeltaTime;
                 yield return null;
             }
 
@@ -505,7 +505,7 @@ namespace Colony.Interactions
                     break;
                 }
 
-                elapsed += PresentationTime.DeltaTime;
+                elapsed += Time.unscaledDeltaTime;
                 yield return null;
             }
 
@@ -533,7 +533,7 @@ namespace Colony.Interactions
                     yield break;
                 }
 
-                elapsed += PresentationTime.DeltaTime;
+                elapsed += Time.unscaledDeltaTime;
                 yield return null;
             }
 
@@ -571,7 +571,7 @@ namespace Colony.Interactions
                     yield break;
                 }
 
-                elapsed += PresentationTime.DeltaTime;
+                elapsed += Time.unscaledDeltaTime;
                 yield return null;
             }
         }
@@ -646,9 +646,23 @@ namespace Colony.Interactions
             ActiveSlot = null;
             CurrentSegment = null;
             CurrentSegmentIsLoop = false;
+            ResetAnimatorToLocomotion();
             Debug.LogWarning($"{nameof(ColonistAnimationDriver)} on {name}: {reason}", this);
             StatusChanged?.Invoke($"Action failed: {reason}");
             return false;
+        }
+
+        private void ResetAnimatorToLocomotion()
+        {
+            if (animator == null ||
+                animator.runtimeAnimatorController == null ||
+                animator.layerCount <= BaseLayer)
+            {
+                return;
+            }
+
+            ApplyPresentationSpeed();
+            animator.Play(Animator.StringToHash(LocomotionState), BaseLayer, 0f);
         }
     }
 }
