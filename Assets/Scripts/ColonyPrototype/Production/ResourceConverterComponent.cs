@@ -37,6 +37,10 @@ namespace AsteroidColony
         [SerializeField] private bool batchActive;
         [SerializeField] private float batchProgress;
 
+        [System.NonSerialized] private bool productionStateLogged;
+        [System.NonSerialized] private ResourceConverterState lastLoggedState;
+        [System.NonSerialized] private string lastLoggedReason;
+
         private const float QuantityEpsilon = 0.0001f;
 
         public ResourceConverterState State => state;
@@ -156,6 +160,7 @@ namespace AsteroidColony
             }
 
             progress = actualProgress;
+            RecordProductionOutput(recipe, actualProgress);
             SetState(ResourceConverterState.Running, string.Empty);
         }
 
@@ -205,6 +210,7 @@ namespace AsteroidColony
                 return;
             }
 
+            RecordProductionOutput(recipe, 1f);
             batchActive = false;
             batchProgress = 0f;
             progress = 0f;
@@ -337,8 +343,64 @@ namespace AsteroidColony
 
         private void SetState(ResourceConverterState newState, string reason)
         {
+            if (!productionStateLogged ||
+                newState != lastLoggedState ||
+                !string.Equals(reason, lastLoggedReason, System.StringComparison.Ordinal))
+            {
+                if (newState == ResourceConverterState.Running &&
+                    lastLoggedState != ResourceConverterState.Running)
+                {
+                    SimulationLogManager.RecordEvent(
+                        "production.started",
+                        "Production",
+                        "Info",
+                        this,
+                        null,
+                        new SimulationLogField("state", newState.ToString()));
+                }
+                else if (newState == ResourceConverterState.StaffingBlocked ||
+                         newState == ResourceConverterState.InputBlocked ||
+                         newState == ResourceConverterState.OutputBlocked ||
+                         newState == ResourceConverterState.Disabled)
+                {
+                    SimulationLogManager.RecordEvent(
+                        "production.blocked",
+                        "Production",
+                        "Warning",
+                        this,
+                        null,
+                        new SimulationLogField("state", newState.ToString()),
+                        new SimulationLogField("reason", reason ?? string.Empty));
+                }
+
+                productionStateLogged = true;
+                lastLoggedState = newState;
+                lastLoggedReason = reason;
+            }
             state = newState;
             blockedReason = reason;
+        }
+
+        private void RecordProductionOutput(RecipeDefinition recipe, float recipeProgress)
+        {
+            if (recipe == null || recipe.outputs == null || recipeProgress <= QuantityEpsilon)
+                return;
+
+            for (int index = 0; index < recipe.outputs.Count; index++)
+            {
+                ResourceAmount output = recipe.outputs[index];
+                if (output.resource == null)
+                    continue;
+
+                SimulationLogManager.RecordEvent(
+                    "production.food_output",
+                    "Production",
+                    "Info",
+                    this,
+                    null,
+                    new SimulationLogField("resource", output.resource.name),
+                    new SimulationLogField("amount", output.amount * recipeProgress));
+            }
         }
     }
 }

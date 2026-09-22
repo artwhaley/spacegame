@@ -9,160 +9,188 @@ namespace AsteroidColony.Tests
     public class FoodManagerTests
     {
         private readonly List<GameObject> sceneObjects = new List<GameObject>();
+        private readonly List<ScriptableObject> assets = new List<ScriptableObject>();
+        private FoodManager managerUnderTest;
 
         [TearDown]
         public void TearDown()
         {
             for (int index = sceneObjects.Count - 1; index >= 0; index--)
-            {
                 if (sceneObjects[index] != null)
                     Object.DestroyImmediate(sceneObjects[index]);
-            }
+            for (int index = assets.Count - 1; index >= 0; index--)
+                if (assets[index] != null)
+                    Object.DestroyImmediate(assets[index]);
+            sceneObjects.Clear();
+            assets.Clear();
+            managerUnderTest = null;
         }
 
         [Test]
-        public void ManagerDiscoversServiceCreatedBeforeManager()
-        {
-            FoodServiceComponent service = CreateFoodService("Cafeteria", Vector3.zero);
-            FoodManager manager = CreateManager();
-
-            Assert.That(manager.Services, Does.Contain(service));
-            Assert.That(
-                manager.TryFindFoodTarget(Vector3.one, out ActivityTarget target),
-                Is.True);
-            Assert.That(target.Facility, Is.SameAs(service.Facility));
-            Assert.That(target.ActivityId, Is.EqualTo("Eat"));
-        }
-
-        [Test]
-        public void ServiceCreatedAfterManagerRegistersImmediately()
+        public void BidProducesOfferOnlyWhenFoodManagerResolvesTheRound()
         {
             FoodManager manager = CreateManager();
             FoodServiceComponent service = CreateFoodService("Cafeteria", Vector3.zero);
+            ColonistIdentity bob = CreateIdentity("Bob");
 
-            Assert.That(manager.Services, Does.Contain(service));
+            long nextBrainTick = ActivityBidTestHelpers.CurrentTick + 1L;
+            Assert.That(manager.TryPeekOffer(bob, nextBrainTick, out _), Is.False);
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob));
+            Assert.That(manager.TryPeekOffer(bob, nextBrainTick, out _), Is.False);
+
+            manager.SimulationTick(0.1f);
+
+            Assert.That(manager.TryPeekOffer(bob, nextBrainTick, out FoodOffer offer), Is.True);
+            Assert.That(offer.Opportunity.Service, Is.SameAs(service));
+            Assert.That(service.Facility.IsReserved("Eat01"), Is.False,
+                "Publishing an offer must not reserve the physical seat.");
         }
 
         [Test]
-        public void DiscoveryReturnsNearestLiveService()
+        public void CriticalHungerWinsTheSingleSeatOffer()
         {
-            CreateManager();
-            FoodServiceComponent far = CreateFoodService("Far Cafeteria", new Vector3(10f, 0f, 0f));
-            FoodServiceComponent near = CreateFoodService("Near Cafeteria", new Vector3(2f, 0f, 0f));
+            FoodManager manager = CreateManager();
+            CreateFoodService("Cafeteria", Vector3.zero);
+            ColonistIdentity ordinary = CreateIdentity("Charlie");
+            ColonistIdentity critical = CreateIdentity("Bob");
 
-            Assert.That(
-                FoodManager.Instance.TryFindFoodService(
-                    Vector3.zero,
-                    out FoodServiceComponent result),
-                Is.True);
-            Assert.That(result, Is.SameAs(near));
-            Assert.That(result, Is.Not.SameAs(far));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(
+                ordinary, hunger: 90f, isCritical: false));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(
+                critical, hunger: 95f, isCritical: true));
+            manager.SimulationTick(0.1f);
+
+            long nextBrainTick = ActivityBidTestHelpers.CurrentTick + 1L;
+            Assert.That(manager.TryPeekOffer(critical, nextBrainTick, out _), Is.True);
+            Assert.That(manager.TryPeekOffer(ordinary, nextBrainTick, out _), Is.False);
         }
 
         [Test]
-        public void DisabledOrReservedServiceIsNotDiscoverable()
+        public void HigherHungerWinsWhenCriticalityTies()
+        {
+            FoodManager manager = CreateManager();
+            CreateFoodService("Cafeteria", Vector3.zero);
+            ColonistIdentity low = CreateIdentity("Charlie");
+            ColonistIdentity high = CreateIdentity("Bob");
+
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(low, hunger: 80f, isCritical: true));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(high, hunger: 90f, isCritical: true));
+            manager.SimulationTick(0.1f);
+
+            long nextBrainTick = ActivityBidTestHelpers.CurrentTick + 1L;
+            Assert.That(manager.TryPeekOffer(high, nextBrainTick, out _), Is.True);
+            Assert.That(manager.TryPeekOffer(low, nextBrainTick, out _), Is.False);
+        }
+
+        [Test]
+        public void StaleOfferExpiresWithoutCreatingAReservation()
         {
             FoodManager manager = CreateManager();
             FoodServiceComponent service = CreateFoodService("Cafeteria", Vector3.zero);
-            service.enabled = false;
+            ColonistIdentity bob = CreateIdentity("Bob");
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob));
+            manager.SimulationTick(0.1f);
 
-            Assert.That(
-                manager.TryFindFoodTarget(Vector3.zero, out _),
-                Is.False);
-
-            service.enabled = true;
-            Assert.That(
-                service.Facility.TryGetBinding("Eat", out FacilityActivityBinding binding),
-                Is.True);
-            Assert.That(
-                service.Facility.TryAcquire(binding.ReservationGroup, manager, out _),
-                Is.True);
-            Assert.That(
-                manager.TryFindFoodTarget(Vector3.zero, out _),
-                Is.False);
-        }
-
-        [Test]
-        public void MisconfiguredOrNonExternalServiceIsExcluded()
-        {
-            FoodManager manager = CreateManager();
-            FoodServiceComponent misconfigured =
-                CreateFoodService("Misconfigured Cafeteria", Vector3.zero);
-            SetPrivateField(misconfigured, "eatActivityId", "Missing");
-            Assert.That(manager.TryFindFoodTarget(Vector3.zero, out _), Is.False);
-
-            SetPrivateField(misconfigured, "eatActivityId", "Eat");
-            Assert.That(
-                misconfigured.Facility.TryGetBinding(
-                    "Eat", out FacilityActivityBinding binding),
-                Is.True);
-            SetPrivateField(binding, "externallyRequestable", false);
-            Assert.That(manager.TryFindFoodTarget(Vector3.zero, out _), Is.False);
-        }
-
-        [Test]
-        public void EqualDistanceSelectionIsDeterministic()
-        {
-            FoodManager manager = CreateManager();
-            FoodServiceComponent first =
-                CreateFoodService("First Cafeteria", new Vector3(2f, 0f, 0f));
-            FoodServiceComponent second =
-                CreateFoodService("Second Cafeteria", new Vector3(-2f, 0f, 0f));
-
-            Assert.That(
-                manager.TryFindFoodService(Vector3.zero, out FoodServiceComponent selected),
-                Is.True);
-            Assert.That(selected, Is.SameAs(first));
-
-            Assert.That(
-                manager.TryFindFoodService(Vector3.zero, out FoodServiceComponent repeated),
-                Is.True);
-            Assert.That(repeated, Is.SameAs(selected));
-        }
-
-        [Test]
-        public void DiscoveryDoesNotReserveTheSelectedFacility()
-        {
-            FoodManager manager = CreateManager();
-            FoodServiceComponent service = CreateFoodService("Cafeteria", Vector3.zero);
-
-            Assert.That(manager.TryFindFoodTarget(Vector3.zero, out _), Is.True);
+            long nextBrainTick = ActivityBidTestHelpers.CurrentTick + 1L;
+            Assert.That(manager.TryGetOffer(bob, nextBrainTick + 1L, out _), Is.False);
+            Assert.That(manager.TryPeekOffer(bob, nextBrainTick, out _), Is.False);
             Assert.That(service.Facility.IsReserved("Eat01"), Is.False);
         }
 
         [Test]
-        public void LiveTargetRemainsValidWhenItsReservationIsHeld()
+        public void EmptyInventoryProducesNoOfferAndNewStockIsSeenNextRound()
         {
             FoodManager manager = CreateManager();
-            FoodServiceComponent service = CreateFoodService("Cafeteria", Vector3.zero);
-            ActivityTarget target = new ActivityTarget(service.Facility, "Eat");
+            FoodServiceComponent service = CreateFoodService(
+                "Cafeteria", Vector3.zero, inventoryAccounting: true, startingFood: 0f);
+            ColonistIdentity bob = CreateIdentity("Bob");
 
-            Assert.That(
-                service.Facility.TryAcquire("Eat01", manager, out _),
-                Is.True);
-            Assert.That(manager.IsFoodTargetLive(target), Is.True);
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob));
+            manager.SimulationTick(0.1f);
+            long nextBrainTick = ActivityBidTestHelpers.CurrentTick + 1L;
+            Assert.That(manager.TryPeekOffer(bob, nextBrainTick, out _), Is.False);
+            Assert.That(service.FoodAvailable, Is.EqualTo(0f));
+
+            Assert.That(service.FoodInventory.Add(service.FoodResource, 1f), Is.EqualTo(1f));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob));
+            manager.SimulationTick(0.1f);
+
+            Assert.That(manager.TryPeekOffer(bob, nextBrainTick, out FoodOffer offer), Is.True);
+            Assert.That(offer.Opportunity.Service, Is.SameAs(service));
         }
 
         [Test]
-        public void DestroyedServiceDisappearsFromRegistry()
+        public void MealHoldReservesThenReleasesOrCommitsExactlyOnce()
+        {
+            FoodManager manager = CreateManager();
+            FoodServiceComponent service = CreateFoodService(
+                "Cafeteria", Vector3.zero, inventoryAccounting: true, startingFood: 1f);
+            ColonistIdentity bob = CreateIdentity("Bob");
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob));
+            manager.SimulationTick(0.1f);
+            long nextBrainTick = ActivityBidTestHelpers.CurrentTick + 1L;
+            Assert.That(manager.TryPeekOffer(bob, nextBrainTick, out FoodOffer offer), Is.True);
+
+            GameObject runnerObject = new GameObject("Bob Runner");
+            sceneObjects.Add(runnerObject);
+            ColonistActivityRunner runner = runnerObject.AddComponent<ColonistActivityRunner>();
+            Assert.That(service.Facility.TryAcquire("Eat01", runner, out FacilityReservationToken token), Is.True);
+            SetPrivateField(runner, "currentFacility", service.Facility);
+            SetPrivateField(runner, "reservation", token);
+
+            Assert.That(manager.TryReserveMeal(offer, runner, out FoodMealCommitment commitment), Is.True);
+            Assert.That(service.FoodReserved, Is.EqualTo(1f));
+            Assert.That(service.FoodAvailable, Is.EqualTo(0f));
+
+            manager.ReleaseMeal(commitment);
+            manager.ReleaseMeal(commitment);
+            Assert.That(service.FoodReserved, Is.EqualTo(0f));
+            Assert.That(service.FoodOnHand, Is.EqualTo(1f));
+
+            FoodMealCommitment second = CreateCommitment(manager, offer, runner);
+            Assert.That(manager.CommitMeal(second), Is.True);
+            Assert.That(manager.CommitMeal(second), Is.True);
+            Assert.That(service.FoodOnHand, Is.EqualTo(0f));
+            Assert.That(service.FoodReserved, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void DisabledServiceCannotReceiveABidOffer()
         {
             FoodManager manager = CreateManager();
             FoodServiceComponent service = CreateFoodService("Cafeteria", Vector3.zero);
-            Assert.That(manager.Services, Does.Contain(service));
+            ColonistIdentity bob = CreateIdentity("Bob");
+            service.enabled = false;
 
-            Object.DestroyImmediate(service.gameObject);
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob));
+            manager.SimulationTick(0.1f);
 
-            Assert.That(manager.TryFindFoodTarget(Vector3.zero, out _), Is.False);
+            long nextBrainTick = ActivityBidTestHelpers.CurrentTick + 1L;
+            Assert.That(manager.TryPeekOffer(bob, nextBrainTick, out _), Is.False);
+        }
+
+        private FoodMealCommitment CreateCommitment(
+            FoodManager manager,
+            FoodOffer offer,
+            ColonistActivityRunner runner)
+        {
+            Assert.That(manager.TryReserveMeal(offer, runner, out FoodMealCommitment commitment), Is.True);
+            return commitment;
         }
 
         private FoodManager CreateManager()
         {
             GameObject managerObject = new GameObject("Food Manager");
             sceneObjects.Add(managerObject);
-            return managerObject.AddComponent<FoodManager>();
+            managerUnderTest = managerObject.AddComponent<FoodManager>();
+            return managerUnderTest;
         }
 
-        private FoodServiceComponent CreateFoodService(string name, Vector3 position)
+        private FoodServiceComponent CreateFoodService(
+            string name,
+            Vector3 position,
+            bool inventoryAccounting = false,
+            float startingFood = 0f)
         {
             GameObject serviceObject = new GameObject(name);
             serviceObject.transform.position = position;
@@ -171,7 +199,6 @@ namespace AsteroidColony.Tests
             InteractableFacility facility = serviceObject.AddComponent<InteractableFacility>();
             Transform approach = new GameObject(name + " Approach").transform;
             approach.SetParent(serviceObject.transform, false);
-
             FacilityActivityBinding binding = new FacilityActivityBinding();
             SetPrivateField(binding, "activityId", "Eat");
             SetPrivateField(binding, "reservationGroup", "Eat01");
@@ -182,7 +209,44 @@ namespace AsteroidColony.Tests
             FoodServiceComponent service = serviceObject.AddComponent<FoodServiceComponent>();
             SetPrivateField(service, "eatActivityId", "Eat");
             SetPrivateField(service, "hungerRecoveryPerGameHour", 60f);
+            SetPrivateField(service, "inventoryAccountingEnabled", inventoryAccounting);
+            if (inventoryAccounting)
+            {
+                InventoryComponent inventory = serviceObject.AddComponent<InventoryComponent>();
+                ResourceDefinition food = ScriptableObject.CreateInstance<ResourceDefinition>();
+                food.stableId = name + "Food";
+                food.quantityMode = ResourceQuantityMode.Discrete;
+                assets.Add(food);
+                ConfigureInventory(inventory, food, 20f, startingFood);
+                SetPrivateField(service, "foodInventory", inventory);
+                SetPrivateField(service, "foodResource", food);
+                SetPrivateField(service, "foodPerMeal", 1f);
+                service.RefreshStaticBindingMetadata();
+            }
+            managerUnderTest?.Register(service);
             return service;
+        }
+
+        private ColonistIdentity CreateIdentity(string displayName)
+        {
+            return ActivityBidTestHelpers.CreateIdentity(displayName, sceneObjects);
+        }
+
+        private static void ConfigureInventory(
+            InventoryComponent inventory,
+            ResourceDefinition resource,
+            float capacity,
+            float onHand)
+        {
+            FieldInfo entriesField = typeof(InventoryComponent).GetField(
+                "entries", BindingFlags.Instance | BindingFlags.NonPublic);
+            var entries = (List<InventoryEntry>)entriesField.GetValue(inventory);
+            entries.Add(new InventoryEntry
+            {
+                resource = resource,
+                capacity = capacity,
+                onHand = onHand
+            });
         }
 
         private static void SetPrivateField(object target, string fieldName, object value)
@@ -192,6 +256,65 @@ namespace AsteroidColony.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, $"Missing private field {fieldName}.");
             field.SetValue(target, value);
+        }
+    }
+
+    internal static class ActivityBidTestHelpers
+    {
+        public static long CurrentTick =>
+            SimulationManager.Instance != null ? SimulationManager.Instance.CurrentTick : 0L;
+
+        public static FoodBid CreateFoodBid(
+            ColonistIdentity requester,
+            float hunger = 80f,
+            bool isCritical = false,
+            int preferenceRank = 0,
+            long outstandingNeedAge = 1L,
+            float? gameHour = null)
+        {
+            return new FoodBid(
+                requester,
+                requester != null ? requester.transform.position : Vector3.zero,
+                gameHour ?? (SimulationManager.Instance != null
+                    ? SimulationManager.Instance.CurrentGameHour
+                    : 0f),
+                hunger,
+                isCritical,
+                preferenceRank,
+                CurrentTick,
+                outstandingNeedAge);
+        }
+
+        public static OffDutyBid CreateOffDutyBid(
+            ColonistIdentity requester,
+            OffDutyDrive drive,
+            OffDutyCompletionHistory completionHistory = null,
+            int preferenceRank = 0,
+            float maximumSafeDurationGameHours = 4f)
+        {
+            return new OffDutyBid(
+                requester,
+                requester != null ? requester.transform.position : Vector3.zero,
+                drive,
+                maximumSafeDurationGameHours,
+                completionHistory,
+                SimulationManager.Instance != null ? SimulationManager.Instance.CurrentGameHour : 0f,
+                preferenceRank,
+                CurrentTick);
+        }
+
+        public static ColonistIdentity CreateIdentity(
+            string displayName,
+            ICollection<GameObject> objects)
+        {
+            GameObject identityObject = new GameObject(displayName);
+            objects.Add(identityObject);
+            ColonistIdentity identity = identityObject.AddComponent<ColonistIdentity>();
+            FieldInfo field = typeof(ColonistIdentity).GetField(
+                "displayName",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            field.SetValue(identity, displayName);
+            return identity;
         }
     }
 }

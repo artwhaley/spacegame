@@ -5,7 +5,7 @@ using UnityEngine;
 namespace AsteroidColony
 {
     [CustomEditor(typeof(SimulationLogManager))]
-    public sealed class SimulationLogManagerEditor : Editor
+    public sealed class SimulationLogManagerEditor : UnityEditor.Editor
     {
         private Vector2 scroll;
 

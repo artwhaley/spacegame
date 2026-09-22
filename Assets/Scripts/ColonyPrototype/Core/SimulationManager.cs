@@ -21,6 +21,7 @@ namespace AsteroidColony
     /// objects. Components register their desired participation independently of
     /// manager creation order; there are no scene scans during a tick.
     /// </summary>
+    [DefaultExecutionOrder(-10000)]
     public class SimulationManager : MonoBehaviour, IPresentationSpeedSource
     {
         private const float SecondsPerGameHour = 3600f;
@@ -29,6 +30,7 @@ namespace AsteroidColony
         private const float DefaultSpeedMultiplier = 10f;
         private const float DefaultLogicalStepSimulationSeconds = 1f;
         private const int DefaultMaxLogicalStepsPerFrame = 10000;
+        private const double DefaultMaximumPendingSimulationSeconds = 250d;
 
         public static SimulationManager Instance { get; private set; }
 
@@ -59,18 +61,30 @@ namespace AsteroidColony
         [Min(1)]
         [Tooltip("Maximum logical steps consumed by one rendered frame. Unconsumed debt is carried forward.")]
         [SerializeField] private int maxLogicalStepsPerFrame = DefaultMaxLogicalStepsPerFrame;
+        [Min(1f)]
+        [Tooltip("Maximum admitted but uncommitted simulation time. Excess requested pace is recorded as shortfall instead of creating an unbounded catch-up burst.")]
+        [SerializeField] private float maximumPendingSimulationSeconds =
+            (float)DefaultMaximumPendingSimulationSeconds;
 
         [Header("Runtime State")]
         [SerializeField] private float currentGameHour;
         [SerializeField] private long currentTick;
         [SerializeField] private double simulationSeconds;
         [SerializeField] private double simulationDebtSeconds;
+        [SerializeField] private double requestedSimulationSeconds;
+        [SerializeField] private double paceShortfallSeconds;
+        [SerializeField] private double maximumObservedDebtSeconds;
+        [SerializeField] private long admissionLimitHitCount;
 
         private readonly List<ISimulationTickable> tickables = new List<ISimulationTickable>();
         private readonly HashSet<ISimulationTickable> pendingAdds = new HashSet<ISimulationTickable>();
         private readonly HashSet<ISimulationTickable> pendingRemoves = new HashSet<ISimulationTickable>();
         private bool ticking;
         private int lastFrameLogicalSteps;
+        private double lastFrameRequestedSimulationSeconds;
+        private double lastFrameCommittedSimulationSeconds;
+        private float lastPresentationRealDeltaSeconds;
+        private double simulationStopSeconds = double.PositiveInfinity;
 
         private void Awake()
         {
@@ -108,6 +122,14 @@ namespace AsteroidColony
         public float LogicalStepSimulationSeconds => logicalStepSimulationSeconds;
         public int MaxLogicalStepsPerFrame => maxLogicalStepsPerFrame;
         public int LastFrameLogicalSteps => lastFrameLogicalSteps;
+        public double RequestedSimulationSeconds => requestedSimulationSeconds;
+        public double PaceShortfallSeconds => paceShortfallSeconds;
+        public double MaximumObservedDebtSeconds => maximumObservedDebtSeconds;
+        public long AdmissionLimitHitCount => admissionLimitHitCount;
+        public double LastFrameRequestedSimulationSeconds => lastFrameRequestedSimulationSeconds;
+        public double LastFrameCommittedSimulationSeconds => lastFrameCommittedSimulationSeconds;
+        public bool SimulationStopReached => simulationSeconds >= simulationStopSeconds;
+        public bool IsExecutingTick => ticking;
         public int CurrentDayIndex => SimulationTime.DayIndexAt(currentGameHour);
         public int CurrentDayNumber => SimulationTime.DayNumberAt(currentGameHour);
         public float CurrentHourOfDay => SimulationTime.HourOfDayAt(currentGameHour);
@@ -119,7 +141,11 @@ namespace AsteroidColony
                 if (paused)
                     return 0f;
 
-                return EffectiveSpeedMultiplier;
+                if (lastPresentationRealDeltaSeconds <= 0f)
+                    return EffectiveSpeedMultiplier;
+
+                return (float)(lastFrameCommittedSimulationSeconds /
+                    lastPresentationRealDeltaSeconds);
             }
         }
 
@@ -165,18 +191,73 @@ namespace AsteroidColony
 
         private void Update()
         {
-            if (paused)
+            AdvanceFrame(Time.unscaledDeltaTime);
+        }
+
+        private void AdvanceFrame(float realDeltaSeconds)
+        {
+            lastPresentationRealDeltaSeconds = realDeltaSeconds;
+            lastFrameRequestedSimulationSeconds = 0d;
+            lastFrameCommittedSimulationSeconds = 0d;
+            lastFrameLogicalSteps = 0;
+
+            if (paused || float.IsNaN(realDeltaSeconds) ||
+                float.IsInfinity(realDeltaSeconds) || realDeltaSeconds <= 0f)
                 return;
 
-            simulationDebtSeconds += Time.unscaledDeltaTime * EffectiveSpeedMultiplier;
-            lastFrameLogicalSteps = 0;
+            double requested = realDeltaSeconds * EffectiveSpeedMultiplier;
+            lastFrameRequestedSimulationSeconds = requested;
+            requestedSimulationSeconds += requested;
+
+            double availableAdmission = System.Math.Max(
+                0d,
+                maximumPendingSimulationSeconds - simulationDebtSeconds);
+            double admitted = System.Math.Min(requested, availableAdmission);
+            simulationDebtSeconds += admitted;
+            double shortfall = requested - admitted;
+            if (shortfall > 0d)
+            {
+                paceShortfallSeconds += shortfall;
+                admissionLimitHitCount++;
+            }
+            maximumObservedDebtSeconds = System.Math.Max(
+                maximumObservedDebtSeconds,
+                simulationDebtSeconds);
+
             double step = logicalStepSimulationSeconds;
             while (simulationDebtSeconds >= step && lastFrameLogicalSteps < maxLogicalStepsPerFrame)
             {
+                if (simulationSeconds + step > simulationStopSeconds)
+                {
+                    paused = true;
+                    simulationDebtSeconds = 0d;
+                    break;
+                }
+
                 simulationDebtSeconds -= step;
                 AdvanceLogicalStep((float)step);
                 lastFrameLogicalSteps++;
+                lastFrameCommittedSimulationSeconds += step;
+                if (simulationSeconds >= simulationStopSeconds)
+                {
+                    paused = true;
+                    simulationDebtSeconds = 0d;
+                    break;
+                }
             }
+        }
+
+        public void ArmSimulationStop(double absoluteSimulationSeconds)
+        {
+            simulationStopSeconds = double.IsNaN(absoluteSimulationSeconds) ||
+                double.IsInfinity(absoluteSimulationSeconds)
+                ? double.PositiveInfinity
+                : System.Math.Max(simulationSeconds, absoluteSimulationSeconds);
+        }
+
+        public void ClearSimulationStop()
+        {
+            simulationStopSeconds = double.PositiveInfinity;
         }
 
         private void OnValidate()
@@ -197,6 +278,15 @@ namespace AsteroidColony
                 logicalStepSimulationSeconds = DefaultLogicalStepSimulationSeconds;
             logicalStepSimulationSeconds = Mathf.Max(0.001f, logicalStepSimulationSeconds);
             maxLogicalStepsPerFrame = Mathf.Max(1, maxLogicalStepsPerFrame);
+            if (float.IsNaN(maximumPendingSimulationSeconds) ||
+                float.IsInfinity(maximumPendingSimulationSeconds))
+            {
+                maximumPendingSimulationSeconds =
+                    (float)DefaultMaximumPendingSimulationSeconds;
+            }
+            maximumPendingSimulationSeconds = Mathf.Max(
+                logicalStepSimulationSeconds,
+                maximumPendingSimulationSeconds);
 
             speedMultiplier = ClampSpeedMultiplier(speedMultiplier);
 
@@ -209,7 +299,12 @@ namespace AsteroidColony
         {
             if (float.IsNaN(realDeltaSeconds) || float.IsInfinity(realDeltaSeconds) || realDeltaSeconds <= 0f)
                 return;
-            AdvanceLogicalStep(realDeltaSeconds * EffectiveSpeedMultiplier);
+            float simulatedSeconds = realDeltaSeconds * EffectiveSpeedMultiplier;
+            lastPresentationRealDeltaSeconds = realDeltaSeconds;
+            lastFrameRequestedSimulationSeconds = simulatedSeconds;
+            lastFrameCommittedSimulationSeconds = simulatedSeconds;
+            requestedSimulationSeconds += simulatedSeconds;
+            AdvanceLogicalStep(simulatedSeconds);
         }
 
         private void AdvanceLogicalStep(float simulatedSeconds)

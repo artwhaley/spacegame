@@ -8,7 +8,7 @@ namespace AsteroidColony
     /// newest-first readout of recent simulation events above the defaults.
     /// </summary>
     [CustomEditor(typeof(SimulationLog))]
-    public class SimulationLogEditor : Editor
+    public class SimulationLogEditor : UnityEditor.Editor
     {
         private Vector2 scroll;
 

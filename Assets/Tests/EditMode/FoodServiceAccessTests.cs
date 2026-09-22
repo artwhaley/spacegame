@@ -10,6 +10,7 @@ namespace AsteroidColony.Tests
     {
         private readonly List<GameObject> sceneObjects = new List<GameObject>();
         private readonly List<ScriptableObject> assets = new List<ScriptableObject>();
+        private FoodManager managerUnderTest;
 
         [TearDown]
         public void TearDown()
@@ -28,6 +29,10 @@ namespace AsteroidColony.Tests
 
             sceneObjects.Clear();
             assets.Clear();
+            SetStaticInstance(typeof(FoodManager), "Instance", null);
+            SetStaticInstance(typeof(WorkforceManager), "Instance", null);
+            SetStaticInstance(typeof(SimulationLogManager), "Instance", null);
+            managerUnderTest = null;
         }
 
         [Test]
@@ -274,21 +279,22 @@ namespace AsteroidColony.Tests
             AssignWorker(workforce, employee, cafeteria, cafeteria.Role, 8f, 14f);
             FoodManager manager = CreateFoodManager();
 
-            Assert.That(
-                manager.TryFindFoodService(
-                    new FoodQuery(employee, Vector3.zero, 20f),
-                    out FoodServiceOpportunity employeeOpportunity),
-                Is.True);
-            Assert.That(
-                employeeOpportunity.AccessMode,
-                Is.EqualTo(FoodServiceAccessMode.SelfService));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(employee));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(outsider));
+            manager.SimulationTick(0.1f);
 
             Assert.That(
-                manager.TryFindFoodService(
-                    new FoodQuery(outsider, Vector3.zero, 20f),
-                    out FoodServiceOpportunity outsiderOpportunity),
+                manager.TryPeekOffer(
+                    employee,
+                    ActivityBidTestHelpers.CurrentTick + 1L,
+                    out FoodOffer employeeOffer),
+                Is.True);
+            Assert.That(
+                employeeOffer.Opportunity.AccessMode,
+                Is.EqualTo(FoodServiceAccessMode.SelfService));
+            Assert.That(
+                manager.TryPeekOffer(outsider, ActivityBidTestHelpers.CurrentTick + 1L, out _),
                 Is.False);
-            Assert.That(outsiderOpportunity, Is.Null);
         }
 
         [Test]
@@ -302,30 +308,36 @@ namespace AsteroidColony.Tests
             ColonistIdentity outsider = CreateColonist("Bob");
             AssignWorker(workforce, worker, cafeteria, cafeteria.Role, 8f, 14f);
             FoodManager manager = CreateFoodManager();
-            FoodQuery query = new FoodQuery(outsider, Vector3.zero, 10f);
-
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(outsider));
+            manager.SimulationTick(0.1f);
+            Assert.That(manager.Offers.Count, Is.EqualTo(0));
             Assert.That(
-                manager.TryFindFoodService(query, out FoodServiceComponent closedService),
+                manager.TryPeekOffer(outsider, ActivityBidTestHelpers.CurrentTick + 1L, out _),
                 Is.False);
-            Assert.That(closedService, Is.Null);
 
             SetWorkerRunnerState(cafeteria.Facility, worker, "ServeFood", activityActive: true);
 
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(outsider, gameHour: 10f));
+            manager.SimulationTick(0.1f);
             Assert.That(
-                manager.TryFindFoodService(query, out FoodServiceOpportunity opportunity),
+                manager.TryPeekOffer(
+                    outsider,
+                    ActivityBidTestHelpers.CurrentTick + 1L,
+                    out FoodOffer opportunity),
                 Is.True);
             Assert.That(
-                opportunity.AccessMode,
+                opportunity.Opportunity.AccessMode,
                 Is.EqualTo(FoodServiceAccessMode.PublicStaffed));
-            Assert.That(opportunity.Target.ActivityId, Is.EqualTo("Eat"));
+            Assert.That(opportunity.Opportunity.Target.ActivityId, Is.EqualTo("Eat"));
         }
 
         [Test]
-        public void RequesterAwareLoggingIsNotGloballySuppressed()
+        public void BidLoggingIsPerRequesterAndDoesNotUseInspectorSelectionEvents()
         {
             GameObject logObject = new GameObject("Simulation Log Manager");
             sceneObjects.Add(logObject);
             SimulationLogManager log = logObject.AddComponent<SimulationLogManager>();
+            SetStaticInstance(typeof(SimulationLogManager), "Instance", log);
             Assert.That(SimulationLogManager.Instance, Is.SameAs(log));
 
             CreateCafeteria(requiresStaff: false, FoodSelfServicePolicy.None);
@@ -333,20 +345,14 @@ namespace AsteroidColony.Tests
             ColonistIdentity bob = CreateColonist("Bob");
             FoodManager manager = CreateFoodManager();
 
-            Assert.That(
-                manager.TryFindFoodTarget(new FoodQuery(alice, Vector3.zero, 10f), out _),
-                Is.True);
-            Assert.That(
-                manager.TryFindFoodTarget(new FoodQuery(bob, Vector3.zero, 10f), out _),
-                Is.True);
-            // A repeated request from the same seeker is still deduplicated for that seeker.
-            Assert.That(
-                manager.TryFindFoodTarget(new FoodQuery(alice, Vector3.zero, 10f), out _),
-                Is.True);
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(alice));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob));
+            manager.SimulationTick(0.1f);
 
-            Assert.That(CountSelectionEntries(), Is.EqualTo(2));
-            Assert.That(HasSelectionEntryFor("Alice"), Is.True);
-            Assert.That(HasSelectionEntryFor("Bob"), Is.True);
+            Assert.That(CountBidEntries(), Is.EqualTo(2));
+            Assert.That(HasBidEntryFor("Alice"), Is.True);
+            Assert.That(HasBidEntryFor("Bob"), Is.True);
+            Assert.That(CountSelectionEntries(), Is.EqualTo(0));
         }
 
         private int CountSelectionEntries()
@@ -357,6 +363,38 @@ namespace AsteroidColony.Tests
         private bool HasSelectionEntryFor(string displayName)
         {
             return CountSelectionEntries(displayName) > 0;
+        }
+
+        private int CountBidEntries()
+        {
+            return CountBidEntries(null);
+        }
+
+        private bool HasBidEntryFor(string displayName)
+        {
+            return CountBidEntries(displayName) > 0;
+        }
+
+        private static int CountBidEntries(string displayName)
+        {
+            if (SimulationLogManager.Instance == null)
+                return 0;
+
+            int count = 0;
+            IReadOnlyList<SimulationLogEntry> entries = SimulationLogManager.Instance.Entries;
+            for (int index = 0; index < entries.Count; index++)
+            {
+                SimulationLogEntry entry = entries[index];
+                if (entry == null ||
+                    !string.Equals(entry.EventKey, "food.bid_submitted", System.StringComparison.Ordinal))
+                    continue;
+                if (displayName != null &&
+                    (entry.PrimarySubject == null ||
+                     !string.Equals(entry.PrimarySubject.DisplayName, displayName, System.StringComparison.Ordinal)))
+                    continue;
+                count++;
+            }
+            return count;
         }
 
         private static int CountSelectionEntries(string displayName)
@@ -395,14 +433,27 @@ namespace AsteroidColony.Tests
         {
             GameObject managerObject = new GameObject("Food Manager");
             sceneObjects.Add(managerObject);
-            return managerObject.AddComponent<FoodManager>();
+            managerUnderTest = managerObject.AddComponent<FoodManager>();
+            SetStaticInstance(typeof(FoodManager), "Instance", managerUnderTest);
+            for (int index = 0; index < sceneObjects.Count; index++)
+            {
+                FoodServiceComponent service = sceneObjects[index] != null
+                    ? sceneObjects[index].GetComponent<FoodServiceComponent>()
+                    : null;
+                if (service != null)
+                    managerUnderTest.Register(service);
+            }
+
+            return managerUnderTest;
         }
 
         private WorkforceManager CreateWorkforceManager()
         {
             GameObject managerObject = new GameObject("Workforce Manager");
             sceneObjects.Add(managerObject);
-            return managerObject.AddComponent<WorkforceManager>();
+            WorkforceManager workforce = managerObject.AddComponent<WorkforceManager>();
+            SetStaticInstance(typeof(WorkforceManager), "Instance", workforce);
+            return workforce;
         }
 
         private ColonistIdentity CreateColonist(string displayName)
@@ -481,6 +532,8 @@ namespace AsteroidColony.Tests
                 requiresStaff ? fixture.Role : null);
             SetPrivateField(fixture.Service, "minimumActiveWorkers", minimumActiveWorkers);
             SetPrivateField(fixture.Service, "selfServicePolicy", selfServicePolicy);
+            fixture.Service.RefreshStaticBindingMetadata();
+            managerUnderTest?.Register(fixture.Service);
             return fixture;
         }
 
@@ -527,6 +580,9 @@ namespace AsteroidColony.Tests
             Assert.That(
                 facility.TryGetBinding(activityId, out FacilityActivityBinding binding),
                 Is.True);
+            Assert.That(binding.ReservationGroup, Is.Not.Empty);
+            if (facility.TryGetReservation(binding.ReservationGroup, out FacilityReservationToken existing))
+                facility.Release(existing);
             Assert.That(
                 facility.TryAcquire(
                     binding.ReservationGroup,
@@ -548,6 +604,17 @@ namespace AsteroidColony.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, $"Missing private field {fieldName}.");
             field.SetValue(target, value);
+        }
+
+        private static void SetStaticInstance(System.Type type, string propertyName, object value)
+        {
+            PropertyInfo property = type.GetProperty(
+                propertyName,
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            Assert.That(property, Is.Not.Null, $"Missing static property {propertyName}.");
+            MethodInfo setter = property.GetSetMethod(true);
+            Assert.That(setter, Is.Not.Null, $"Static property {propertyName} is not writable.");
+            setter.Invoke(null, new[] { value });
         }
 
         private sealed class CafeteriaFixture

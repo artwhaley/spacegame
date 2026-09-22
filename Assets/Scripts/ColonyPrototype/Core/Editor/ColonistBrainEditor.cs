@@ -104,7 +104,7 @@ namespace AsteroidColony
 
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("Eat Target", EditorStyles.boldLabel);
-            DrawEatTarget(resolver, identity, manager);
+            DrawEatTarget(brain, identity, manager);
 
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField("OffDuty Planning", EditorStyles.boldLabel);
@@ -327,58 +327,48 @@ namespace AsteroidColony
         }
 
         private static void DrawEatTarget(
-            ColonistTargetResolver resolver,
+            ColonistBrain brain,
             ColonistIdentity identity,
             SimulationManager simulation)
         {
-            if (resolver == null)
+            if (identity == null)
             {
-                ReadOnlyLabel("Resolved", "NO");
-                ReadOnlyLabel("Resolver", "MISSING");
+                ReadOnlyLabel("Food Bid/Offer", "IDENTITY MISSING");
                 return;
             }
 
-            if (!resolver.TryResolveTarget(ActivityPurpose.Eat, out ActivityTarget target) ||
-                target == null ||
-                !target.IsConfigured)
+            FoodManager manager = FoodManager.Instance;
+            long currentTick = simulation != null ? simulation.CurrentTick : 0L;
+            if (manager == null)
             {
-                ReadOnlyLabel("Resolved", "NO");
-                ReadOnlyLabel(
-                    "Food Services",
-                    FoodManager.Instance != null
-                        ? FoodManager.Instance.Services.Count.ToString()
-                        : "MANAGER MISSING");
+                ReadOnlyLabel("Food Bid/Offer", "MANAGER MISSING");
                 return;
             }
 
-            ReadOnlyLabel("Resolved", "YES");
-            ReadOnlyLabel("Facility", target.Facility.name);
-            ReadOnlyLabel("Activity", target.ActivityId);
+            ReadOnlyLabel("Food Bid", brain.LastSubmittedFoodBid != null ? "SUBMITTED" : "NONE");
+            ReadOnlyLabel("Offer Chosen", brain.LastOfferChosen);
+            ReadOnlyLabel("Offer Rejection", brain.LastOfferRejectionReason);
 
-            float currentGameHour = simulation != null ? simulation.CurrentGameHour : 0f;
-            if (FoodManager.Instance == null ||
-                !FoodManager.Instance.TryGetFoodOpportunity(
-                    target,
-                    identity,
-                    currentGameHour,
-                    out FoodServiceOpportunity opportunity))
+            if (manager.TryPeekOffer(identity, currentTick, out FoodOffer offer))
             {
-                ReadOnlyLabel("Access Mode", "UNKNOWN");
+                ReadOnlyLabel("Food Offer", "PRESENT");
+                ReadOnlyLabel("Offer Valid Tick", offer.ValidForSimulationTick.ToString());
+                ReadOnlyLabel(
+                    "Facility",
+                    offer.Opportunity != null && offer.Opportunity.Service != null
+                        ? offer.Opportunity.Service.name
+                        : "NONE");
+                ReadOnlyLabel(
+                    "Access Mode",
+                    offer.Opportunity != null
+                        ? FoodManager.DescribeAccessMode(offer.Opportunity.AccessMode)
+                        : "UNKNOWN");
                 return;
             }
 
-            ReadOnlyLabel(
-                "Access Mode",
-                FoodManager.DescribeAccessMode(opportunity.AccessMode));
-            if (opportunity.Service != null)
-            {
-                ReadOnlyLabel(
-                    "Requires Staff",
-                    opportunity.Service.RequiresStaff ? "YES" : "NO");
-                ReadOnlyLabel(
-                    "Self Service Policy",
-                    opportunity.Service.SelfServicePolicy.ToString());
-            }
+            ReadOnlyLabel("Food Offer", "NONE");
+            ReadOnlyLabel("Bids This Round", manager.BidsThisRound.Count.ToString());
+            ReadOnlyLabel("Food Services", manager.Services.Count.ToString());
         }
 
         private static void DrawOffDutyPlanning(ColonistBrain brain)
@@ -401,6 +391,24 @@ namespace AsteroidColony
                 "OffDuty Active Duration",
                 FormatDuration(brain.OffDutyActiveDuration));
             ReadOnlyLabel("Active OffDuty Drive", FormatDrive(brain.ActiveOffDutyDrive));
+            ReadOnlyLabel("OffDuty Bids", brain.LastSubmittedOffDutyBids.Count.ToString());
+            ReadOnlyLabel("Offer Chosen", brain.LastOfferChosen);
+            ReadOnlyLabel("Offer Rejection", brain.LastOfferRejectionReason);
+            SimulationManager simulation = SimulationManager.Instance;
+            OffDutyManager manager = OffDutyManager.Instance;
+            if (manager != null && brain != null &&
+                manager.TryPeekOffer(
+                    brain.GetComponent<ColonistIdentity>(),
+                    simulation != null ? simulation.CurrentTick : 0L,
+                    out OffDutyOffer offer))
+            {
+                ReadOnlyLabel("OffDuty Offer", offer.Opportunity.Target.ActivityId);
+                ReadOnlyLabel("Offer Valid Tick", offer.ValidForSimulationTick.ToString());
+            }
+            else
+            {
+                ReadOnlyLabel("OffDuty Offer", "NONE");
+            }
         }
 
         private static void DrawCooldowns(

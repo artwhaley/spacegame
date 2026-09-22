@@ -126,21 +126,20 @@ namespace AsteroidColony.Tests
                 Is.False);
 
             // One colonist's personal recreation history must not become colony history.
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(bob, OffDutyDrive.Stimulation, 11f),
-                    out OffDutyOpportunity ignoredOpportunity,
-                    out OffDutySearchReport bobReport),
-                Is.False);
-            Assert.That(ignoredOpportunity, Is.Null);
-            Assert.That(bobReport.NoTargetReason, Is.EqualTo("cooldown"));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
+                bob.Identity,
+                OffDutyDrive.Stimulation,
+                bob.Brain.OffDutyCompletionHistory));
+            manager.SimulationTick(0.1f);
+            Assert.That(manager.TryPeekOffer(bob.Identity, 1L, out _), Is.False);
 
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(dana, OffDutyDrive.Stimulation, 11f),
-                    out OffDutyOpportunity danaOpportunity),
-                Is.True);
-            Assert.That(danaOpportunity.Target.ActivityId, Is.EqualTo("play"));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
+                dana.Identity,
+                OffDutyDrive.Stimulation,
+                dana.Brain.OffDutyCompletionHistory));
+            manager.SimulationTick(0.1f);
+            Assert.That(manager.TryPeekOffer(dana.Identity, 1L, out OffDutyOffer danaOffer), Is.True);
+            Assert.That(danaOffer.Opportunity.Target.ActivityId, Is.EqualTo("play"));
         }
 
         [Test]
@@ -366,29 +365,18 @@ namespace AsteroidColony.Tests
             Assert.That(bob.Brain.PreferredOffDutyDrive, Is.EqualTo(OffDutyDrive.Stimulation));
             Assert.That(charlie.Brain.PreferredOffDutyDrive, Is.EqualTo(OffDutyDrive.Relaxation));
 
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(bob, OffDutyDrive.Stimulation, 10f),
-                    out OffDutyOpportunity bobOpportunity),
-                Is.True);
-            Assert.That(bobOpportunity.Target.ActivityId, Is.EqualTo("play"));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
+                bob.Identity, OffDutyDrive.Stimulation));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
+                charlie.Identity, OffDutyDrive.Relaxation));
+            manager.SimulationTick(0.1f);
 
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(charlie, OffDutyDrive.Relaxation, 10f),
-                    out OffDutyOpportunity charlieOpportunity),
-                Is.True);
-            Assert.That(charlieOpportunity.Target.ActivityId, Is.EqualTo("relax"));
+            Assert.That(manager.TryPeekOffer(bob.Identity, 1L, out OffDutyOffer bobOffer), Is.True);
+            Assert.That(bobOffer.Opportunity.Target.ActivityId, Is.EqualTo("play"));
+            Assert.That(manager.TryPeekOffer(charlie.Identity, 1L, out OffDutyOffer charlieOffer), Is.True);
+            Assert.That(charlieOffer.Opportunity.Target.ActivityId, Is.EqualTo("relax"));
 
-            // Neither colonist is blocked by the other, and play is never offered to a
-            // relaxation-only query.
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(bob, OffDutyDrive.Stimulation, 10f),
-                    out OffDutyOpportunity _,
-                    out OffDutySearchReport report),
-                Is.True);
-            Assert.That(report.ExcludedByCooldown, Is.EqualTo(0));
+            // Neither colonist is blocked by the other, and drive filtering remains domain-specific.
             Assert.That(
                 bob.Brain.OffDutyCompletionHistory.IsOnCooldown("play", 12f, 10f),
                 Is.False);
@@ -410,25 +398,21 @@ namespace AsteroidColony.Tests
             TestColonist bob = CreateColonist("Bob");
             TestColonist dana = CreateColonist("Dana");
 
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(bob, OffDutyDrive.Stimulation, 10f),
-                    out OffDutyOpportunity bobOpportunity),
-                Is.True);
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(dana, OffDutyDrive.Stimulation, 10f),
-                    out OffDutyOpportunity danaOpportunity),
-                Is.True);
-
-            Assert.That(bobOpportunity.Target.ActivityId, Is.EqualTo("play"));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
+                bob.Identity, OffDutyDrive.Stimulation));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
+                dana.Identity, OffDutyDrive.Stimulation));
+            manager.SimulationTick(0.1f);
+            Assert.That(manager.TryPeekOffer(bob.Identity, 1L, out OffDutyOffer bobOffer), Is.True);
+            Assert.That(manager.TryPeekOffer(dana.Identity, 1L, out _), Is.False);
+            Assert.That(bobOffer.Opportunity.Target.ActivityId, Is.EqualTo("play"));
+            manager.RemoveOffer(bobOffer, accepted: true, reason: "test_accept");
             Assert.That(
                 facility.TryAcquire("Play01", bob.Runner, out FacilityReservationToken owned),
                 Is.True);
             Assert.That(owned, Is.Not.Null);
 
-            // The second colonist discovered the same seat, but the seat is now taken.
-            Assert.That(danaOpportunity.Target.ActivityId, Is.EqualTo("play"));
+            // A second colonist cannot acquire the seat after the winner accepts it.
             Assert.That(
                 facility.TryAcquire("Play01", dana.Runner, out FacilityReservationToken denied),
                 Is.False);
@@ -438,19 +422,17 @@ namespace AsteroidColony.Tests
             Assert.That(
                 provider.IsDiscoverable(provider.Activities[0]),
                 Is.False);
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(charlie, OffDutyDrive.Stimulation, 10f),
-                    out OffDutyOpportunity _),
-                Is.False);
+            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
+                charlie.Identity, OffDutyDrive.Stimulation));
+            manager.SimulationTick(0.1f);
+            Assert.That(manager.TryPeekOffer(charlie.Identity, 1L, out _), Is.False);
 
             Assert.That(facility.Release(owned), Is.True);
-            Assert.That(
-                manager.TryFindOpportunity(
-                    CreateDriveQuery(charlie, OffDutyDrive.Stimulation, 10f),
-                    out OffDutyOpportunity reopenedOpportunity),
-                Is.True);
-            Assert.That(reopenedOpportunity.Target.ActivityId, Is.EqualTo("play"));
+            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
+                charlie.Identity, OffDutyDrive.Stimulation));
+            manager.SimulationTick(0.1f);
+            Assert.That(manager.TryPeekOffer(charlie.Identity, 1L, out OffDutyOffer reopenedOffer), Is.True);
+            Assert.That(reopenedOffer.Opportunity.Target.ActivityId, Is.EqualTo("play"));
         }
 
         [Test]

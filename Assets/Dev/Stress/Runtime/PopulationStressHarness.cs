@@ -1,5 +1,6 @@
 using System;
 using AsteroidColony;
+using Colony.Interactions;
 using UnityEngine;
 
 namespace AsteroidColony.Stress
@@ -8,6 +9,7 @@ namespace AsteroidColony.Stress
     {
         PairedSmallFixture,
         ProductionPopulation,
+        StaggeredPopulation,
         FoodContention,
         RecreationContention,
         FailureRecovery
@@ -31,7 +33,11 @@ namespace AsteroidColony.Stress
 
         private bool running;
         private double startSimulationSeconds;
+        private double startRequestedSimulationSeconds;
+        private double startPaceShortfallSeconds;
+        private long startAdmissionLimitHitCount;
         private StressTelemetrySnapshot lastSnapshot;
+        private bool profileApplied;
 
         public bool IsRunning => running;
         public StressTelemetrySnapshot LastSnapshot => lastSnapshot;
@@ -45,6 +51,11 @@ namespace AsteroidColony.Stress
                 telemetry = StressTelemetry.Instance;
             if (monitor == null)
                 monitor = GetComponent<PopulationStressMonitor>();
+
+            // The generated lab must be configured before the first logical tick.
+            // BeginRun is the explicit start gate for every stress scenario.
+            if (simulationManager != null)
+                simulationManager.paused = true;
         }
 
         private void Start()
@@ -58,7 +69,8 @@ namespace AsteroidColony.Stress
             if (!running || simulationManager == null)
                 return;
 
-            if (simulationManager.CurrentSimulationSeconds - startSimulationSeconds >= runDurationSimulationSeconds)
+            if (simulationManager.SimulationStopReached ||
+                simulationManager.CurrentSimulationSeconds - startSimulationSeconds >= runDurationSimulationSeconds)
                 EndRun();
         }
 
@@ -80,6 +92,8 @@ namespace AsteroidColony.Stress
             }
 
             simulationManager.SetSpeedMultiplier(speedMultiplier);
+            simulationManager.paused = true;
+            ApplyScenarioProfile();
             telemetry.ResetRun(BuildRunId());
             telemetry.RecordActivityEvent(
                 StressEventKind.RunStarted,
@@ -91,7 +105,137 @@ namespace AsteroidColony.Stress
                 simulationManager.CurrentSimulationSeconds);
             monitor?.BeginObservation();
             startSimulationSeconds = simulationManager.CurrentSimulationSeconds;
+            startRequestedSimulationSeconds = simulationManager.RequestedSimulationSeconds;
+            startPaceShortfallSeconds = simulationManager.PaceShortfallSeconds;
+            startAdmissionLimitHitCount = simulationManager.AdmissionLimitHitCount;
+            simulationManager.ArmSimulationStop(
+                startSimulationSeconds + runDurationSimulationSeconds);
             running = true;
+            simulationManager.paused = false;
+        }
+
+        private void ApplyScenarioProfile()
+        {
+            if (profileApplied)
+                return;
+
+            if (monitor == null || monitor.Actors == null || monitor.Actors.Count == 0)
+            {
+                Debug.LogWarning("Stress scenario profile could not find any configured actors.", this);
+                profileApplied = true;
+                return;
+            }
+
+            bool staggered = scenario == StressScenario.StaggeredPopulation;
+            bool foodContention = scenario == StressScenario.FoodContention;
+            bool recreationContention = scenario == StressScenario.RecreationContention;
+
+            for (int actorIndex = 0; actorIndex < monitor.Actors.Count; actorIndex++)
+            {
+                ColonistActivityRunner runner = monitor.Actors[actorIndex];
+                if (runner == null)
+                    continue;
+
+                ColonistStatsComponent stats = runner.GetComponent<ColonistStatsComponent>();
+                if (stats == null)
+                    continue;
+
+                ResetNeed(stats);
+                if (staggered)
+                {
+                    ApplyStaggeredNeeds(stats, actorIndex);
+                }
+                else if (foodContention)
+                {
+                    stats.AdjustHunger(90f);
+                }
+                else if (recreationContention)
+                {
+                    stats.AdjustStimulationNeed(70f);
+                }
+                else
+                {
+                    ApplySynchronizedNeeds(stats, actorIndex);
+                }
+            }
+
+            ApplyShiftProfile(staggered);
+            profileApplied = true;
+        }
+
+        private static void ResetNeed(ColonistStatsComponent stats)
+        {
+            stats.AdjustHunger(-stats.Hunger);
+            stats.AdjustFatigue(-stats.Fatigue);
+            stats.AdjustStimulationNeed(-stats.StimulationNeed);
+            stats.AdjustRelaxationNeed(-stats.RelaxationNeed);
+        }
+
+        private static void ApplySynchronizedNeeds(
+            ColonistStatsComponent stats,
+            int actorIndex)
+        {
+            if (actorIndex >= 120 && actorIndex < 170)
+                stats.AdjustHunger(90f);
+            else if (actorIndex >= 170 && actorIndex < 190)
+                stats.AdjustFatigue(75f);
+            else if (actorIndex >= 190)
+                stats.AdjustStimulationNeed(70f);
+            else
+            {
+                stats.AdjustHunger(15f);
+                stats.AdjustFatigue(10f);
+            }
+        }
+
+        private static void ApplyStaggeredNeeds(
+            ColonistStatsComponent stats,
+            int actorIndex)
+        {
+            // These are deterministic, bounded phase offsets rather than random
+            // values, so repeated runs can still be compared meaningfully.
+            float hunger = 5f + ((actorIndex * 37 + 11) % 8000) / 100f;
+            float fatigue = 5f + ((actorIndex * 53 + 19) % 8000) / 100f;
+            float stimulation = ((actorIndex * 71 + 7) % 8500) / 100f;
+            float relaxation = ((actorIndex * 29 + 31) % 7000) / 100f;
+
+            // Seed a small critical-hunger cohort without making the test another
+            // synchronized food wall: their phases are distributed by index.
+            if (actorIndex % 11 == 0)
+                hunger = 90f + (actorIndex % 10);
+
+            stats.AdjustHunger(hunger);
+            stats.AdjustFatigue(fatigue);
+            stats.AdjustStimulationNeed(stimulation);
+            stats.AdjustRelaxationNeed(relaxation);
+        }
+
+        private void ApplyShiftProfile(bool staggered)
+        {
+            WorkforceManager workforce = WorkforceManager.Instance;
+            if (workforce == null)
+                return;
+
+            WorkAssignment[] assignments = new WorkAssignment[workforce.Assignments.Count];
+            for (int index = 0; index < assignments.Length; index++)
+                assignments[index] = workforce.Assignments[index];
+
+            for (int index = 0; index < assignments.Length; index++)
+            {
+                WorkAssignment assignment = assignments[index];
+                if (assignment == null || !assignment.IsConfigured)
+                    continue;
+
+                float startHour = staggered
+                    ? Mathf.Repeat(8f + index * 0.37f, SimulationTime.HoursPerDay)
+                    : 8f;
+                float endHour = Mathf.Repeat(startHour + 8f, SimulationTime.HoursPerDay);
+                workforce.Assign(
+                    assignment.Colonist,
+                    assignment.Workplace,
+                    assignment.Role,
+                    new DailyShiftWindow(startHour, endHour));
+            }
         }
 
         [ContextMenu("End Stress Run and Export")]
@@ -100,6 +244,11 @@ namespace AsteroidColony.Stress
             if (!running)
                 return;
 
+            if (simulationManager != null)
+            {
+                simulationManager.paused = true;
+                simulationManager.ClearSimulationStop();
+            }
             monitor?.EndObservation();
             telemetry?.RecordActivityEvent(
                 StressEventKind.RunCompleted,
@@ -148,7 +297,20 @@ namespace AsteroidColony.Stress
                 EventCapacity = snapshot.Events != null ? snapshot.Events.Length : 0,
                 FailureCapacity = snapshot.Failures != null ? snapshot.Failures.Length : 0,
                 UnityVersion = Application.unityVersion,
-                Digest = StressTelemetry.DigestText(snapshot.Digest)
+                Digest = StressTelemetry.DigestText(snapshot.Digest),
+                RequestedSimulationSeconds = simulationManager != null
+                    ? simulationManager.RequestedSimulationSeconds - startRequestedSimulationSeconds
+                    : 0d,
+                CommittedSimulationSeconds = snapshot.ElapsedSimulationSeconds,
+                PaceShortfallSeconds = simulationManager != null
+                    ? simulationManager.PaceShortfallSeconds - startPaceShortfallSeconds
+                    : 0d,
+                MaximumObservedDebtSeconds = simulationManager != null
+                    ? simulationManager.MaximumObservedDebtSeconds
+                    : 0d,
+                AdmissionLimitHitCount = simulationManager != null
+                    ? simulationManager.AdmissionLimitHitCount - startAdmissionLimitHitCount
+                    : 0L
             };
         }
 

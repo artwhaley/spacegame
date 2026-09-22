@@ -4,7 +4,8 @@
     "references": [
         "ColonyPrototype.Runtime",
         "Colony.Interactions.Runtime",
-        "Unity.TextMeshPro"
+        "Unity.TextMeshPro",
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [
         "Editor"

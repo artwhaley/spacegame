@@ -454,6 +454,22 @@ Replace infinite imaginary sandwiches with the first complete economic survival 
 
 This is the point where Hunger becomes economically meaningful.
 
+## Adopted contention architecture
+
+Stack 3 also adopts the first round-based activity contention contract:
+
+```text
+ColonistBrain submits domain bids
+→ FoodManager / OffDutyManager resolve after the Brain phase
+→ next Brain phase receives ephemeral offers
+→ Brain accepts or rejects using current policy
+→ the ActivityRunner owns any real physical reservation
+```
+
+Offers are not reservations and expire after their intended next Brain decision
+round. Food discovery remains non-consuming; inventory is held only after a
+successful Eat request and consumed when Eat genuinely becomes active.
+
 ---
 
 ## Ownership rule

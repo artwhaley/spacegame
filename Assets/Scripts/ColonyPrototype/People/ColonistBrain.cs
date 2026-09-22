@@ -1,5 +1,6 @@
 using System;
 using Colony.Interactions;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AsteroidColony
@@ -43,6 +44,15 @@ namespace AsteroidColony
         private bool workStopRequested;
         private bool eatStopRequested;
         private bool offDutyStopRequested;
+        private ActivityTarget localSleepOffer;
+        private long localSleepOfferValidTick = -1L;
+        private FoodMealCommitment foodMealCommitment;
+        private long foodNeedAge;
+        [NonSerialized] private FoodBid lastSubmittedFoodBid;
+        [NonSerialized] private readonly List<OffDutyBid> lastSubmittedOffDutyBids =
+            new List<OffDutyBid>();
+        [NonSerialized] private string lastOfferChosen = "none";
+        [NonSerialized] private string lastOfferRejectionReason = "none";
         private string lastDecision = "idle";
         private string lastDecisionReason = "initial_state";
         private string lastDecisionSignature;
@@ -63,6 +73,12 @@ namespace AsteroidColony
         public OffDutyCompletionHistory OffDutyCompletionHistory =>
             offDutyCompletionHistory;
         public OffDutyDrive? ActiveOffDutyDrive => activeOffDutyDrive;
+        public FoodMealCommitment FoodMealCommitment => foodMealCommitment;
+        public ActivityTarget LocalSleepOffer => localSleepOffer;
+        public FoodBid LastSubmittedFoodBid => lastSubmittedFoodBid;
+        public IReadOnlyList<OffDutyBid> LastSubmittedOffDutyBids => lastSubmittedOffDutyBids;
+        public string LastOfferChosen => lastOfferChosen;
+        public string LastOfferRejectionReason => lastOfferRejectionReason;
         public OffDutyDrive? PreferredOffDutyDrive => ResolvePreferredDrive();
         public ScheduledWorkOccurrence NextWork
         {
@@ -181,72 +197,293 @@ namespace AsteroidColony
             if (activityRunner.HasActiveRequest)
                 return;
 
+            if (ProcessRoundOffers())
+                return;
+
+            SubmitCurrentBids();
+        }
+
+        /// <summary>
+        /// The Brain is the policy owner. Managers only publish offers after every Brain has
+        /// submitted its bid for the current tick; this method evaluates those offers using
+        /// current facts and then attempts the physical activity request.
+        /// </summary>
+        private bool ProcessRoundOffers()
+        {
+            lastOfferChosen = "none";
+            lastOfferRejectionReason = "none";
+            long currentTick = SimulationManager.Instance != null
+                ? SimulationManager.Instance.CurrentTick
+                : 0L;
+            FoodManager foodManager = FoodManager.Instance;
+            OffDutyManager offDutyManager = OffDutyManager.Instance;
+            FoodOffer foodOffer = null;
+            OffDutyOffer offDutyOffer = null;
+            if (foodManager != null)
+                foodManager.TryGetOffer(identity, currentTick, out foodOffer);
+            if (offDutyManager != null)
+                offDutyManager.TryGetOffer(identity, currentTick, out offDutyOffer);
+
             if (stats.IsCriticallyHungry)
             {
-                if (TryStartEat())
-                {
-                    RecordDecision(
-                        "colonist.decision.eat",
-                        "critical_hunger",
-                        null,
-                        new SimulationLogField("hunger", stats.Hunger));
-                }
-                // Critical hunger is a hard lock. A failed food request must not fall
-                // through into work, sleep, or discretionary activity.
-                return;
+                RejectNonFoodOffers(offDutyManager, offDutyOffer, "critical_hunger");
+                if (foodOffer != null && TryAcceptFoodOffer(foodManager, foodOffer, "critical_hunger"))
+                    return true;
+                return false;
             }
 
             if (HasCurrentWorkObligation())
             {
+                RejectFoodOffer(foodManager, foodOffer, "current_work");
+                RejectNonFoodOffers(offDutyManager, offDutyOffer, "current_work");
                 RecordDecision("colonist.decision.work", "current_work");
                 TryStartWork();
-                return;
+                return true;
             }
 
-            if (stats.IsSleepy)
+            bool sleepOfferAvailable = IsLocalSleepOfferAvailable(currentTick);
+            if (stats.IsSleepy || stats.ShouldPreferRest)
             {
-                if (HasWorkStartingWithinPreparationWindow())
+                if (!HasWorkStartingWithinPreparationWindow() && sleepOfferAvailable)
                 {
-                    RecordDecision(
-                        "colonist.decision.blocked",
-                        "sleep_blocked_by_work_preparation");
-                    return;
+                    RejectFoodOffer(foodManager, foodOffer, "sleep_preferred");
+                    RejectNonFoodOffers(offDutyManager, offDutyOffer, "sleep_preferred");
+                    if (TryAcceptLocalSleepOffer())
+                        return true;
                 }
 
-                RecordDecision("colonist.decision.sleep", "sleepy");
-                TryStartSleep();
-                return;
+                // Sleep is a Brain preference, not a manager decision. If the local offer is
+                // unavailable, an ordinary Food offer is the explicit fallback.
+                if (foodOffer != null && TryAcceptFoodOffer(foodManager, foodOffer, "sleep_unavailable"))
+                    return true;
             }
+
+            if (stats.IsHungry && foodOffer != null &&
+                TryAcceptFoodOffer(foodManager, foodOffer, "hungry"))
+            {
+                return true;
+            }
+
+            if (offDutyOffer != null && !stats.IsHungry && !stats.IsSleepy &&
+                TryAcceptOffDutyOffer(offDutyManager, offDutyOffer))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private void SubmitCurrentBids()
+        {
+            long currentTick = SimulationManager.Instance != null
+                ? SimulationManager.Instance.CurrentTick
+                : 0L;
+            float currentHour = SimulationManager.Instance != null
+                ? SimulationManager.Instance.CurrentGameHour
+                : 0f;
 
             if (stats.IsHungry)
+                foodNeedAge++;
+            else
+                foodNeedAge = 0L;
+
+            lastSubmittedFoodBid = null;
+            lastSubmittedOffDutyBids.Clear();
+
+            if (stats.IsCriticallyHungry || stats.IsHungry || stats.IsSleepy)
             {
-                if (TryStartEat())
+                if (stats.IsCriticallyHungry || stats.IsHungry)
                 {
-                    RecordDecision(
-                        "colonist.decision.eat",
-                        "hungry",
-                        null,
-                        new SimulationLogField("hunger", stats.Hunger));
+                    lastSubmittedFoodBid = new FoodBid(
+                        identity,
+                        transform.position,
+                        currentHour,
+                        stats.Hunger,
+                        stats.IsCriticallyHungry,
+                        stats.IsSleepy ? 1 : 0,
+                        currentTick,
+                        foodNeedAge);
+                    FoodManager.Instance?.SubmitBid(lastSubmittedFoodBid);
                 }
+
+                if (stats.IsSleepy && !HasWorkStartingWithinPreparationWindow())
+                    PrepareLocalSleepOffer(currentTick);
                 return;
             }
 
             if (HasWorkStartingWithinPreparationWindow())
             {
-                RecordDecision(
-                    "colonist.decision.blocked",
-                    "work_preparation_window");
+                RecordDecision("colonist.decision.blocked", "work_preparation_window");
                 return;
             }
 
-            if (stats.ShouldPreferRest)
+            SubmitOffDutyBids(currentTick, currentHour);
+        }
+
+        private void PrepareLocalSleepOffer(long currentTick)
+        {
+            localSleepOffer = null;
+            localSleepOfferValidTick = -1L;
+            if (targetResolver.TryResolveTarget(ActivityPurpose.Sleep, out ActivityTarget target) &&
+                IsTargetValid(target) &&
+                !target.Facility.IsReserved(GetReservationGroup(target)))
             {
-                RecordDecision("colonist.decision.sleep", "rest_preferred");
-                TryStartSleep();
+                localSleepOffer = target;
+                localSleepOfferValidTick = currentTick + 1L;
+            }
+        }
+
+        private bool IsLocalSleepOfferAvailable(long currentTick)
+        {
+            return localSleepOffer != null &&
+                   localSleepOfferValidTick == currentTick &&
+                   IsTargetValid(localSleepOffer) &&
+                   !localSleepOffer.Facility.IsReserved(GetReservationGroup(localSleepOffer));
+        }
+
+        private bool TryAcceptLocalSleepOffer()
+        {
+            if (!IsLocalSleepOfferAvailable(localSleepOfferValidTick))
+                return false;
+            ActivityTarget target = localSleepOffer;
+            localSleepOffer = null;
+            localSleepOfferValidTick = -1L;
+            if (!activityRunner.RequestActivity(target.Facility, target.ActivityId))
+                return false;
+            sleepTargetInProgress = target;
+            wakeRequested = false;
+            state = ColonistBrainState.SleepSeeking;
+            lastOfferChosen = "sleep";
+            RecordDecision("colonist.decision.sleep", "sleep_offer_accepted", target.Facility);
+            return true;
+        }
+
+        private void SubmitOffDutyBids(long currentTick, float currentHour)
+        {
+            if (OffDutyManager.Instance == null || SimulationManager.Instance == null)
+                return;
+            latestFreeTimePlan = ColonistFreeTimePlanner.Calculate(
+                stats,
+                identity,
+                GetComponent<ColonistAssignments>(),
+                currentHour);
+            if (!latestFreeTimePlan.HasBudget)
+                return;
+
+            OffDutyDrive? primary = ResolvePreferredDrive();
+            if (!primary.HasValue)
+            {
+                RecordDecision("colonist.decision.blocked", "discretionary_needs_satisfied");
                 return;
             }
 
-            TryStartOffDuty();
+            SubmitOffDutyBid(primary.Value, 0, currentTick, currentHour);
+            OffDutyDrive? secondary = ResolveSecondaryDrive(primary.Value);
+            if (secondary.HasValue)
+                SubmitOffDutyBid(secondary.Value, 1, currentTick, currentHour);
+        }
+
+        private void SubmitOffDutyBid(
+            OffDutyDrive drive,
+            int preferenceRank,
+            long currentTick,
+            float currentHour)
+        {
+            OffDutyBid bid = new OffDutyBid(
+                identity,
+                transform.position,
+                drive,
+                latestFreeTimePlan.MaximumSafeDiscretionaryDuration,
+                offDutyCompletionHistory,
+                currentHour,
+                preferenceRank,
+                currentTick);
+            lastSubmittedOffDutyBids.Add(bid);
+            OffDutyManager.Instance.SubmitBid(bid);
+        }
+
+        private bool TryAcceptFoodOffer(
+            FoodManager manager,
+            FoodOffer offer,
+            string reason)
+        {
+            if (manager == null || offer == null || offer.Opportunity == null ||
+                !IsTargetValid(offer.Opportunity.Target) ||
+                !activityRunner.RequestActivity(
+                    offer.Opportunity.Target.Facility,
+                    offer.Opportunity.Target.ActivityId))
+            {
+                manager?.RemoveOffer(offer, false, "stale_or_request_failed");
+                return false;
+            }
+
+            if (!manager.TryReserveMeal(offer, activityRunner, out foodMealCommitment))
+            {
+                activityRunner.Stop();
+                manager.RemoveOffer(offer, false, "inventory_reservation_failed");
+                return false;
+            }
+
+            manager.RemoveOffer(offer, true, reason);
+            lastOfferChosen = "food";
+            eatTargetInProgress = offer.Opportunity.Target;
+            eatStopRequested = false;
+            state = ColonistBrainState.EatSeeking;
+            RecordDecision(
+                "colonist.decision.eat",
+                reason,
+                offer.Opportunity.Service != null ? offer.Opportunity.Service.Facility : null,
+                new SimulationLogField("hunger", stats.Hunger));
+            return true;
+        }
+
+        private bool TryAcceptOffDutyOffer(OffDutyManager manager, OffDutyOffer offer)
+        {
+            if (manager == null || offer == null || offer.Opportunity == null ||
+                !IsTargetValid(offer.Opportunity.Target) ||
+                !activityRunner.RequestActivity(
+                    offer.Opportunity.Target.Facility,
+                    offer.Opportunity.Target.ActivityId))
+            {
+                manager?.RemoveOffer(offer, false, "stale_or_request_failed");
+                return false;
+            }
+
+            manager.RemoveOffer(offer, true, "brain_choice");
+            lastOfferChosen = "offduty";
+            opportunityInProgress = offer.Opportunity;
+            activeOffDutyDrive = offer.Bid.DesiredDrive;
+            actualActiveOffDutyGameHours = 0f;
+            offDutyStopRequested = false;
+            state = ColonistBrainState.OffDutySeeking;
+            RecordDecision("colonist.decision.offduty", "offer_accepted", offer.Opportunity.Provider.Facility);
+            return true;
+        }
+
+        private void RejectFoodOffer(FoodManager manager, FoodOffer offer, string reason)
+        {
+            if (manager != null && offer != null)
+            {
+                manager.RemoveOffer(offer, false, reason);
+                lastOfferRejectionReason = reason;
+            }
+        }
+
+        private void RejectNonFoodOffers(OffDutyManager manager, OffDutyOffer offer, string reason)
+        {
+            if (manager != null && offer != null)
+            {
+                manager.RemoveOffer(offer, false, reason);
+                lastOfferRejectionReason = reason;
+            }
+        }
+
+        private static string GetReservationGroup(ActivityTarget target)
+        {
+            return target != null && target.Facility != null &&
+                   target.Facility.TryGetBinding(target.ActivityId, out FacilityActivityBinding binding)
+                ? binding.ReservationGroup
+                : string.Empty;
         }
 
         private void TickSleepSeeking()
@@ -536,25 +773,6 @@ namespace AsteroidColony
                 FinishEatLifecycle();
         }
 
-        private bool TryStartEat()
-        {
-            if (!stats.IsHungry ||
-                !targetResolver.TryResolveTarget(
-                    ActivityPurpose.Eat,
-                    out ActivityTarget target) ||
-                !IsFoodTargetValid(target) ||
-                !activityRunner.RequestActivity(target.Facility, target.ActivityId))
-            {
-                RecordDecision("colonist.decision.blocked", "food_target_unavailable");
-                return false;
-            }
-
-            eatTargetInProgress = target;
-            eatStopRequested = false;
-            state = ColonistBrainState.EatSeeking;
-            return true;
-        }
-
         private void RequestEatStop(string reason = null)
         {
             if (eatStopRequested)
@@ -645,143 +863,15 @@ namespace AsteroidColony
 
         private void FinishEatLifecycle()
         {
+            if (foodMealCommitment != null && !foodMealCommitment.Consumed &&
+                FoodManager.Instance != null)
+            {
+                FoodManager.Instance.ReleaseMeal(foodMealCommitment);
+            }
+            foodMealCommitment = null;
             eatTargetInProgress = null;
             eatStopRequested = false;
             state = ColonistBrainState.Idle;
-        }
-
-        private void TryStartOffDuty()
-        {
-            // OffDuty is the opportunity domain, not a need. With no unmet discretionary
-            // drive there is nothing to seek, even if a recreation facility is standing next
-            // to the colonist.
-            OffDutyDrive? primaryDrive = ResolvePreferredDrive();
-            if (!primaryDrive.HasValue)
-            {
-                activeOffDutyDrive = null;
-                RecordDecision("colonist.decision.blocked", "discretionary_needs_satisfied");
-                return;
-            }
-
-            if (OffDutyManager.Instance == null || SimulationManager.Instance == null)
-            {
-                RecordDecision("offduty.no_target", "manager_unavailable");
-                return;
-            }
-
-            float currentGameHour = SimulationManager.Instance.CurrentGameHour;
-            latestFreeTimePlan = ColonistFreeTimePlanner.Calculate(
-                stats,
-                identity,
-                GetComponent<ColonistAssignments>(),
-                currentGameHour);
-            if (!latestFreeTimePlan.HasBudget)
-            {
-                RecordDecision(
-                    "colonist.decision.blocked",
-                    latestFreeTimePlan.Reason,
-                    null,
-                    new SimulationLogField(
-                        "maximumDuration",
-                        latestFreeTimePlan.MaximumSafeDiscretionaryDuration));
-                return;
-            }
-
-            if (TryRequestOffDuty(primaryDrive.Value, currentGameHour, out string noTargetReason))
-                return;
-
-            // Secondary-drive fallback: only another drive that is itself above its own
-            // threshold may substitute. A relaxing activity is never chosen merely because
-            // "something recreational exists" while stimulation is the active drive.
-            OffDutyDrive? secondaryDrive = ResolveSecondaryDrive(primaryDrive.Value);
-            if (secondaryDrive.HasValue &&
-                TryRequestOffDuty(secondaryDrive.Value, currentGameHour, out _))
-            {
-                return;
-            }
-
-            RecordDecision("offduty.no_target", noTargetReason);
-        }
-
-        private bool TryRequestOffDuty(
-            OffDutyDrive drive,
-            float currentGameHour,
-            out string noTargetReason)
-        {
-            noTargetReason = "no_fitting_opportunity";
-            OffDutyManager manager = OffDutyManager.Instance;
-            if (manager == null)
-            {
-                noTargetReason = "manager_unavailable";
-                return false;
-            }
-
-            OffDutyQuery query = new OffDutyQuery(
-                identity,
-                transform.position,
-                latestFreeTimePlan.MaximumSafeDiscretionaryDuration,
-                drive,
-                offDutyCompletionHistory,
-                currentGameHour);
-            if (!manager.TryFindOpportunity(
-                    query,
-                    out OffDutyOpportunity opportunity,
-                    out OffDutySearchReport report))
-            {
-                noTargetReason = report != null
-                    ? report.NoTargetReason
-                    : "no_fitting_opportunity";
-                return false;
-            }
-
-            opportunityInProgress = opportunity;
-            activeOffDutyDrive = drive;
-            actualActiveOffDutyGameHours = 0f;
-            offDutyStopRequested = false;
-            if (!activityRunner.RequestActivity(
-                    opportunity.Target.Facility,
-                    opportunity.Target.ActivityId))
-            {
-                opportunityInProgress = null;
-                activeOffDutyDrive = null;
-                noTargetReason = "request_failed";
-                RecordDecision("colonist.decision.blocked", "offduty_request_failed");
-                return false;
-            }
-
-            state = ColonistBrainState.OffDutySeeking;
-            float need = drive == OffDutyDrive.Stimulation
-                ? stats.StimulationNeed
-                : stats.RelaxationNeed;
-            float threshold = drive == OffDutyDrive.Stimulation
-                ? stats.StimulationNeedThreshold
-                : stats.RelaxationNeedThreshold;
-            string driveLabel = DescribeDrive(drive);
-
-            RecordDecision(
-                "colonist.decision.offduty",
-                "nearest_fitting_opportunity",
-                opportunity.Target.Facility,
-                new SimulationLogField("drive", driveLabel),
-                new SimulationLogField("need", need),
-                new SimulationLogField("threshold", threshold),
-                new SimulationLogField("activityId", opportunity.Target.ActivityId),
-                new SimulationLogField("cooldownKey", opportunity.Activity.CooldownKey),
-                new SimulationLogField("duration", opportunity.PlannedDurationGameHours));
-            SimulationLogManager.RecordEvent(
-                "offduty.target_selected",
-                "OffDuty",
-                "Info",
-                LogSubject,
-                opportunity.Target.Facility,
-                new SimulationLogField("drive", driveLabel),
-                new SimulationLogField("need", need),
-                new SimulationLogField("threshold", threshold),
-                new SimulationLogField("activityId", opportunity.Target.ActivityId),
-                new SimulationLogField("cooldownKey", opportunity.Activity.CooldownKey),
-                new SimulationLogField("reason", "nearest_fitting_opportunity"),
-                new SimulationLogField("duration", opportunity.PlannedDurationGameHours));
-            return true;
         }
 
         private OffDutyDrive? ResolvePreferredDrive()
@@ -1114,6 +1204,30 @@ namespace AsteroidColony
         {
             if (activityEvent == null)
                 return;
+
+            if (foodMealCommitment != null &&
+                foodMealCommitment.Service != null &&
+                activityEvent.Facility == foodMealCommitment.Service.Facility &&
+                string.Equals(
+                    activityEvent.ActivityId,
+                    foodMealCommitment.Service.EatActivityId,
+                    StringComparison.Ordinal))
+            {
+                if (activityEvent.Kind == ActivityLifecycleEventKind.ActiveStarted)
+                {
+                    if (FoodManager.Instance == null ||
+                        !FoodManager.Instance.CommitMeal(foodMealCommitment))
+                    {
+                        activityRunner.Stop();
+                    }
+                }
+                else if ((activityEvent.Kind == ActivityLifecycleEventKind.Failed ||
+                          activityEvent.Kind == ActivityLifecycleEventKind.Released) &&
+                         !foodMealCommitment.Consumed)
+                {
+                    FoodManager.Instance?.ReleaseMeal(foodMealCommitment);
+                }
+            }
 
             string eventKey;
             switch (activityEvent.Kind)

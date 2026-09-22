@@ -28,6 +28,34 @@ namespace AsteroidColony.Stress.Editor
         private const int FoodCount = 40;
         private const int RecreationCount = 50;
         private const int BedCount = 200;
+        private const float StressStartHour = 8f;
+        private const float StressShiftStartHour = 8f;
+        private const float StressShiftEndHour = 16f;
+        private const float NavigationSampleDistance = 1f;
+        private const string StandToSitPath = "Assets/Animations/Colonists/Mixamo_POLYGON_Guy_Naked@Stand To Sit.fbx";
+        private const string SitToStandPath = "Assets/Animations/Colonists/Mixamo_POLYGON_Guy_Naked@Sit To Stand.fbx";
+        private const string TypingPath = "Assets/Animations/Colonists/Mixamo_POLYGON_Guy_Naked@Typing.fbx";
+        private const string DancePath = "Assets/Animations/Colonists/Mixamo_POLYGON_Guy_Naked@Robot Hip Hop Dance.fbx";
+        private const string SleepEntryPath = "Assets/Animations/Colonists/Lying Down  Scooch Edit.anim";
+        private const string SleepLoopPath = "Assets/Animations/Colonists/Mixamo_POLYGON_Guy_Naked@Asleep.fbx";
+
+        private sealed class ActivityRecipe
+        {
+            public AnimationClip Entry;
+            public AnimationClip Loop;
+            public AnimationClip Exit;
+            public float ExitSpeed = 1f;
+            public bool OverridesFatigue;
+            public float FatiguePerGameHour;
+        }
+
+        private sealed class RecipeCatalog
+        {
+            public ActivityRecipe Work;
+            public ActivityRecipe Eat;
+            public ActivityRecipe Dance;
+            public ActivityRecipe Sleep;
+        }
 
         [MenuItem("Tools/Spacegame/Build High-Speed Population Stress Lab")]
         public static void Build()
@@ -45,6 +73,8 @@ namespace AsteroidColony.Stress.Editor
                     "OK");
                 return;
             }
+
+            RecipeCatalog recipes = LoadProductionRecipes();
 
             Scene scene = EditorSceneManager.NewScene(
                 NewSceneSetup.EmptyScene,
@@ -65,26 +95,40 @@ namespace AsteroidColony.Stress.Editor
             ConfigureTelemetry(telemetry);
 
             CreateFloor(root.transform);
+            CreatePresentationRig(root.transform);
             NavMeshSurface surface = root.AddComponent<NavMeshSurface>();
+            surface.collectObjects = CollectObjects.All;
             surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+
+            NavMeshAgent prefabAgent = prefab.GetComponent<NavMeshAgent>();
+            if (prefabAgent != null)
+                surface.agentTypeID = prefabAgent.agentTypeID;
 
             JobRoleDefinition role = CreateRoleAsset();
             List<InteractableFacility> allFacilities = new List<InteractableFacility>(BedCount + FoodCount + RecreationCount + WorkerCount);
             List<WorkplaceComponent> workplaces = new List<WorkplaceComponent>(WorkerCount);
             List<InteractableFacility> beds = new List<InteractableFacility>(BedCount);
 
-            CreateFacilities(root.transform, allFacilities, workplaces, beds, role);
+            CreateFacilities(root.transform, allFacilities, workplaces, beds, role, recipes);
+
+            // Bake before instantiating the population. Colonist capsule colliders are
+            // dynamic actors, not laboratory walkable geometry, and must not punch
+            // holes in the facility navigation surface.
+            surface.BuildNavMesh();
+            ValidateFacilityNavigation(
+                allFacilities,
+                prefabAgent != null ? prefabAgent.areaMask : NavMesh.AllAreas);
 
             List<ColonistActivityRunner> actors = new List<ColonistActivityRunner>(Population);
             List<ColonistIdentity> identities = new List<ColonistIdentity>(Population);
-            CreateColonists(root.transform, prefab, actors, identities, beds);
+            List<Vector3> spawnPositions = new List<Vector3>(Population);
+            CreateColonists(root.transform, prefab, actors, identities, beds, spawnPositions);
+            ValidateSpawnNavigation(
+                spawnPositions,
+                prefabAgent != null ? prefabAgent.areaMask : NavMesh.AllAreas);
             ConfigureWorkforce(workforceManager, identities, workplaces, role);
             ConfigureMonitor(monitor, simulation, telemetry, actors, allFacilities);
             ConfigureHarness(harness, simulation, telemetry, monitor);
-
-            // Bake after all floor/facility colliders exist. The generated asset
-            // is intentionally a normal NavMeshSurface data asset, not a test stub.
-            surface.BuildNavMesh();
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -96,13 +140,15 @@ namespace AsteroidColony.Stress.Editor
                 "Built " + ScenePath + " with " + Population + " colonists, " +
                 BedCount + " beds, " + WorkstationCount + " workstations plus one counter, " + FoodCount +
                 " food seats, and " + RecreationCount + " recreation seats.\n\n" +
-                "Open the scene, verify the bake, then use the harness BeginRun button or auto-start setting.",
+                "Open the scene, press Play, then use Begin Stress Run. Prepared cohorts immediately exercise Work, Eat contention, Sleep, and Dance with production clips.",
                 "OK");
         }
 
         private static void ConfigureSimulation(SimulationManager simulation)
         {
-            simulation.speedMultiplier = 10f;
+            simulation.speedMultiplier = 1000f;
+            simulation.paused = true;
+            SetPrivate(simulation, "currentGameHour", StressStartHour);
             SetPrivate(simulation, "logicalStepSimulationSeconds", 1f);
             SetPrivate(simulation, "maxLogicalStepsPerFrame", 10000);
             simulation.tickIntervalSeconds = 0.1f;
@@ -110,9 +156,9 @@ namespace AsteroidColony.Stress.Editor
 
         private static void ConfigureTelemetry(StressTelemetry telemetry)
         {
-            SetPrivate(telemetry, "observationMode", StressObservationMode.Summary);
-            SetPrivate(telemetry, "eventCapacity", 4096);
-            SetPrivate(telemetry, "failureCapacity", 256);
+            SetPrivate(telemetry, "observationMode", StressObservationMode.Detailed);
+            SetPrivate(telemetry, "eventCapacity", 32768);
+            SetPrivate(telemetry, "failureCapacity", 2048);
         }
 
         private static void CreateFloor(Transform parent)
@@ -121,7 +167,7 @@ namespace AsteroidColony.Stress.Editor
             floor.transform.SetParent(parent);
             floor.transform.position = new Vector3(0f, -0.5f, 0f);
             BoxCollider collider = floor.AddComponent<BoxCollider>();
-            collider.size = new Vector3(80f, 1f, 60f);
+            collider.size = new Vector3(100f, 1f, 100f);
         }
 
         private static void CreateFacilities(
@@ -129,7 +175,8 @@ namespace AsteroidColony.Stress.Editor
             List<InteractableFacility> allFacilities,
             List<WorkplaceComponent> workplaces,
             List<InteractableFacility> beds,
-            JobRoleDefinition role)
+            JobRoleDefinition role,
+            RecipeCatalog recipes)
         {
             for (int index = 0; index < WorkstationCount; index++)
             {
@@ -139,7 +186,8 @@ namespace AsteroidColony.Stress.Editor
                     "Workstation_" + index.ToString("D3"),
                     position,
                     "Work",
-                    "work_" + index.ToString("D3"));
+                    "work_" + index.ToString("D3"),
+                    recipes.Work);
                 WorkplaceComponent workplace = facility.gameObject.AddComponent<WorkplaceComponent>();
                 ConfigureWorkplace(workplace, facility, role, "Work", 1);
                 workplaces.Add(workplace);
@@ -151,7 +199,8 @@ namespace AsteroidColony.Stress.Editor
                 "WorkCounter",
                 new Vector3(-25f, 0f, 20f),
                 "Work",
-                "work_counter");
+                "work_counter",
+                recipes.Work);
             WorkplaceComponent counter = counterFacility.gameObject.AddComponent<WorkplaceComponent>();
             ConfigureWorkplace(counter, counterFacility, role, "Work", 1);
             workplaces.Add(counter);
@@ -165,7 +214,8 @@ namespace AsteroidColony.Stress.Editor
                     "FoodSeat_" + index.ToString("D3"),
                     position,
                     "Eat",
-                    "eat_" + index.ToString("D3"));
+                    "eat_" + index.ToString("D3"),
+                    recipes.Eat);
                 FoodServiceComponent service = facility.gameObject.AddComponent<FoodServiceComponent>();
                 ConfigureFoodService(service, facility, 80f);
                 allFacilities.Add(facility);
@@ -179,7 +229,8 @@ namespace AsteroidColony.Stress.Editor
                     "RecreationSeat_" + index.ToString("D3"),
                     position,
                     "Dance",
-                    "dance_" + index.ToString("D3"));
+                    "dance_" + index.ToString("D3"),
+                    recipes.Dance);
                 OffDutyComponent offDuty = facility.gameObject.AddComponent<OffDutyComponent>();
                 ConfigureOffDuty(offDuty, facility, "Dance", 0.5f, 20f, 10f);
                 allFacilities.Add(facility);
@@ -193,7 +244,8 @@ namespace AsteroidColony.Stress.Editor
                     "Bed_" + index.ToString("D3"),
                     position,
                     "Sleep",
-                    "sleep_" + index.ToString("D3"));
+                    "sleep_" + index.ToString("D3"),
+                    recipes.Sleep);
                 beds.Add(facility);
                 allFacilities.Add(facility);
             }
@@ -204,7 +256,8 @@ namespace AsteroidColony.Stress.Editor
             GameObject prefab,
             List<ColonistActivityRunner> actors,
             List<ColonistIdentity> identities,
-            List<InteractableFacility> beds)
+            List<InteractableFacility> beds,
+            List<Vector3> spawnPositions)
         {
             GameObject populationRoot = new GameObject("Population_200");
             populationRoot.transform.SetParent(parent);
@@ -218,6 +271,7 @@ namespace AsteroidColony.Stress.Editor
                 instance.name = "StressColonist_" + index.ToString("D3");
                 instance.transform.SetParent(populationRoot.transform);
                 instance.transform.position = GridPosition(index, 20, -22f, 0f, 1.1f) + Vector3.up * 0.05f;
+                spawnPositions.Add(instance.transform.position);
                 StressStableIdentity stable = instance.GetComponent<StressStableIdentity>();
                 if (stable == null)
                     stable = instance.AddComponent<StressStableIdentity>();
@@ -232,8 +286,13 @@ namespace AsteroidColony.Stress.Editor
                     throw new InvalidOperationException("Colonist prefab is missing a required production component.");
 
                 SetPrivate(identity, "displayName", "StressColonist_" + index.ToString("D3"));
-                SetPrivate(stats, "hunger", index % 10 == 0 ? 55f : 15f);
-                SetPrivate(stats, "fatigue", index % 7 == 0 ? 55f : 10f);
+                // Canonical deterministic startup cohorts:
+                // 000-119 Work, 120-169 Eat (40 seats create contention),
+                // 170-189 Sleep, and 190-199 Dance.
+                SetPrivate(stats, "hunger", index >= 120 && index < 170 ? 90f : 15f);
+                SetPrivate(stats, "fatigue", index >= 170 && index < 190 ? 75f : 10f);
+                SetPrivate(stats, "stimulationNeed", index >= 190 ? 70f : 0f);
+                SetPrivate(stats, "relaxationNeed", 0f);
                 SetPrivate(stats, "baselineHungerPerGameHour", 3f);
                 SetPrivate(stats, "baselineFatiguePerGameHour", 4f);
                 SetPrivate(stats, "activityRunner", runner);
@@ -264,8 +323,8 @@ namespace AsteroidColony.Stress.Editor
                 assignment.FindPropertyRelative("workplace").objectReferenceValue = workplaces[index];
                 assignment.FindPropertyRelative("role").objectReferenceValue = role;
                 SerializedProperty shift = assignment.FindPropertyRelative("shift");
-                shift.FindPropertyRelative("startHour").floatValue = 6f;
-                shift.FindPropertyRelative("endHour").floatValue = 18f;
+                shift.FindPropertyRelative("startHour").floatValue = StressShiftStartHour;
+                shift.FindPropertyRelative("endHour").floatValue = StressShiftEndHour;
             }
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(manager);
@@ -312,7 +371,8 @@ namespace AsteroidColony.Stress.Editor
             string name,
             Vector3 position,
             string activityId,
-            string reservationGroup)
+            string reservationGroup,
+            ActivityRecipe recipe)
         {
             GameObject gameObject = new GameObject(name);
             gameObject.transform.SetParent(parent);
@@ -322,8 +382,25 @@ namespace AsteroidColony.Stress.Editor
             Transform approach = new GameObject("Approach").transform;
             approach.SetParent(gameObject.transform);
             approach.localPosition = new Vector3(0f, 0f, -1.2f);
+            Transform animation = new GameObject("Animation").transform;
+            animation.SetParent(gameObject.transform);
+            animation.localPosition = Vector3.zero;
+            Transform exit = new GameObject("Exit").transform;
+            exit.SetParent(gameObject.transform);
+            exit.localPosition = new Vector3(0f, 0f, -1.2f);
+            Transform target = new GameObject("Target").transform;
+            target.SetParent(gameObject.transform);
+            target.localPosition = Vector3.zero;
             InteractableFacility facility = gameObject.AddComponent<InteractableFacility>();
-            ConfigureFacilityBinding(facility, activityId, reservationGroup, approach);
+            ConfigureFacilityBinding(
+                facility,
+                activityId,
+                reservationGroup,
+                approach,
+                animation,
+                exit,
+                target,
+                recipe);
             StressStableIdentity stable = gameObject.AddComponent<StressStableIdentity>();
             stable.Configure(name.ToLowerInvariant());
             return facility;
@@ -333,7 +410,11 @@ namespace AsteroidColony.Stress.Editor
             InteractableFacility facility,
             string activityId,
             string reservationGroup,
-            Transform anchor)
+            Transform approach,
+            Transform animation,
+            Transform exit,
+            Transform target,
+            ActivityRecipe recipe)
         {
             SerializedObject serialized = new SerializedObject(facility);
             SerializedProperty activities = serialized.FindProperty("activities");
@@ -345,13 +426,16 @@ namespace AsteroidColony.Stress.Editor
             binding.FindPropertyRelative("completionMode").enumValueIndex = FindEnumIndex(
                 binding.FindPropertyRelative("completionMode"),
                 ActivityCompletionMode.Sustained.ToString());
-            binding.FindPropertyRelative("approachAnchor").objectReferenceValue = anchor;
-            binding.FindPropertyRelative("animationAnchor").objectReferenceValue = anchor;
-            binding.FindPropertyRelative("exitAnchor").objectReferenceValue = anchor;
-            binding.FindPropertyRelative("targets").objectReferenceValue = anchor;
-            binding.FindPropertyRelative("entrySteps").arraySize = 0;
+            binding.FindPropertyRelative("overridesFatigueRate").boolValue = recipe.OverridesFatigue;
+            binding.FindPropertyRelative("fatiguePerGameHour").floatValue = recipe.FatiguePerGameHour;
+            binding.FindPropertyRelative("approachAnchor").objectReferenceValue = approach;
+            binding.FindPropertyRelative("animationAnchor").objectReferenceValue = animation;
+            binding.FindPropertyRelative("exitAnchor").objectReferenceValue = exit;
+            binding.FindPropertyRelative("targets").objectReferenceValue = target;
+            ConfigureSegmentArray(binding.FindPropertyRelative("entrySteps"), recipe.Entry, 1f);
+            ConfigureSegment(binding.FindPropertyRelative("loopStep"), recipe.Loop, 1f);
             binding.FindPropertyRelative("activeSteps").arraySize = 0;
-            binding.FindPropertyRelative("exitSteps").arraySize = 0;
+            ConfigureSegmentArray(binding.FindPropertyRelative("exitSteps"), recipe.Exit, recipe.ExitSpeed);
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(facility);
         }
@@ -416,7 +500,11 @@ namespace AsteroidColony.Stress.Editor
 
         private static JobRoleDefinition CreateRoleAsset()
         {
-            string path = AssetDatabase.GenerateUniqueAssetPath(GeneratedFolder + "/StressWorkerRole.asset");
+            string path = GeneratedFolder + "/StressWorkerRole.asset";
+            JobRoleDefinition existing = AssetDatabase.LoadAssetAtPath<JobRoleDefinition>(path);
+            if (existing != null)
+                return existing;
+
             JobRoleDefinition role = ScriptableObject.CreateInstance<JobRoleDefinition>();
             SerializedObject serialized = new SerializedObject(role);
             serialized.FindProperty("stableId").stringValue = "high_speed_stress_worker";
@@ -424,6 +512,99 @@ namespace AsteroidColony.Stress.Editor
             serialized.ApplyModifiedPropertiesWithoutUndo();
             AssetDatabase.CreateAsset(role, path);
             return role;
+        }
+
+        private static RecipeCatalog LoadProductionRecipes()
+        {
+            AnimationClip standToSit = LoadRequiredClip(StandToSitPath);
+            AnimationClip sitToStand = LoadRequiredClip(SitToStandPath);
+            AnimationClip typing = LoadRequiredClip(TypingPath);
+            AnimationClip dance = LoadRequiredClip(DancePath);
+            AnimationClip sleepEntry = LoadRequiredClip(SleepEntryPath);
+            AnimationClip sleepLoop = LoadRequiredClip(SleepLoopPath);
+
+            return new RecipeCatalog
+            {
+                Work = new ActivityRecipe
+                {
+                    Entry = standToSit, Loop = typing, Exit = sitToStand,
+                    OverridesFatigue = true, FatiguePerGameHour = 5f
+                },
+                Eat = new ActivityRecipe
+                {
+                    Entry = standToSit, Loop = typing, Exit = sitToStand
+                },
+                Dance = new ActivityRecipe
+                {
+                    Loop = dance, OverridesFatigue = true, FatiguePerGameHour = 7f
+                },
+                Sleep = new ActivityRecipe
+                {
+                    Entry = sleepEntry, Loop = sleepLoop, Exit = sleepEntry,
+                    ExitSpeed = -1f, OverridesFatigue = true, FatiguePerGameHour = -10f
+                }
+            };
+        }
+
+        private static AnimationClip LoadRequiredClip(string path)
+        {
+            AnimationClip direct = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+            if (direct != null)
+                return direct;
+
+            UnityEngine.Object[] assets = AssetDatabase.LoadAllAssetsAtPath(path);
+            for (int index = 0; index < assets.Length; index++)
+            {
+                AnimationClip clip = assets[index] as AnimationClip;
+                if (clip != null && !clip.name.StartsWith("__preview__", StringComparison.OrdinalIgnoreCase))
+                    return clip;
+            }
+
+            throw new InvalidOperationException("Required production animation clip is missing: " + path);
+        }
+
+        private static void CreatePresentationRig(Transform parent)
+        {
+            GameObject cameraObject = new GameObject("StressLabCamera");
+            cameraObject.transform.SetParent(parent);
+            cameraObject.transform.position = new Vector3(0f, 55f, -55f);
+            cameraObject.transform.rotation = Quaternion.Euler(38f, 0f, 0f);
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.tag = "MainCamera";
+            camera.farClipPlane = 250f;
+
+            GameObject lightObject = new GameObject("StressLabLight");
+            lightObject.transform.SetParent(parent);
+            lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            Light light = lightObject.AddComponent<Light>();
+            light.type = LightType.Directional;
+            light.intensity = 1.2f;
+        }
+
+        private static void ConfigureSegmentArray(
+            SerializedProperty array,
+            AnimationClip clip,
+            float speed)
+        {
+            array.arraySize = clip != null ? 1 : 0;
+            if (clip != null)
+                ConfigureSegment(array.GetArrayElementAtIndex(0), clip, speed);
+        }
+
+        private static void ConfigureSegment(
+            SerializedProperty segment,
+            AnimationClip clip,
+            float speed)
+        {
+            if (segment == null)
+                return;
+
+            segment.FindPropertyRelative("clip").objectReferenceValue = clip;
+            segment.FindPropertyRelative("speed").floatValue = speed;
+            segment.FindPropertyRelative("blendDuration").floatValue = 0.15f;
+            segment.FindPropertyRelative("placementReference").enumValueIndex =
+                (int)ActivityPlacementReference.AnimationAnchor;
+            segment.FindPropertyRelative("contacts").arraySize = 0;
         }
 
         private static Vector3 GridPosition(
@@ -436,6 +617,99 @@ namespace AsteroidColony.Stress.Editor
             int column = index % columns;
             int row = index / columns;
             return new Vector3(originX + column * spacing, 0f, originZ + row * spacing);
+        }
+
+        private static void ValidateFacilityNavigation(
+            List<InteractableFacility> facilities,
+            int areaMask)
+        {
+            List<string> failures = new List<string>();
+            for (int facilityIndex = 0; facilityIndex < facilities.Count; facilityIndex++)
+            {
+                InteractableFacility facility = facilities[facilityIndex];
+                if (facility == null || facility.Activities == null)
+                    continue;
+
+                IReadOnlyList<FacilityActivityBinding> bindings = facility.Activities;
+                for (int bindingIndex = 0; bindingIndex < bindings.Count; bindingIndex++)
+                {
+                    FacilityActivityBinding binding = bindings[bindingIndex];
+                    if (binding == null)
+                        continue;
+
+                    ValidateNavigationAnchor(
+                        failures,
+                        facility.name + "." + binding.ActivityId + ".approach",
+                        binding.ApproachAnchor,
+                        areaMask);
+                    ValidateNavigationAnchor(
+                        failures,
+                        facility.name + "." + binding.ActivityId + ".exit",
+                        binding.ExitAnchor,
+                        areaMask);
+                }
+            }
+
+            ThrowIfNavigationInvalid("facility anchors", failures);
+        }
+
+        private static void ValidateSpawnNavigation(
+            List<Vector3> spawnPositions,
+            int areaMask)
+        {
+            List<string> failures = new List<string>();
+            for (int index = 0; index < spawnPositions.Count; index++)
+            {
+                if (NavMesh.SamplePosition(
+                        spawnPositions[index],
+                        out _,
+                        NavigationSampleDistance,
+                        areaMask))
+                {
+                    continue;
+                }
+
+                failures.Add("StressColonist_" + index.ToString("D3") + " spawn");
+            }
+
+            ThrowIfNavigationInvalid("colonist spawn positions", failures);
+        }
+
+        private static void ValidateNavigationAnchor(
+            List<string> failures,
+            string label,
+            Transform anchor,
+            int areaMask)
+        {
+            if (anchor == null ||
+                !NavMesh.SamplePosition(
+                    anchor.position,
+                    out _,
+                    NavigationSampleDistance,
+                    areaMask))
+            {
+                failures.Add(label);
+            }
+        }
+
+        private static void ThrowIfNavigationInvalid(
+            string subject,
+            List<string> failures)
+        {
+            if (failures == null || failures.Count == 0)
+                return;
+
+            int shown = Mathf.Min(failures.Count, 12);
+            string[] details = new string[shown];
+            for (int index = 0; index < shown; index++)
+                details[index] = failures[index];
+
+            string suffix = failures.Count > shown
+                ? " (and " + (failures.Count - shown) + " more)"
+                : string.Empty;
+            throw new InvalidOperationException(
+                "High-speed stress lab NavMesh validation failed for " + subject + ": " +
+                string.Join(", ", details) + suffix + ".");
         }
 
         private static void SetArray(SerializedProperty property, UnityEngine.Object[] values)

@@ -45,16 +45,17 @@ namespace AsteroidColony
     }
 
     [DisallowMultipleComponent]
-    public sealed class FoodManager : MonoBehaviour
+    public sealed class FoodManager : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         public static FoodManager Instance { get; private set; }
 
         [SerializeField]
         private List<FoodServiceComponent> services = new List<FoodServiceComponent>();
 
-        private string lastAnonymousSignature;
-        private readonly List<SeekerSignature> seekerSignatures =
-            new List<SeekerSignature>();
+        [NonSerialized] private readonly List<FoodBid> bidsThisRound = new List<FoodBid>();
+        [NonSerialized] private readonly Dictionary<ColonistIdentity, FoodOffer> offers =
+            new Dictionary<ColonistIdentity, FoodOffer>();
+
         private long foodQueryCount;
         private long foodCandidateEvaluationCount;
         private long foodSelectionCount;
@@ -64,6 +65,10 @@ namespace AsteroidColony
         public long FoodQueryCount => foodQueryCount;
         public long FoodCandidateEvaluationCount => foodCandidateEvaluationCount;
         public long FoodSelectionCount => foodSelectionCount;
+        public int SimulationTickPriority => 150;
+        public IReadOnlyList<FoodBid> BidsThisRound => bidsThisRound;
+
+        public IReadOnlyCollection<FoodOffer> Offers => offers.Values;
 
         public void ResetDiagnostics()
         {
@@ -83,6 +88,18 @@ namespace AsteroidColony
 
             Instance = this;
             RegisterExistingServices();
+        }
+
+        private void OnEnable()
+        {
+            SimulationManager.RegisterTickable(this);
+        }
+
+        private void OnDisable()
+        {
+            SimulationManager.UnregisterTickable(this);
+            bidsThisRound.Clear();
+            offers.Clear();
         }
 
         private void OnDestroy()
@@ -109,6 +126,368 @@ namespace AsteroidColony
             services.Remove(service);
         }
 
+        /// <summary>Submits a Food request for the current brain round.</summary>
+        public void SubmitBid(FoodBid bid)
+        {
+            if (bid == null || bid.Requester == null)
+                return;
+
+            for (int index = bidsThisRound.Count - 1; index >= 0; index--)
+            {
+                FoodBid existing = bidsThisRound[index];
+                if (existing != null && existing.Requester == bid.Requester &&
+                    existing.Identity.SourceSimulationTick == bid.Identity.SourceSimulationTick)
+                {
+                    bidsThisRound[index] = bid;
+                    return;
+                }
+            }
+
+            bidsThisRound.Add(bid);
+            SimulationLogManager.RecordEvent(
+                "food.bid_submitted",
+                "Food",
+                "Info",
+                bid.Requester,
+                null,
+                new SimulationLogField("sourceTick", bid.Identity.SourceSimulationTick),
+                new SimulationLogField("hunger", bid.Hunger),
+                new SimulationLogField("critical", bid.IsCritical),
+                new SimulationLogField("preferenceRank", bid.Identity.BrainPreferenceRank));
+        }
+
+        public bool TryGetOffer(ColonistIdentity requester, long simulationTick, out FoodOffer offer)
+        {
+            offer = null;
+            if (requester == null || !offers.TryGetValue(requester, out FoodOffer candidate))
+                return false;
+
+            if (!candidate.IsValidFor(simulationTick))
+            {
+                offers.Remove(requester);
+                RecordOfferStale(candidate);
+                return false;
+            }
+
+            offer = candidate;
+            return true;
+        }
+
+        /// <summary>Read-only inspector access; never expires, removes, or logs an offer.</summary>
+        public bool TryPeekOffer(ColonistIdentity requester, long simulationTick, out FoodOffer offer)
+        {
+            offer = null;
+            return requester != null && offers.TryGetValue(requester, out offer) &&
+                   offer != null && offer.IsValidFor(simulationTick);
+        }
+
+        public bool RemoveOffer(FoodOffer offer, bool accepted, string reason)
+        {
+            if (offer == null || offer.Requester == null ||
+                !offers.TryGetValue(offer.Requester, out FoodOffer current) ||
+                !ReferenceEquals(current, offer))
+            {
+                return false;
+            }
+
+            offers.Remove(offer.Requester);
+            SimulationLogManager.RecordEvent(
+                accepted ? "food.offer_accepted" : "food.offer_rejected",
+                "Food",
+                accepted ? "Info" : "Warning",
+                offer.Requester,
+                offer.Opportunity != null && offer.Opportunity.Service != null
+                    ? offer.Opportunity.Service.Facility
+                    : null,
+                new SimulationLogField("reason", reason ?? string.Empty),
+                new SimulationLogField("validTick", offer.ValidForSimulationTick));
+            return true;
+        }
+
+        public bool TryReserveMeal(
+            FoodOffer offer,
+            ColonistActivityRunner runner,
+            out FoodMealCommitment commitment)
+        {
+            commitment = null;
+            if (offer == null || offer.Opportunity == null ||
+                offer.Opportunity.Service == null || runner == null ||
+                runner.CurrentFacility != offer.Opportunity.Service.Facility ||
+                runner.CurrentReservation == null)
+            {
+                return false;
+            }
+
+            FoodServiceComponent service = offer.Opportunity.Service;
+            if (!service.InventoryAccountingEnabled)
+                return true;
+
+            if (!service.HasUsableFoodInventory ||
+                !service.FoodInventory.Reserve(service.FoodResource, service.FoodPerMeal))
+            {
+                SimulationLogManager.RecordEvent(
+                    "food.inventory_reservation_failed",
+                    "Food",
+                    "Warning",
+                    offer.Requester,
+                    service.Facility,
+                    new SimulationLogField("reason", "no_inventory"),
+                    new SimulationLogField("amount", service.FoodPerMeal));
+                return false;
+            }
+
+            commitment = new FoodMealCommitment(
+                offer.Requester,
+                service,
+                service.FoodInventory,
+                service.FoodResource,
+                service.FoodPerMeal)
+            {
+                Reserved = true
+            };
+            SimulationLogManager.RecordEvent(
+                "food.inventory_reserved",
+                "Food",
+                "Info",
+                offer.Requester,
+                service.Facility,
+                new SimulationLogField("amount", service.FoodPerMeal));
+            return true;
+        }
+
+        public bool CommitMeal(FoodMealCommitment commitment)
+        {
+            if (commitment == null || !commitment.Reserved || commitment.Released)
+                return commitment == null || commitment.Consumed;
+            if (commitment.Consumed)
+                return true;
+
+            float withdrawn = commitment.Inventory != null
+                ? commitment.Inventory.WithdrawReserved(commitment.Resource, commitment.Amount)
+                : 0f;
+            if (withdrawn + 0.0001f < commitment.Amount)
+            {
+                if (withdrawn > 0f)
+                    commitment.Inventory.Add(commitment.Resource, withdrawn);
+                ReleaseMeal(commitment);
+                return false;
+            }
+
+            commitment.Consumed = true;
+            commitment.Reserved = false;
+            SimulationLogManager.RecordEvent(
+                "food.meal_committed",
+                "Food",
+                "Info",
+                commitment.Requester,
+                commitment.Service != null ? commitment.Service.Facility : null,
+                new SimulationLogField("amount", commitment.Amount));
+            return true;
+        }
+
+        public void ReleaseMeal(FoodMealCommitment commitment)
+        {
+            if (commitment == null || commitment.Consumed || commitment.Released)
+                return;
+
+            if (commitment.Reserved && commitment.Inventory != null)
+                commitment.Inventory.ReleaseReservation(commitment.Resource, commitment.Amount);
+            commitment.Reserved = false;
+            commitment.Released = true;
+            SimulationLogManager.RecordEvent(
+                "food.inventory_released",
+                "Food",
+                "Info",
+                commitment.Requester,
+                commitment.Service != null ? commitment.Service.Facility : null,
+                new SimulationLogField("amount", commitment.Amount));
+        }
+
+        public void SimulationTick(float deltaGameHours)
+        {
+            long currentTick = SimulationManager.Instance != null
+                ? SimulationManager.Instance.CurrentTick
+                : 0L;
+
+            // Offers from the preceding decision round are valid only for this Brain pass.
+            List<ColonistIdentity> expired = null;
+            foreach (KeyValuePair<ColonistIdentity, FoodOffer> pair in offers)
+            {
+                if (pair.Value == null || pair.Value.ValidForSimulationTick <= currentTick)
+                {
+                    if (expired == null)
+                        expired = new List<ColonistIdentity>();
+                    expired.Add(pair.Key);
+                    if (pair.Value != null)
+                        RecordOfferStale(pair.Value);
+                }
+            }
+            if (expired != null)
+                for (int index = 0; index < expired.Count; index++)
+                    offers.Remove(expired[index]);
+
+            ResolveBids(currentTick);
+            bidsThisRound.Clear();
+        }
+
+        private void ResolveBids(long currentTick)
+        {
+            if (bidsThisRound.Count == 0)
+                return;
+
+            bidsThisRound.Sort(CompareBids);
+            var offeredGroups = new HashSet<string>(StringComparer.Ordinal);
+            var virtualStock = new Dictionary<FoodInventoryKey, float>();
+            for (int index = 0; index < bidsThisRound.Count; index++)
+            {
+                FoodBid bid = bidsThisRound[index];
+                if (bid == null || bid.Requester == null)
+                    continue;
+
+                foodQueryCount++;
+
+                if (!TryFindFoodServiceForBid(
+                        bid,
+                        offeredGroups,
+                        virtualStock,
+                        out FoodServiceOpportunity opportunity,
+                        out string noOfferReason))
+                {
+                    SimulationLogManager.RecordEvent(
+                        "food.no_offer",
+                        "Food",
+                        "Info",
+                        bid.Requester,
+                        null,
+                        new SimulationLogField("reason", noOfferReason));
+                    continue;
+                }
+
+                string groupKey = ReservationGroupKey(opportunity.Service);
+                offeredGroups.Add(groupKey);
+                if (opportunity.Service.InventoryAccountingEnabled)
+                {
+                    FoodInventoryKey stockKey = new FoodInventoryKey(
+                        opportunity.Service.FoodInventory,
+                        opportunity.Service.FoodResource);
+                    virtualStock.TryGetValue(stockKey, out float reservedForOffers);
+                    virtualStock[stockKey] = reservedForOffers + opportunity.Service.FoodPerMeal;
+                }
+
+                FoodOffer offer = new FoodOffer(bid, opportunity, currentTick + 1L);
+                offers[bid.Requester] = offer;
+                foodSelectionCount++;
+                SimulationLogManager.RecordEvent(
+                    "food.offer_created",
+                    "Food",
+                    "Info",
+                    bid.Requester,
+                    opportunity.Service.Facility,
+                    new SimulationLogField("validTick", currentTick + 1L),
+                    new SimulationLogField("activityId", opportunity.Target.ActivityId));
+            }
+        }
+
+        private bool TryFindFoodServiceForBid(
+            FoodBid bid,
+            HashSet<string> offeredGroups,
+            Dictionary<FoodInventoryKey, float> virtualStock,
+            out FoodServiceOpportunity opportunity,
+            out string noOfferReason)
+        {
+            opportunity = null;
+            noOfferReason = "no_service";
+            PruneServices();
+            float bestDistance = float.PositiveInfinity;
+            for (int index = 0; index < services.Count; index++)
+            {
+                FoodServiceComponent candidate = services[index];
+                foodCandidateEvaluationCount++;
+                if (!TryEvaluateCandidate(
+                        new FoodQuery(bid.Requester, bid.Position, bid.CurrentGameHour),
+                        candidate,
+                        out FoodServiceAccessMode accessMode,
+                        out FacilityActivityBinding binding))
+                    continue;
+
+                string groupKey = ReservationGroupKey(candidate);
+                if (offeredGroups.Contains(groupKey))
+                {
+                    noOfferReason = "reserved";
+                    continue;
+                }
+
+                if (candidate.InventoryAccountingEnabled)
+                {
+                    FoodInventoryKey stockKey = new FoodInventoryKey(
+                        candidate.FoodInventory,
+                        candidate.FoodResource);
+                    virtualStock.TryGetValue(stockKey, out float alreadyOffered);
+                    if (candidate.FoodAvailable - alreadyOffered + 0.0001f < candidate.FoodPerMeal)
+                    {
+                        noOfferReason = "no_inventory";
+                        continue;
+                    }
+                }
+
+                float distance = (binding.ApproachAnchor.position - bid.Position).sqrMagnitude;
+                if (opportunity == null || distance < bestDistance ||
+                    (Mathf.Approximately(distance, bestDistance) &&
+                     IsPreferredTieBreak(candidate, opportunity.Service)))
+                {
+                    bestDistance = distance;
+                    opportunity = new FoodServiceOpportunity(
+                        new ActivityTarget(candidate.Facility, candidate.EatActivityId),
+                        candidate,
+                        accessMode);
+                    noOfferReason = string.Empty;
+                }
+            }
+
+            return opportunity != null;
+        }
+
+        private static int CompareBids(FoodBid left, FoodBid right)
+        {
+            int critical = right.IsCritical.CompareTo(left.IsCritical);
+            if (critical != 0)
+                return critical;
+            int hunger = right.Hunger.CompareTo(left.Hunger);
+            if (hunger != 0)
+                return hunger;
+            int age = right.OutstandingNeedAge.CompareTo(left.OutstandingNeedAge);
+            if (age != 0)
+                return age;
+            int rank = left.Identity.BrainPreferenceRank.CompareTo(right.Identity.BrainPreferenceRank);
+            if (rank != 0)
+                return rank;
+            return string.CompareOrdinal(left.Requester.name, right.Requester.name);
+        }
+
+        private static string ReservationGroupKey(FoodServiceComponent service)
+        {
+            if (service == null || service.Facility == null ||
+                !service.TryGetCachedEatBinding(out FacilityActivityBinding binding))
+            {
+                return string.Empty;
+            }
+
+            return service.Facility.GetEntityId().ToString() + ":" + binding.ReservationGroup;
+        }
+
+        private void RecordOfferStale(FoodOffer offer)
+        {
+            SimulationLogManager.RecordEvent(
+                "food.offer_stale",
+                "Food",
+                "Info",
+                offer.Requester,
+                offer.Opportunity != null && offer.Opportunity.Service != null
+                    ? offer.Opportunity.Service.Facility
+                    : null,
+                new SimulationLogField("validTick", offer.ValidForSimulationTick));
+        }
+
         public bool TryFindFoodTarget(
             FoodQuery query,
             out ActivityTarget target)
@@ -116,12 +495,10 @@ namespace AsteroidColony
             if (TryFindFoodService(query, out FoodServiceOpportunity opportunity))
             {
                 target = opportunity.Target;
-                RecordSelection(query, opportunity);
                 return target != null && target.IsConfigured;
             }
 
             target = null;
-            RecordSelection(query, null);
             return false;
         }
 
@@ -132,8 +509,6 @@ namespace AsteroidColony
             opportunity = null;
             if (query == null)
                 return false;
-
-            foodQueryCount++;
 
             PruneServices();
 
@@ -168,8 +543,6 @@ namespace AsteroidColony
 
             if (bestService == null)
                 return false;
-
-            foodSelectionCount++;
 
             opportunity = new FoodServiceOpportunity(
                 new ActivityTarget(bestService.Facility, bestService.EatActivityId),
@@ -300,22 +673,21 @@ namespace AsteroidColony
         {
             accessMode = FoodServiceAccessMode.Unavailable;
             binding = null;
-            if (!IsConfiguredService(service))
-                return false;
-
-            if (!service.TryGetEatBinding(out binding))
+            if (service == null || !service.TryGetCachedEatBinding(out binding))
                 return false;
 
             if (service.Facility.IsReserved(binding.ReservationGroup))
                 return false;
 
-            accessMode = service.EvaluateAccess(query.Seeker, query.CurrentGameHour);
-            return accessMode != FoodServiceAccessMode.Unavailable;
+            accessMode = service.EvaluateAccessFromCachedConfiguration(
+                query.Seeker,
+                query.CurrentGameHour);
+            return accessMode != FoodServiceAccessMode.Unavailable && service.HasAvailableMeal();
         }
 
         private bool IsConfiguredService(FoodServiceComponent service)
         {
-            return service != null && service.IsConfigured;
+            return service != null && service.TryGetCachedEatBinding(out _) && service.HasUsableFoodInventory;
         }
 
         private void RegisterExistingServices()
@@ -337,88 +709,6 @@ namespace AsteroidColony
             return nameComparison < 0;
         }
 
-        private void RecordSelection(
-            FoodQuery query,
-            FoodServiceOpportunity opportunity)
-        {
-            ColonistIdentity seeker = query != null ? query.Seeker : null;
-            string serviceName = opportunity != null && opportunity.Service != null
-                ? opportunity.Service.name
-                : "none";
-            string accessMode = opportunity != null
-                ? DescribeAccessMode(opportunity.AccessMode)
-                : "unavailable";
-
-            // Deduplication is per seeker. With more than one colonist asking for food a
-            // single global signature would silently swallow one colonist's decisions.
-            string signature = SeekerKey(seeker) + "|" + serviceName + "|" + accessMode;
-            if (IsDuplicateSignature(seeker, signature))
-                return;
-
-            if (opportunity == null)
-            {
-                SimulationLogManager.RecordEvent(
-                    "food.no_target",
-                    "Food",
-                    "Info",
-                    seeker,
-                    null,
-                    new SimulationLogField("reason", "no_accessible_food_service"));
-                return;
-            }
-
-            SimulationLogManager.RecordEvent(
-                "food.target_selected",
-                "Food",
-                "Info",
-                seeker,
-                opportunity.Service != null ? opportunity.Service.Facility : null,
-                new SimulationLogField("activityId", opportunity.Service != null
-                    ? opportunity.Service.EatActivityId
-                    : string.Empty),
-                new SimulationLogField("accessMode", accessMode),
-                new SimulationLogField("reason", "nearest_accessible_service"));
-        }
-
-        private bool IsDuplicateSignature(ColonistIdentity seeker, string signature)
-        {
-            if (seeker == null)
-            {
-                if (string.Equals(lastAnonymousSignature, signature, StringComparison.Ordinal))
-                    return true;
-
-                lastAnonymousSignature = signature;
-                return false;
-            }
-
-            for (int index = seekerSignatures.Count - 1; index >= 0; index--)
-            {
-                SeekerSignature entry = seekerSignatures[index];
-                if (entry.Seeker == null)
-                {
-                    seekerSignatures.RemoveAt(index);
-                    continue;
-                }
-
-                if (!ReferenceEquals(entry.Seeker, seeker))
-                    continue;
-
-                if (string.Equals(entry.Signature, signature, StringComparison.Ordinal))
-                    return true;
-
-                seekerSignatures[index] = new SeekerSignature(seeker, signature);
-                return false;
-            }
-
-            seekerSignatures.Add(new SeekerSignature(seeker, signature));
-            return false;
-        }
-
-        private static string SeekerKey(ColonistIdentity seeker)
-        {
-            return seeker != null ? seeker.name : "anonymous";
-        }
-
         private static float CurrentGameHour =>
             SimulationManager.Instance != null
                 ? SimulationManager.Instance.CurrentGameHour
@@ -437,16 +727,36 @@ namespace AsteroidColony
             }
         }
 
-        private readonly struct SeekerSignature
+        private readonly struct FoodInventoryKey : IEquatable<FoodInventoryKey>
         {
-            public SeekerSignature(ColonistIdentity seeker, string signature)
+            public FoodInventoryKey(InventoryComponent inventory, ResourceDefinition resource)
             {
-                Seeker = seeker;
-                Signature = signature;
+                Inventory = inventory;
+                Resource = resource;
             }
 
-            public ColonistIdentity Seeker { get; }
-            public string Signature { get; }
+            private InventoryComponent Inventory { get; }
+            private ResourceDefinition Resource { get; }
+
+            public bool Equals(FoodInventoryKey other)
+            {
+                return ReferenceEquals(Inventory, other.Inventory) &&
+                       ReferenceEquals(Resource, other.Resource);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is FoodInventoryKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((Inventory != null ? Inventory.GetEntityId().GetHashCode() : 0) * 397) ^
+                           (Resource != null ? Resource.GetEntityId().GetHashCode() : 0);
+                }
+            }
         }
     }
 }

@@ -81,6 +81,68 @@ namespace AsteroidColony.Tests
             Assert.That(difference, Does.Contain("first retained event difference"));
         }
 
+        [Test]
+        public void RunBoundaryNormalizesAbsoluteClockToElapsedTime()
+        {
+            telemetryObject = new GameObject("Stress Telemetry");
+            StressTelemetry telemetry = telemetryObject.AddComponent<StressTelemetry>();
+            telemetry.Configure(StressObservationMode.Detailed, 32, 16);
+            telemetry.ResetRun("elapsed");
+            telemetry.RecordActivityEvent(
+                StressEventKind.RunStarted, 0, 0, string.Empty, string.Empty, 500, 28800d);
+            telemetry.RecordActivityEvent(
+                StressEventKind.ActivityStarted, 7, 2, "Work", string.Empty, 510, 28810d);
+            telemetry.RecordActivityEvent(
+                StressEventKind.RunCompleted, 0, 0, string.Empty, string.Empty, 520, 28820d);
+
+            StressTelemetrySnapshot snapshot = telemetry.CaptureSnapshot();
+            Assert.That(snapshot.StartSimulationTick, Is.EqualTo(500));
+            Assert.That(snapshot.EndSimulationTick, Is.EqualTo(520));
+            Assert.That(snapshot.StartSimulationSeconds, Is.EqualTo(28800d));
+            Assert.That(snapshot.ElapsedSimulationSeconds, Is.EqualTo(20d));
+            Assert.That(snapshot.Events[1].SimulationSeconds, Is.EqualTo(10d));
+            Assert.That(snapshot.Events[1].AbsoluteSimulationSeconds, Is.EqualTo(28810d));
+        }
+
+        [Test]
+        public void SummaryModeRetainsFirstFailureWitness()
+        {
+            telemetryObject = new GameObject("Stress Telemetry");
+            StressTelemetry telemetry = telemetryObject.AddComponent<StressTelemetry>();
+            telemetry.Configure(StressObservationMode.Summary, 32, 16);
+            telemetry.ResetRun("summary-failure");
+            telemetry.RecordActivityEvent(
+                StressEventKind.RunStarted, 0, 0, string.Empty, string.Empty, 10, 100d);
+            telemetry.RecordFailure(
+                StressEventKind.AnimationFailed, 7, 2, "first witness", 12,
+                "entry", "Working", 3);
+            telemetry.RecordFailure(
+                StressEventKind.ActivityFailed, 8, 4, "later failure", 13);
+
+            StressTelemetrySnapshot snapshot = telemetry.CaptureSnapshot();
+            Assert.That(snapshot.FailureCount, Is.EqualTo(2));
+            Assert.That(snapshot.Failures, Has.Length.EqualTo(1));
+            Assert.That(snapshot.Failures[0].ActorId, Is.EqualTo(7));
+            Assert.That(snapshot.Failures[0].Detail, Does.Contain("first witness"));
+            Assert.That(snapshot.Failures[0].Detail, Does.Contain("phase=entry"));
+            Assert.That(snapshot.Failures[0].Detail, Does.Contain("generation=3"));
+        }
+
+        [Test]
+        public void ComparatorRejectsDifferentSimulationBoundariesBeforeDigest()
+        {
+            StressTelemetrySnapshot left = CaptureDetailed("left-boundary", 1);
+            Object.DestroyImmediate(telemetryObject);
+            telemetryObject = null;
+            StressTelemetrySnapshot right = CaptureDetailed("right-boundary", 1);
+            right.EndSimulationTick++;
+
+            Assert.That(
+                StressRunComparator.TryCompare(left, right, out string difference),
+                Is.False);
+            Assert.That(difference, Does.Contain("simulation boundary tick differs"));
+        }
+
         private StressTelemetrySnapshot CaptureSummary(string runId)
         {
             telemetryObject = new GameObject("Stress Telemetry");

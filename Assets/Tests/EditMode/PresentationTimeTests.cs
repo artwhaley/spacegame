@@ -81,6 +81,38 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void OverloadedFrameSlowsLogicalAndPresentationTimeTogether()
+        {
+            manager = CreateManager();
+            manager.speedMultiplier = 1000f;
+            SetPrivateField(manager, "maximumPendingSimulationSeconds", 250f);
+
+            InvokePrivate(manager, "AdvanceFrame", 1f);
+
+            Assert.That(manager.LastFrameRequestedSimulationSeconds, Is.EqualTo(1000d));
+            Assert.That(manager.LastFrameCommittedSimulationSeconds, Is.EqualTo(250d));
+            Assert.That(manager.PresentationSpeedFactor, Is.EqualTo(250f));
+            Assert.That(manager.CurrentSimulationSeconds, Is.EqualTo(250d));
+            Assert.That(manager.PaceShortfallSeconds, Is.EqualTo(750d));
+            Assert.That(manager.AdmissionLimitHitCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ArmedStopPreventsFrameBatchFromOvershootingEndpoint()
+        {
+            manager = CreateManager();
+            manager.speedMultiplier = 1000f;
+            manager.ArmSimulationStop(100d);
+
+            InvokePrivate(manager, "AdvanceFrame", 1f);
+
+            Assert.That(manager.CurrentSimulationSeconds, Is.EqualTo(100d));
+            Assert.That(manager.LastFrameCommittedSimulationSeconds, Is.EqualTo(100d));
+            Assert.That(manager.paused, Is.True);
+            Assert.That(manager.SimulationStopReached, Is.True);
+        }
+
+        [Test]
         public void SpeedMultiplierClampsToOneThroughOneThousand()
         {
             manager = CreateManager();

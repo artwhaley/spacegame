@@ -3,7 +3,8 @@
     "rootNamespace": "AsteroidColony",
     "references": [
         "Colony.Interactions.Runtime",
-        "Unity.TextMeshPro"
+        "Unity.TextMeshPro",
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

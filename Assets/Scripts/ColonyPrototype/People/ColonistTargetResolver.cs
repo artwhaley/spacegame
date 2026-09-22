@@ -40,21 +40,8 @@ namespace AsteroidColony
                 return true;
             }
 
-            if (purpose == ActivityPurpose.Eat && FoodManager.Instance != null)
-            {
-                if (identity == null)
-                    identity = GetComponent<ColonistIdentity>();
-
-                FoodQuery query = new FoodQuery(
-                    identity,
-                    transform.position,
-                    SimulationManager.Instance != null
-                        ? SimulationManager.Instance.CurrentGameHour
-                        : 0f);
-                if (FoodManager.Instance.TryFindFoodTarget(query, out target))
-                    return target != null && target.IsConfigured;
-            }
-
+            // Food is a round-based domain offer. The resolver must not synchronously discover
+            // or reserve an Eat target; ColonistBrain consumes FoodManager's next-tick offer.
             target = null;
             return false;
         }

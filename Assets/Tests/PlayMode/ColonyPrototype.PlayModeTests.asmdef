@@ -2,7 +2,8 @@
     "name": "ColonyPrototype.PlayModeTests",
   "rootNamespace": "AsteroidColony.Tests",
   "references": [
-    "ColonyPrototype.Runtime"
+    "ColonyPrototype.Runtime",
+    "Unity.AI.Navigation"
   ],
   "optionalUnityReferences": [
     "TestAssemblies"

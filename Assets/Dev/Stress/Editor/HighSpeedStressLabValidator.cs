@@ -14,6 +14,7 @@ namespace AsteroidColony.Stress.Editor
     public static class HighSpeedStressLabValidator
     {
         private const string ReportPath = "Assets/Dev/Stress/Generated/HighSpeedStressLabValidation.md";
+        private const float NavigationSampleDistance = 1f;
 
         [MenuItem("Tools/Spacegame/Validate High-Speed Population Stress Lab")]
         public static void ValidateActiveScene()
@@ -23,10 +24,27 @@ namespace AsteroidColony.Stress.Editor
             NavMeshSurface[] surfaces = UnityEngine.Object.FindObjectsByType<NavMeshSurface>(FindObjectsInactive.Exclude);
             if (surfaces.Length == 0)
                 errors.Add("No NavMeshSurface found.");
+            else
+            {
+                bool hasNavMeshData = false;
+                for (int surfaceIndex = 0; surfaceIndex < surfaces.Length; surfaceIndex++)
+                {
+                    if (surfaces[surfaceIndex] != null && surfaces[surfaceIndex].navMeshData != null)
+                    {
+                        hasNavMeshData = true;
+                        break;
+                    }
+                }
+
+                if (!hasNavMeshData)
+                    errors.Add("NavMeshSurface has no baked NavMeshData.");
+            }
 
             ColonistActivityRunner[] actors = UnityEngine.Object.FindObjectsByType<ColonistActivityRunner>(FindObjectsInactive.Exclude);
             if (actors.Length == 0)
                 errors.Add("No ColonistActivityRunner actors found.");
+
+            int navigationAreaMask = NavMesh.AllAreas;
 
             for (int i = 0; i < actors.Length; i++)
             {
@@ -43,8 +61,12 @@ namespace AsteroidColony.Stress.Editor
                 NavMeshAgent agent = runner.GetComponent<NavMeshAgent>();
                 if (agent == null)
                     errors.Add(runner.name + " has no NavMeshAgent.");
-                else if (!agent.isOnNavMesh)
-                    warnings.Add(runner.name + " is not currently on a baked NavMesh; verify in Play Mode.");
+                else
+                {
+                    navigationAreaMask = agent.areaMask;
+                    if (!agent.isOnNavMesh)
+                        warnings.Add(runner.name + " is not currently on a baked NavMesh; verify in Play Mode.");
+                }
             }
 
             InteractableFacility[] facilities = UnityEngine.Object.FindObjectsByType<InteractableFacility>(FindObjectsInactive.Exclude);
@@ -71,6 +93,21 @@ namespace AsteroidColony.Stress.Editor
                     {
                         errors.Add(facility.name + " has an unusable activity binding at index " + bindingIndex + ".");
                     }
+                    else
+                    {
+                        if (binding.LoopClip == null)
+                            errors.Add(facility.name + "." + binding.ActivityId + " has no loop animation clip.");
+                        AddNavigationError(
+                            errors,
+                            facility.name + "." + binding.ActivityId + ".approach",
+                            binding.ApproachAnchor,
+                            navigationAreaMask);
+                        AddNavigationError(
+                            errors,
+                            facility.name + "." + binding.ActivityId + ".exit",
+                            binding.ExitAnchor,
+                            navigationAreaMask);
+                    }
                 }
             }
 
@@ -84,6 +121,23 @@ namespace AsteroidColony.Stress.Editor
                 Debug.Log("High-speed stress lab validation passed with " + warnings.Count + " warnings. Report: " + ReportPath);
             else
                 Debug.LogError("High-speed stress lab validation found " + errors.Count + " errors. Report: " + ReportPath);
+        }
+
+        private static void AddNavigationError(
+            List<string> errors,
+            string label,
+            Transform anchor,
+            int areaMask)
+        {
+            if (anchor == null ||
+                !NavMesh.SamplePosition(
+                    anchor.position,
+                    out _,
+                    NavigationSampleDistance,
+                    areaMask))
+            {
+                errors.Add(label + " is not within " + NavigationSampleDistance + "m of a usable NavMesh area.");
+            }
         }
 
         private static string BuildReport(

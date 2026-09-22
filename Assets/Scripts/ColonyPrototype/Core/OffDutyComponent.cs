@@ -85,6 +85,14 @@ namespace AsteroidColony
         [SerializeField] private OffDutyActivityBinding[] activities =
             Array.Empty<OffDutyActivityBinding>();
 
+        [NonSerialized]
+        private readonly List<CachedActivityMetadata> cachedActivityMetadata =
+            new List<CachedActivityMetadata>();
+
+        [NonSerialized] private bool staticBindingCacheInitialized;
+        [NonSerialized] private InteractableFacility cachedFacility;
+        [NonSerialized] private OffDutyActivityBinding[] cachedActivitiesSource;
+
         public InteractableFacility Facility
         {
             get
@@ -119,28 +127,13 @@ namespace AsteroidColony
 
         public bool IsConfigured(OffDutyActivityBinding activity)
         {
-            if (activity == null || !activity.IsStructurallyValid || Facility == null)
-                return false;
-
-            if (!Facility.TryGetBinding(activity.ActivityId, out FacilityActivityBinding facilityBinding))
-                return false;
-
-            if (activity.RequiresStaff &&
-                (activity.RequiredWorkplace == null ||
-                 activity.RequiredRole == null ||
-                 !activity.RequiredWorkplace.TryGetRoleBinding(activity.RequiredRole, out _)))
-            {
-                return false;
-            }
-
-            return facilityBinding.ExternallyRequestable &&
-                   !string.IsNullOrWhiteSpace(facilityBinding.ReservationGroup) &&
-                   facilityBinding.ApproachAnchor != null;
+            return TryGetCachedBinding(activity, out _);
         }
 
         public bool IsLive(OffDutyActivityBinding activity)
         {
-            return enabled && activity != null && activity.Enabled && IsConfigured(activity);
+            return enabled && activity != null && activity.Enabled &&
+                   TryGetCachedBinding(activity, out _);
         }
 
         public bool IsDiscoverable(OffDutyActivityBinding activity)
@@ -148,18 +141,72 @@ namespace AsteroidColony
             return enabled &&
                    activity != null &&
                    activity.Enabled &&
-                   IsConfigured(activity) &&
-                   Facility.TryGetBinding(activity.ActivityId, out FacilityActivityBinding binding) &&
+                   TryGetCachedBinding(activity, out FacilityActivityBinding binding) &&
                    !Facility.IsReserved(binding.ReservationGroup);
+        }
+
+        /// <summary>
+        /// Static recreation binding metadata is prepared once at authoring/enable time. The
+        /// manager uses this path during candidate evaluation so it does not repeatedly call
+        /// IsConfigured and rescan the facility's activity array for every colonist.
+        /// </summary>
+        public bool TryGetCachedBinding(
+            OffDutyActivityBinding activity,
+            out FacilityActivityBinding binding)
+        {
+            RefreshCacheIfNeeded();
+            binding = null;
+            CachedActivityMetadata metadata = FindCachedMetadata(activity);
+            if (metadata == null || !metadata.StructurallyConfigured)
+                return false;
+
+            binding = metadata.FacilityBinding;
+            return binding != null;
+        }
+
+        public void RefreshStaticBindingMetadata()
+        {
+            ResolveFacility();
+            cachedFacility = facility;
+            cachedActivitiesSource = activities;
+            cachedActivityMetadata.Clear();
+            IReadOnlyList<OffDutyActivityBinding> configuredActivities = Activities;
+            for (int index = 0; index < configuredActivities.Count; index++)
+            {
+                OffDutyActivityBinding activity = configuredActivities[index];
+                FacilityActivityBinding facilityBinding = null;
+                bool structurallyConfigured = activity != null &&
+                    activity.IsStructurallyValid &&
+                    cachedFacility != null &&
+                    !string.IsNullOrWhiteSpace(activity.ActivityId) &&
+                    cachedFacility.TryGetBinding(activity.ActivityId, out facilityBinding) &&
+                    facilityBinding != null &&
+                    facilityBinding.ExternallyRequestable &&
+                    !string.IsNullOrWhiteSpace(facilityBinding.ReservationGroup) &&
+                    facilityBinding.ApproachAnchor != null &&
+                    (!activity.RequiresStaff ||
+                     (activity.RequiredWorkplace != null &&
+                      activity.RequiredRole != null &&
+                      activity.RequiredWorkplace.Facility != null &&
+                      activity.RequiredWorkplace.TryGetRoleBinding(activity.RequiredRole, out _)));
+                cachedActivityMetadata.Add(new CachedActivityMetadata(
+                    activity,
+                    facilityBinding,
+                    structurallyConfigured));
+            }
+
+            staticBindingCacheInitialized = true;
         }
 
         private void Awake()
         {
             ResolveFacility();
+            RefreshStaticBindingMetadata();
         }
 
         private void OnEnable()
         {
+            RefreshStaticBindingMetadata();
             OffDutyManager.Instance?.Register(this);
         }
 
@@ -170,18 +217,58 @@ namespace AsteroidColony
 
         private void OnDisable()
         {
+            staticBindingCacheInitialized = false;
             OffDutyManager.Instance?.Unregister(this);
         }
 
         private void OnValidate()
         {
             ResolveFacility();
+            RefreshStaticBindingMetadata();
+        }
+
+        private void RefreshCacheIfNeeded()
+        {
+            ResolveFacility();
+            if (!staticBindingCacheInitialized ||
+                cachedFacility != facility ||
+                !ReferenceEquals(cachedActivitiesSource, activities))
+                RefreshStaticBindingMetadata();
+        }
+
+        private CachedActivityMetadata FindCachedMetadata(OffDutyActivityBinding activity)
+        {
+            for (int index = 0; index < cachedActivityMetadata.Count; index++)
+            {
+                CachedActivityMetadata metadata = cachedActivityMetadata[index];
+                if (metadata.Activity == activity)
+                    return metadata;
+            }
+
+            return null;
         }
 
         private void ResolveFacility()
         {
             if (facility == null)
                 facility = GetComponent<InteractableFacility>();
+        }
+
+        private sealed class CachedActivityMetadata
+        {
+            public CachedActivityMetadata(
+                OffDutyActivityBinding activity,
+                FacilityActivityBinding facilityBinding,
+                bool structurallyConfigured)
+            {
+                Activity = activity;
+                FacilityBinding = facilityBinding;
+                StructurallyConfigured = structurallyConfigured;
+            }
+
+            public OffDutyActivityBinding Activity { get; }
+            public FacilityActivityBinding FacilityBinding { get; }
+            public bool StructurallyConfigured { get; }
         }
     }
 }

@@ -18,8 +18,13 @@ namespace AsteroidColony.Stress
         ExitStarted,
         ReservationReleased,
         ActivityFailed,
+        ActivityDenied,
+        ActivityCompleted,
         AnimationFailed,
-        InvariantViolation
+        InvariantViolation,
+        OwnershipViolation,
+        CoverageViolation,
+        StateInvalid
     }
 
     public enum StressMetric
@@ -47,6 +52,22 @@ namespace AsteroidColony.Stress
         FoodSelections,
         OffDutyQueries,
         OffDutyCandidateEvaluations,
+        ActivityDenied,
+        ActivityCompleted,
+        ActivityStalled,
+        UniqueActorsServed,
+        CriticalHungerEatAllowed,
+        CriticalHungerIllegalActivity,
+        OrphanedFacilityReservations,
+        RunnerReservationOwnershipMismatches,
+        DuplicateReservationReleases,
+        InvalidReservationGenerations,
+        InvalidNumericState,
+        MissingActivityCoverage,
+        CoverageDiagnosticsTruncated,
+        OwnershipDiagnosticsTruncated,
+        FirstFailureCaptured,
+        PendingActivityDiagnosticsTruncated,
         Count
     }
 }
