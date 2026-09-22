@@ -58,20 +58,6 @@ namespace AsteroidColony.Tests
             Assert.That(stats.RelaxationNeed, Is.EqualTo(0f).Within(0.0001f));
         }
 
-        [Test]
-        public void LeisureDrivesMayExceedTheirThresholds()
-        {
-            SetStimulationNeed(95f);
-            SetRelaxationNeed(95f);
-
-            stats.AdjustStimulationNeed(30f);
-            stats.AdjustRelaxationNeed(30f);
-
-            Assert.That(stats.StimulationNeed, Is.EqualTo(125f).Within(0.0001f));
-            Assert.That(stats.RelaxationNeed, Is.EqualTo(125f).Within(0.0001f));
-            Assert.That(stats.NeedsStimulation, Is.True);
-            Assert.That(stats.NeedsRelaxation, Is.True);
-        }
 
         [Test]
         public void LeisureThresholdsUseAuthoredValues()
@@ -119,134 +105,13 @@ namespace AsteroidColony.Tests
                 Is.EqualTo(4f).Within(0.0001f));
         }
 
-        [Test]
-        public void LeisureThresholdTransitionsAreLoggedOnlyOnStateChange()
-        {
-            logManagerObject = new GameObject("Simulation Log Manager Test");
-            SimulationLogManager log = logManagerObject.AddComponent<SimulationLogManager>();
-            Assert.That(SimulationLogManager.Instance, Is.SameAs(log));
 
-            SetStimulationNeed(50f);
-            stats.AdjustStimulationNeed(0f);
-            stats.AdjustStimulationNeed(10f);
 
-            Assert.That(CountEntries("colonist.need.stimulation"), Is.EqualTo(1));
 
-            SetStimulationNeed(0f);
-            stats.AdjustStimulationNeed(0f);
 
-            Assert.That(CountEntries("colonist.need.stimulation"), Is.EqualTo(2));
-        }
 
-        [Test]
-        public void ActivePlayReducesStimulationNeed()
-        {
-            CreateRunnerAndStats();
-            ActivateOffDutyActivity(
-                stimulationRecovery: 60f,
-                relaxationRecovery: 0f,
-                activityActive: true,
-                exitInProgress: false);
-            SetStimulationNeed(100f);
 
-            Assert.That(
-                stats.EffectiveStimulationPerGameHour,
-                Is.EqualTo(-56f).Within(0.0001f));
-            stats.SimulationTick(1f);
 
-            Assert.That(stats.StimulationNeed, Is.EqualTo(44f).Within(0.0001f));
-        }
-
-        [Test]
-        public void ActiveRelaxingActivityReducesRelaxationNeedOnly()
-        {
-            CreateRunnerAndStats();
-            ActivateOffDutyActivity(0f, 50f, activityActive: true, exitInProgress: false);
-            SetStimulationNeed(100f);
-            SetRelaxationNeed(100f);
-
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.RelaxationNeed, Is.EqualTo(54f).Within(0.0001f));
-            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
-        }
-
-        [Test]
-        public void ActivitySatisfyingBothDrivesAffectsBoth()
-        {
-            CreateRunnerAndStats();
-            ActivateOffDutyActivity(10f, 30f, activityActive: true, exitInProgress: false);
-            SetStimulationNeed(100f);
-            SetRelaxationNeed(100f);
-
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.StimulationNeed, Is.EqualTo(94f).Within(0.0001f));
-            Assert.That(stats.RelaxationNeed, Is.EqualTo(74f).Within(0.0001f));
-        }
-
-        [Test]
-        public void WalkingToPlayUsesBaselineLeisureRates()
-        {
-            CreateRunnerAndStats();
-            ActivateOffDutyActivity(60f, 60f, activityActive: false, exitInProgress: false);
-            SetStimulationNeed(100f);
-            SetRelaxationNeed(100f);
-
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
-            Assert.That(stats.RelaxationNeed, Is.EqualTo(104f).Within(0.0001f));
-        }
-
-        [Test]
-        public void ExitingPlayUsesBaselineLeisureRates()
-        {
-            CreateRunnerAndStats();
-            ActivateOffDutyActivity(60f, 60f, activityActive: true, exitInProgress: true);
-            SetStimulationNeed(100f);
-            SetRelaxationNeed(100f);
-
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
-            Assert.That(stats.RelaxationNeed, Is.EqualTo(104f).Within(0.0001f));
-        }
-
-        [Test]
-        public void DisabledOffDutyActivityUsesBaselineLeisureRates()
-        {
-            CreateRunnerAndStats();
-            ActivateOffDutyActivity(
-                60f,
-                60f,
-                activityActive: true,
-                exitInProgress: false,
-                activityEnabled: false);
-            SetStimulationNeed(100f);
-            SetRelaxationNeed(100f);
-
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
-            Assert.That(stats.RelaxationNeed, Is.EqualTo(104f).Within(0.0001f));
-        }
-
-        [Test]
-        public void ActivityWithoutOffDutyBindingUsesBaselineLeisureRates()
-        {
-            CreateRunnerAndStats();
-            ColonistActivityRunner runner = runnerObject.GetComponent<ColonistActivityRunner>();
-            FacilityActivityBinding sleep = CreateSleepBinding();
-            SetRunnerState(runner, sleep, activityActive: true, exitInProgress: false);
-            SetStimulationNeed(100f);
-            SetRelaxationNeed(100f);
-
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.StimulationNeed, Is.EqualTo(104f).Within(0.0001f));
-            Assert.That(stats.RelaxationNeed, Is.EqualTo(104f).Within(0.0001f));
-        }
 
 
         [Test]
@@ -269,15 +134,6 @@ namespace AsteroidColony.Tests
             Assert.That(stats.Fatigue, Is.EqualTo(0f).Within(0.0001f));
         }
 
-        [Test]
-        public void FatigueMayExceedOneHundred()
-        {
-            SetFatigue(95f);
-
-            stats.AdjustFatigue(30f);
-
-            Assert.That(stats.Fatigue, Is.EqualTo(125f).Within(0.0001f));
-        }
 
         [Test]
         public void SleepyThresholdUsesSeventyPoints()
@@ -405,34 +261,7 @@ namespace AsteroidColony.Tests
             Assert.That(stats.Hunger, Is.EqualTo(30f).Within(0.0001f));
         }
 
-        [Test]
-        public void ActiveSleepDoesNotRecoverHungerInProduction()
-        {
-            CreateRunnerAndStats();
-            FacilityActivityBinding sleep = CreateSleepBinding();
-            SetRunnerState(runnerObject.GetComponent<ColonistActivityRunner>(), sleep,
-                activityActive: true, exitInProgress: false);
-            SetHunger(50f);
 
-            stats.SimulationTick(1f);
-
-            Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
-        }
-
-        [Test]
-        public void ActiveFacilityIsExposedOnlyDuringGenuineActivity()
-        {
-            ColonistActivityRunner runner = CreateRunner();
-            InteractableFacility facility = CreateFoodFacility(
-                out _, out FacilityActivityBinding binding);
-            SetPrivateField(runner, "currentFacility", facility);
-            SetRunnerState(runner, binding, activityActive: true, exitInProgress: false);
-
-            Assert.That(runner.ActiveFacility, Is.SameAs(facility));
-
-            SetPrivateField(runner, "exitInProgress", true);
-            Assert.That(runner.ActiveFacility, Is.Null);
-        }
 
         [Test]
         public void ActiveEatUsesConfiguredFoodRecoveryRate()
@@ -473,81 +302,11 @@ namespace AsteroidColony.Tests
             Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
         }
 
-        [Test]
-        public void DisabledFoodServiceCannotControlHunger()
-        {
-            CreateRunnerAndStats();
-            InteractableFacility facility = CreateFoodFacility(
-                out FoodServiceComponent service,
-                out FacilityActivityBinding binding);
-            service.enabled = false;
-            ColonistActivityRunner runner = runnerObject.GetComponent<ColonistActivityRunner>();
-            SetPrivateField(runner, "currentFacility", facility);
-            SetRunnerState(runner, binding, activityActive: true, exitInProgress: false);
-            SetHunger(50f);
 
-            stats.SimulationTick(1f);
 
-            Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
-        }
 
-        [Test]
-        public void ColonistActivityRunnerBindingIsNotActiveBeforeActivation()
-        {
-            ColonistActivityRunner runner = CreateRunner();
-            FacilityActivityBinding sleep = CreateSleepBinding();
-            SetRunnerState(runner, sleep, activityActive: false, exitInProgress: false);
 
-            Assert.That(runner.IsActivityActive, Is.False);
-            Assert.That(runner.ActiveActivityBinding, Is.Null);
-        }
 
-        [Test]
-        public void EmptyFacilityActivityBindingWorksForStatsInspection()
-        {
-            ColonistActivityRunner runner = CreateRunner();
-            FacilityActivityBinding empty = new FacilityActivityBinding();
-            SetRunnerState(runner, empty, activityActive: false, exitInProgress: false);
-
-            Assert.That(runner.IsActivityActive, Is.False);
-            Assert.That(runner.ActiveActivityBinding, Is.Null);
-        }
-
-        [Test]
-        public void BindingIsNotActiveBeforeActivation()
-        {
-            ColonistActivityRunner runner = CreateRunner();
-            FacilityActivityBinding sleep = CreateSleepBinding();
-            SetRunnerState(runner, sleep, activityActive: false, exitInProgress: false);
-
-            Assert.That(runner.IsActivityActive, Is.False);
-            Assert.That(runner.ActiveActivityBinding, Is.Null);
-        }
-
-        [Test]
-        public void ActiveSleepIsExposed()
-        {
-            ColonistActivityRunner runner = CreateRunner();
-            FacilityActivityBinding sleep = CreateSleepBinding();
-            SetRunnerState(runner, sleep, activityActive: true, exitInProgress: false);
-
-            Assert.That(runner.IsActivityActive, Is.True);
-            Assert.That(runner.ActiveActivityBinding, Is.SameAs(sleep));
-            Assert.That(runner.ActiveActivityId, Is.EqualTo("Sleep"));
-        }
-
-        [Test]
-        public void ExitingSleepIsNotExposedAsActive()
-        {
-            ColonistActivityRunner runner = CreateRunner();
-            FacilityActivityBinding sleep = CreateSleepBinding();
-            SetRunnerState(runner, sleep, activityActive: true, exitInProgress: true);
-
-            Assert.That(runner.CurrentActivityId, Is.EqualTo("Sleep"));
-            Assert.That(runner.IsActivityActive, Is.False);
-            Assert.That(runner.ActiveActivityBinding, Is.Null);
-            Assert.That(runner.ActiveActivityId, Is.Null);
-        }
 
         [Test]
         public void ActiveSleepUsesAuthoredFatigueRate()

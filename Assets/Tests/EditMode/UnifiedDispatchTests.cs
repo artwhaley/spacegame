@@ -5,6 +5,7 @@ using UnityEngine;
 
 namespace AsteroidColony.Tests
 {
+    [Category("Core")]
     public class UnifiedDispatchTests
     {
         private readonly List<GameObject> objects = new List<GameObject>();

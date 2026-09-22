@@ -6,6 +6,7 @@ using UnityEngine;
 
 namespace AsteroidColony.Tests
 {
+    [Category("Core")]
     public class FoodServiceAccessTests
     {
         private readonly List<GameObject> sceneObjects = new List<GameObject>();

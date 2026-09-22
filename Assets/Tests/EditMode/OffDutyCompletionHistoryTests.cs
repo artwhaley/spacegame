@@ -2,6 +2,7 @@ using NUnit.Framework;
 
 namespace AsteroidColony.Tests
 {
+    [Category("Core")]
     public class OffDutyCompletionHistoryTests
     {
         private OffDutyCompletionHistory history;

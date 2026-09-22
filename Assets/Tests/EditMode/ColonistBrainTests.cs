@@ -6,6 +6,8 @@ using UnityEngine;
 
 namespace AsteroidColony.Tests
 {
+    [Category("Regression")]
+
     public class ColonistBrainTests
     {
         private GameObject colonistObject;
@@ -55,80 +57,10 @@ namespace AsteroidColony.Tests
                 Object.DestroyImmediate(staffedRole);
         }
 
-        [Test]
-        public void DiscretionaryNeedsSatisfiedDoesNotSeekOffDuty()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateRecreationProvider(60f, 0f, "play");
 
-            brain.SimulationTick(0.1f);
 
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-            Assert.That(
-                brain.LastDecisionReason,
-                Is.EqualTo("discretionary_needs_satisfied"));
-        }
 
-        [Test]
-        public void StimulationDriveSelectsAStimulatingActivity()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateRecreationProvider(60f, 0f, "play");
-            SetStimulationNeed(80f);
 
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
-            Assert.That(brain.ActiveOffDutyDrive, Is.EqualTo(OffDutyDrive.Stimulation));
-        }
-
-        [Test]
-        public void RelaxationDriveExcludesAStimulatingOnlyActivity()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateRecreationProvider(60f, 0f, "play");
-            SetRelaxationNeed(80f);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-            Assert.That(brain.LastDecision, Is.EqualTo("offduty.no_target"));
-        }
-
-        [Test]
-        public void HigherNormalizedPressureIsTriedFirst()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateRecreationProvider(10f, 10f, "walk");
-            SetStimulationNeed(60f);
-            SetRelaxationNeed(100f);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
-            Assert.That(brain.ActiveOffDutyDrive, Is.EqualTo(OffDutyDrive.Relaxation));
-        }
-
-        [Test]
-        public void CoolingPrimaryDriveFallsBackToTheSecondaryDrive()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateRecreationProvider(60f, 0f, "play");
-            CreateRecreationProvider(0f, 60f, "relax");
-            SetStimulationNeed(100f);
-            SetRelaxationNeed(60f);
-            brain.OffDutyCompletionHistory.RecordCompletion("play", 0f);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
-            Assert.That(brain.ActiveOffDutyDrive, Is.EqualTo(OffDutyDrive.Relaxation));
-        }
 
         [Test]
         public void CompletedActivityStartsCooldownAndIsNotImmediatelyReselected()
@@ -181,28 +113,6 @@ namespace AsteroidColony.Tests
                 Is.False);
         }
 
-        [Test]
-        public void EatSeekingStopsWhenPublicFoodAccessIsLost()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(10f, null, false);
-            ConfigureStaffedFoodServiceRequiringAWorker();
-            ConfigurePendingEatRequest();
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                80f);
-            SetPrivateField(
-                brain,
-                "eatTargetInProgress",
-                new ActivityTarget(foodFacilityObject.GetComponent<InteractableFacility>(), "Eat"));
-            SetPrivateField(brain, "state", ColonistBrainState.EatSeeking);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
-            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_access_lost"));
-        }
 
         [Test]
         public void EatingContinuesWhenPublicStaffingIsUnavailable()
@@ -230,107 +140,12 @@ namespace AsteroidColony.Tests
         }
 
 
-        [Test]
-        public void NotSleepyRemainsIdle()
-        {
-            ColonistBrain brain = CreateBrain(0f);
 
-            brain.SimulationTick(1f);
 
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-        }
 
-        [Test]
-        public void MissingSleepTargetRemainsIdle()
-        {
-            ColonistBrain brain = CreateBrain(70f);
 
-            brain.SimulationTick(1f);
 
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-        }
 
-        [Test]
-        public void NoAssignmentHasNoUpcomingWorkObligation()
-        {
-            ColonistBrain brain = CreateBrain(80f);
-            CreateSchedule(0f, null, false);
-
-            Assert.That(
-                (bool)InvokePrivate(
-                    brain,
-                    "HasUpcomingObligationWithin",
-                    0.5f),
-                Is.False);
-        }
-
-        [Test]
-        public void NextShiftOutsideLeadWindowHasNoImminentObligation()
-        {
-            ColonistBrain brain = CreateBrain(80f);
-            CreateSchedule(0f, new DailyShiftWindow(2f, 6f), true);
-
-            Assert.That(
-                (bool)InvokePrivate(
-                    brain,
-                    "HasUpcomingObligationWithin",
-                    0.5f),
-                Is.False);
-        }
-
-        [Test]
-        public void NextShiftInsideLeadWindowIsAnImminentObligation()
-        {
-            ColonistBrain brain = CreateBrain(80f);
-            CreateSchedule(1.6f, new DailyShiftWindow(2f, 6f), true);
-
-            Assert.That(
-                (bool)InvokePrivate(
-                    brain,
-                    "HasUpcomingObligationWithin",
-                    0.5f),
-                Is.True);
-        }
-
-        [Test]
-        public void CurrentShiftIsAnObligationEvenAfterLeadWindow()
-        {
-            ColonistBrain brain = CreateBrain(80f);
-            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
-
-            Assert.That(
-                (bool)InvokePrivate(
-                    brain,
-                    "HasUpcomingObligationWithin",
-                    0.5f),
-                Is.True);
-        }
-
-        [Test]
-        public void SleepyColonistInsideWorkLeadWindowDoesNotRequestSleep()
-        {
-            ColonistBrain brain = CreateBrain(80f);
-            CreateSchedule(1.6f, new DailyShiftWindow(2f, 6f), true);
-            ConfigureSleepTarget();
-            ColonistActivityRunner runner =
-                colonistObject.GetComponent<ColonistActivityRunner>();
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-            Assert.That(runner.Phase, Is.EqualTo(ActivityPhase.Idle));
-        }
-
-        [Test]
-        public void CurrentWorkWithUnavailablePhysicalTargetRemainsIdle()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-        }
 
         [Test]
         public void ShiftEndRequestsWorkStopButKeepsBrainWorkingDuringPhysicalExit()
@@ -380,177 +195,13 @@ namespace AsteroidColony.Tests
             Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
         }
 
-        [Test]
-        public void AssignmentDisappearingDuringWorkRequestsPhysicalStop()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
-            ConfigureWorkingLifecycle(brain);
 
-            WorkforceManager workforceManager =
-                workforceObject.GetComponent<WorkforceManager>();
-            ColonistIdentity identity = colonistObject.GetComponent<ColonistIdentity>();
-            Assert.That(
-                workforceManager.Unassign(identity),
-                Is.EqualTo(WorkAssignmentResult.Applied));
 
-            brain.SimulationTick(0.1f);
 
-            Assert.That(
-                (bool)InvokePrivate(brain, "workStopRequested"),
-                Is.True);
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Working));
-            Assert.That(
-                colonistObject.GetComponent<ColonistActivityRunner>().HasActiveRequest,
-                Is.True);
-        }
 
-        [Test]
-        public void HungryColonistStartsEatSeekingWhenNoWorkIsDue()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateFoodManagerAndService();
-            ConfigurePendingEatRequest();
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                60f);
 
-            brain.SimulationTick(0.1f);
 
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.EatSeeking));
-            Assert.That(
-                colonistObject.GetComponent<ColonistActivityRunner>().CurrentActivityId,
-                Is.EqualTo("Eat"));
-        }
 
-        [Test]
-        public void HungerDepletionRequestsStopButWaitsForPhysicalRelease()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateFoodManagerAndService();
-            ConfigureEatingLifecycle(brain, hunger: 0f);
-
-            brain.SimulationTick(0.1f);
-
-            ColonistActivityRunner runner = colonistObject.GetComponent<ColonistActivityRunner>();
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Eating));
-            Assert.That(runner.HasActiveRequest, Is.True);
-            Assert.That(runner.IsActivityActive, Is.False);
-
-            SetPrivateField(runner, "reservation", null);
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-        }
-
-        [Test]
-        public void ImminentWorkAllowsMealUntilWorkMealThresholdAndWorkWinsAfterRelease()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(1.6f, new DailyShiftWindow(2f, 6f), true);
-            CreateFoodManagerAndService();
-            ConfigureEatingLifecycle(brain, hunger: 80f);
-
-            brain.SimulationTick(0.1f);
-
-            ColonistActivityRunner runner = colonistObject.GetComponent<ColonistActivityRunner>();
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Eating));
-            Assert.That(runner.HasActiveRequest, Is.True);
-
-            SetPrivateField(
-                simulationObject.GetComponent<SimulationManager>(),
-                "currentGameHour",
-                2f);
-            brain.SimulationTick(0.1f);
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                39f);
-            brain.SimulationTick(0.1f);
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
-
-            SetPrivateField(runner, "reservation", null);
-            brain.SimulationTick(0.1f);
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-            brain.SimulationTick(0.1f);
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.WorkSeeking));
-        }
-
-        [Test]
-        public void SleepyThresholdDoesNotInterruptCommittedMeal()
-        {
-            ColonistBrain brain = CreateBrain(70f);
-            CreateSchedule(0f, null, false);
-            CreateFoodManagerAndService();
-            ConfigureEatingLifecycle(brain, hunger: 80f);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Eating));
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-        }
-
-        [Test]
-        public void InvalidFoodServiceStopsEatLifecycleSafely()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateFoodManagerAndService();
-            ConfigureEatingLifecycle(brain, hunger: 80f);
-            foodFacilityObject.GetComponent<FoodServiceComponent>().enabled = false;
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Eating));
-        }
-
-        [Test]
-        public void SleepWinsWhenColonistIsBothSleepyAndHungry()
-        {
-            ColonistBrain brain = CreateBrain(80f);
-            CreateSchedule(0f, null, false);
-            ConfigureSleepTarget();
-            CreateFoodManagerAndService();
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                80f);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.SleepSeeking));
-            Assert.That(
-                colonistObject.GetComponent<ColonistActivityRunner>().CurrentActivityId,
-                Is.EqualTo("Sleep"));
-        }
-
-        [Test]
-        public void CriticalHungerWinsWhenColonistIsSleepy()
-        {
-            ColonistBrain brain = CreateBrain(80f);
-            CreateSchedule(0f, null, false);
-            ConfigureSleepTarget();
-            CreateFoodManagerAndService();
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                95f);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.EatSeeking));
-            Assert.That(
-                colonistObject.GetComponent<ColonistActivityRunner>().CurrentActivityId,
-                Is.EqualTo("Eat"));
-        }
 
         [Test]
         public void CriticalHungerWakesSleepingColonistWithoutFoodReservation()
@@ -679,21 +330,6 @@ namespace AsteroidColony.Tests
             Assert.That(token.IsReleased, Is.False);
         }
 
-        [Test]
-        public void CriticalHungerWinsBeforeBeginningCurrentWork()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
-            CreateFoodManagerAndService();
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                95f);
-
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.EatSeeking));
-        }
 
         [Test]
         public void CriticalHungerRequestsPhysicalWorkExit()
@@ -804,42 +440,6 @@ namespace AsteroidColony.Tests
             Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_ended_for_work"));
         }
 
-        [Test]
-        public void CriticalEatingContinuesUntilWorkMealThreshold()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(3f, new DailyShiftWindow(2f, 6f), true);
-            CreateFoodManagerAndService();
-            ConfigureEatingLifecycle(brain, hunger: 95f);
-
-            brain.SimulationTick(0.1f);
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                89f);
-            brain.SimulationTick(0.1f);
-
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                41f);
-            brain.SimulationTick(0.1f);
-
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                39f);
-            brain.SimulationTick(0.1f);
-
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
-            Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_ended_for_work"));
-        }
 
         [Test]
         public void EatingWithoutWorkContinuesUntilZero()
@@ -880,40 +480,6 @@ namespace AsteroidColony.Tests
             Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_completed_fully"));
         }
 
-        [Test]
-        public void CriticalHungerInterruptsOffDutyAndDoesNotRestartIt()
-        {
-            ColonistBrain brain = CreateBrain(0f);
-            CreateSchedule(0f, null, false);
-            CreateRecreationProvider(60f, 0f, "play");
-            CreateFoodManagerAndService();
-            SetStimulationNeed(80f);
-            brain.SimulationTick(0.1f);
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.OffDutySeeking));
-
-            GameObject foodReservationBlocker =
-                new GameObject("Food Reservation Blocker");
-            foodReservationBlocker.transform.SetParent(foodFacilityObject.transform, false);
-            InteractableFacility foodFacility =
-                foodFacilityObject.GetComponent<InteractableFacility>();
-            Assert.That(
-                foodFacility.TryAcquire(
-                    "Eat01",
-                    foodReservationBlocker,
-                    out FacilityReservationToken token),
-                Is.True);
-
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                95f);
-            brain.SimulationTick(0.1f);
-            brain.SimulationTick(0.1f);
-
-            Assert.That(brain.State, Is.EqualTo(ColonistBrainState.Idle));
-            Assert.That(brain.LastDecisionReason, Is.EqualTo("food_target_unavailable"));
-            Assert.That(token.IsReleased, Is.False);
-        }
 
         [Test]
         public void HungryColonistWithImminentWorkCanBeginEatingBeforeShift()

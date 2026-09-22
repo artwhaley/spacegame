@@ -41,7 +41,8 @@ which status they rely on and what observable protects the choice.
 - Prefer small reviewable changes, preserve local work, and record the Play Mode
   observable that justifies a change.
 - Add focused tests where they protect a pure algorithm, a regression, or a critical
-  invariant. Do not require a fixed test count per ticket.
+  invariant. Do not require a fixed test count per ticket. While the project is in
+  exploration mode, `TESTING_IN_EXPLORATION_MODE.md` is the canonical testing policy.
 - Runtime/presentation and scene ownership boundaries should be introduced when a
   current consumer needs them, not solely because a future packet mentions them.
 

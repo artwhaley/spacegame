@@ -6,6 +6,7 @@ using UnityEngine.TestTools;
 
 namespace AsteroidColony.Tests
 {
+    [Category("Core")]
     public class InventoryComponentTests
     {
         private GameObject inventoryObject;

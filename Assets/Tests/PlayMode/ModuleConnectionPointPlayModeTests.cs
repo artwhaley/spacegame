@@ -6,6 +6,7 @@ using UnityEngine.TestTools;
 
 namespace AsteroidColony.Tests
 {
+    [Category("UnityIntegration")]
     public sealed class ModuleConnectionPointPlayModeTests
     {
         private GameObject firstRoot;

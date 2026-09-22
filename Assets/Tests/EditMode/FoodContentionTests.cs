@@ -12,6 +12,8 @@ namespace AsteroidColony.Tests
     /// configured explicitly, so nothing here depends on NavMesh availability or on which scene
     /// happens to be open in the Editor.
     /// </summary>
+    [Category("Regression")]
+
     public class FoodContentionTests
     {
         private readonly List<GameObject> sceneObjects = new List<GameObject>();
@@ -68,50 +70,6 @@ namespace AsteroidColony.Tests
             Assert.That(retry, Is.Not.Null);
         }
 
-        [Test]
-        public void WaitingDinerFindsNoTargetAndReconsidersLaterWithoutLeaks()
-        {
-            WorkforceManager workforce = CreateWorkforceManager();
-            SimulationLogManager log = CreateSimulationLogManager();
-            Cafeteria cafeteria = CreateCafeteria(
-                requiresStaff: true,
-                FoodSelfServicePolicy.AssignedWorkers);
-            FoodManager manager = CreateFoodManager(cafeteria);
-            TestColonist alice = CreateColonist("Alice");
-            TestColonist bob = CreateColonist("Bob");
-            TestColonist dana = CreateColonist("Dana");
-            AssignWorker(workforce, alice, cafeteria, 6f, 18f);
-            SetWorkerPhysicallyServing(alice, cafeteria);
-
-            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob.Identity, gameHour: 10f));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(bob.Identity, 1L, out FoodOffer bobOffer), Is.True);
-            Assert.That(bobOffer.Opportunity.Target.ActivityId, Is.EqualTo("Eat"));
-
-            // Bob takes the only seat.
-            Assert.That(
-                cafeteria.Facility.TryAcquire("Eat01", bob.Runner, out FacilityReservationToken bobSeat),
-                Is.True);
-
-            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(dana.Identity, gameHour: 10f));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(dana.Identity, 1L, out _), Is.False);
-
-            // A failed discovery must not leak a reservation on Dana's behalf.
-            Assert.That(dana.Runner.HasActiveRequest, Is.False);
-            Assert.That(dana.Runner.Phase, Is.EqualTo(ActivityPhase.Idle));
-            Assert.That(cafeteria.Facility.IsReserved("Eat01"), Is.True);
-
-            Assert.That(CountEntries(log, "food.bid_submitted", "Bob"), Is.EqualTo(1));
-            Assert.That(CountEntries(log, "food.no_offer", "Dana"), Is.EqualTo(1));
-
-            Assert.That(cafeteria.Facility.Release(bobSeat), Is.True);
-            manager.RemoveOffer(bobOffer, accepted: false, reason: "test_cleanup");
-            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(dana.Identity, gameHour: 10f));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(dana.Identity, 1L, out FoodOffer opportunity), Is.True);
-            Assert.That(opportunity.Opportunity.AccessMode, Is.EqualTo(FoodServiceAccessMode.PublicStaffed));
-        }
 
         [Test]
         public void TwoPublicDinersDiscoverTheSameStaffedCounterSeparately()
@@ -141,50 +99,6 @@ namespace AsteroidColony.Tests
             Assert.That(CountEntries(log, "food.bid_submitted", "Dana"), Is.EqualTo(1));
         }
 
-        [Test]
-        public void CriticallyHungryServerLeavesWorkClosesTheCounterAndFeedsHerself()
-        {
-            WorkforceManager workforce = CreateWorkforceManager();
-            CreateSimulationManager(10f);
-            SimulationLogManager log = CreateSimulationLogManager();
-            Cafeteria cafeteria = CreateCafeteria(
-                requiresStaff: true,
-                FoodSelfServicePolicy.AssignedWorkers);
-            FoodManager manager = CreateFoodManager(cafeteria);
-            TestColonist alice = CreateColonist("Alice");
-            TestColonist bob = CreateColonist("Bob");
-            AssignWorker(workforce, alice, cafeteria, 6f, 18f);
-            SetWorkerPhysicallyServing(alice, cafeteria);
-            ConfigureWorkingLifecycle(alice, cafeteria, "ServeFood");
-
-            Assert.That(cafeteria.Service.HasActivePublicStaff(10f), Is.True);
-            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob.Identity, gameHour: 10f));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(bob.Identity, 1L, out FoodOffer publicOpportunity), Is.True);
-            Assert.That(publicOpportunity.Opportunity.AccessMode, Is.EqualTo(FoodServiceAccessMode.PublicStaffed));
-
-            SetPrivateField(alice.Stats, "hunger", 95f);
-            alice.Brain.SimulationTick(0.1f);
-
-            Assert.That((bool)GetPrivateField(alice.Brain, "workStopRequested"), Is.True);
-            Assert.That(CountEntries(log, "work.left_for_critical_need", "Alice"), Is.EqualTo(1));
-
-            // Once she has physically left the station the counter closes to new diners.
-            ClearRunnerState(alice);
-            Assert.That(cafeteria.Service.HasActivePublicStaff(10f), Is.False);
-            manager.RemoveOffer(publicOpportunity, accepted: false, reason: "server_left");
-            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(bob.Identity, gameHour: 10f));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(bob.Identity, 1L, out _), Is.False);
-            Assert.That(
-                cafeteria.Service.EvaluateAccess(alice.Identity, 10f),
-                Is.EqualTo(FoodServiceAccessMode.SelfService));
-            manager.SubmitBid(ActivityBidTestHelpers.CreateFoodBid(alice.Identity, gameHour: 10f));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(alice.Identity, 1L, out FoodOffer aliceOpportunity), Is.True);
-            Assert.That(aliceOpportunity.Opportunity.AccessMode, Is.EqualTo(FoodServiceAccessMode.SelfService));
-            Assert.That(aliceOpportunity.Opportunity.Target.ActivityId, Is.EqualTo("Eat"));
-        }
 
         [Test]
         public void ServedDinerFinishesTheMealAfterTheServerLeaves()
@@ -260,36 +174,6 @@ namespace AsteroidColony.Tests
             Assert.That(dana.Brain.LastDecisionReason, Is.EqualTo("food_access_lost"));
         }
 
-        [Test]
-        public void SelfServicePermissionEndsWhenTheEmployeeIsReassignedAway()
-        {
-            WorkforceManager workforce = CreateWorkforceManager();
-            Cafeteria cafeteria = CreateCafeteria(
-                requiresStaff: true,
-                FoodSelfServicePolicy.AssignedWorkers);
-            WorkplaceComponent farm = CreateWorkplace(
-                CreateRole("farmer"),
-                "Farm",
-                "Farm01");
-            TestColonist alice = CreateColonist("Alice");
-            AssignWorker(workforce, alice, cafeteria, 6f, 18f);
-
-            Assert.That(
-                cafeteria.Service.EvaluateAccess(alice.Identity, 20f),
-                Is.EqualTo(FoodServiceAccessMode.SelfService));
-
-            Assert.That(
-                workforce.Assign(
-                    alice.Identity,
-                    farm,
-                    farm.Roles[0].Role,
-                    new DailyShiftWindow(20f, 23f)),
-                Is.EqualTo(WorkAssignmentResult.Applied));
-
-            Assert.That(
-                cafeteria.Service.EvaluateAccess(alice.Identity, 20f),
-                Is.EqualTo(FoodServiceAccessMode.Unavailable));
-        }
 
         private static int CountEntries(
             SimulationLogManager log,

@@ -7,6 +7,7 @@ using UnityEngine.TestTools;
 
 namespace AsteroidColony.Tests
 {
+    [Category("UnityIntegration")]
     public class RuntimeLifecyclePlayModeTests
     {
         private GameObject probeObject;

@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace AsteroidColony.Tests
 {
+    [Category("Core")]
     public class ResourceQuantityRulesTests
     {
         private ResourceDefinition fractional;

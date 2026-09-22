@@ -2,6 +2,7 @@ using NUnit.Framework;
 
 namespace AsteroidColony.Tests
 {
+    [Category("Core")]
     public class SimulationTimeTests
     {
         private StaffingTestHarness harness;

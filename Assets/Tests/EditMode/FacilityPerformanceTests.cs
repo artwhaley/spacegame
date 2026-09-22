@@ -20,6 +20,7 @@ namespace AsteroidColony.Tests
     }
 
     /// <summary>T03: staffing roles, count curves, and facility performance.</summary>
+    [Category("Core")]
     public class FacilityPerformanceTests
     {
         private StaffingTestHarness harness;

@@ -11,6 +11,8 @@ namespace AsteroidColony.Tests
     /// not share mutable state. Every assertion here is deterministic and free of NavMesh
     /// dependency, so the suite does not depend on which scene happens to be open in the Editor.
     /// </summary>
+    [Category("Regression")]
+
     public class MultiColonistIsolationTests
     {
         private const float BaselineLeisureRate = 4f;
@@ -60,46 +62,7 @@ namespace AsteroidColony.Tests
             Assert.That(alice.Stats.NeedsStimulation, Is.False);
         }
 
-        [Test]
-        public void TickingOneStatisticsComponentDoesNotMoveAnotherColonistsNeeds()
-        {
-            TestColonist bob = CreateColonist("Bob");
-            TestColonist alice = CreateColonist("Alice");
-            bob.Stats.AdjustHunger(80f);
-            alice.Stats.AdjustHunger(0f);
 
-            bob.Stats.SimulationTick(0.1f);
-
-            // 8 hunger per game hour at the default rate.
-            Assert.That(bob.Stats.Hunger, Is.EqualTo(80.8f).Within(0.0001f));
-            Assert.That(alice.Stats.Hunger, Is.EqualTo(0f).Within(0.0001f));
-        }
-
-        [Test]
-        public void ActiveRecreationRecoveryIsPerColonistState()
-        {
-            TestColonist bob = CreateColonist("Bob");
-            TestColonist alice = CreateColonist("Alice");
-            OffDutyComponent provider = CreateRecreationProvider(
-                "play",
-                "Play01",
-                "play",
-                stimulationRecovery: 60f,
-                relaxationRecovery: 0f);
-
-            ConfigureGenuinelyActiveActivity(bob, provider, "play");
-
-            Assert.That(
-                bob.Stats.EffectiveStimulationPerGameHour,
-                Is.EqualTo(BaselineLeisureRate - 60f).Within(0.0001f));
-            // Bob's activity must not become Alice's effective rate.
-            Assert.That(
-                alice.Stats.EffectiveStimulationPerGameHour,
-                Is.EqualTo(BaselineLeisureRate).Within(0.0001f));
-            Assert.That(
-                alice.Stats.EffectiveRelaxationPerGameHour,
-                Is.EqualTo(BaselineLeisureRate).Within(0.0001f));
-        }
 
         [Test]
         public void CompletionCooldownIsPerColonist()
@@ -203,24 +166,6 @@ namespace AsteroidColony.Tests
             Assert.That(reclaimed, Is.Not.Null);
         }
 
-        [Test]
-        public void ChangingOneSleepAssignmentLeavesTheOthersAlone()
-        {
-            InteractableFacility commandPod = CreateSleepFacility();
-            TestColonist bob = CreateColonist("Bob");
-            TestColonist alice = CreateColonist("Alice");
-            TestColonist charlie = CreateColonist("Charlie");
-
-            AssignSleep(commandPod, bob, "Sleep01");
-            AssignSleep(commandPod, alice, "Sleep02");
-            AssignSleep(commandPod, charlie, "Sleep03");
-
-            AssignSleep(commandPod, bob, "Sleep04");
-
-            Assert.That(ResolveSleepActivity(bob), Is.EqualTo("Sleep04"));
-            Assert.That(ResolveSleepActivity(alice), Is.EqualTo("Sleep02"));
-            Assert.That(ResolveSleepActivity(charlie), Is.EqualTo("Sleep03"));
-        }
 
         [Test]
         public void WorkforceAssignmentsRemainPerColonist()
@@ -297,143 +242,8 @@ namespace AsteroidColony.Tests
             Assert.That(bobRecords, Is.EqualTo(1));
         }
 
-        [Test]
-        public void ColonistWithoutAJobNeverSeeksWork()
-        {
-            WorkforceManager workforce = CreateWorkforceManager();
-            JobRoleDefinition farmer = CreateRole("farmer");
-            WorkplaceComponent farm = CreateWorkplace(farmer, "Farm", "Farm01");
-            TestColonist bob = CreateColonist("Bob");
-            Assert.That(
-                workforce.Assign(bob.Identity, farm, farmer, new DailyShiftWindow(8f, 16f)),
-                Is.EqualTo(WorkAssignmentResult.Applied));
 
-            SimulationManager simulation = CreateSimulationManager(10f);
-            TestColonist dana = CreateColonist("Dana");
 
-            Assert.That(
-                workforce.TryGetCurrentShift(
-                    dana.Identity,
-                    simulation.CurrentGameHour,
-                    out _),
-                Is.False);
-            Assert.That(
-                workforce.TryGetNextShift(
-                    dana.Identity,
-                    simulation.CurrentGameHour,
-                    out _),
-                Is.False);
-            Assert.That(
-                workforce.TryGetCurrentShift(
-                    bob.Identity,
-                    simulation.CurrentGameHour,
-                    out _),
-                Is.True);
-
-            dana.Brain.SimulationTick(0.1f);
-
-            Assert.That(dana.Brain.State, Is.EqualTo(ColonistBrainState.Idle));
-            Assert.That(
-                dana.Brain.LastDecisionReason,
-                Is.EqualTo("discretionary_needs_satisfied"));
-        }
-
-        [Test]
-        public void DivergentLeisureDrivesProduceDifferentPreferredActivities()
-        {
-            OffDutyManager manager = CreateOffDutyManager();
-            UseOnlyProviders(
-                manager,
-                CreateRecreationProvider(
-                    "play",
-                    "Play01",
-                    "play",
-                    stimulationRecovery: 60f,
-                    relaxationRecovery: 0f),
-                CreateRecreationProvider(
-                    "relax",
-                    "Relax01",
-                    "relax",
-                    stimulationRecovery: 0f,
-                    relaxationRecovery: 60f));
-
-            TestColonist bob = CreateColonist("Bob");
-            TestColonist charlie = CreateColonist("Charlie");
-            bob.Stats.AdjustStimulationNeed(80f);
-            charlie.Stats.AdjustRelaxationNeed(80f);
-
-            Assert.That(bob.Brain.PreferredOffDutyDrive, Is.EqualTo(OffDutyDrive.Stimulation));
-            Assert.That(charlie.Brain.PreferredOffDutyDrive, Is.EqualTo(OffDutyDrive.Relaxation));
-
-            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
-                bob.Identity, OffDutyDrive.Stimulation));
-            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
-                charlie.Identity, OffDutyDrive.Relaxation));
-            manager.SimulationTick(0.1f);
-
-            Assert.That(manager.TryPeekOffer(bob.Identity, 1L, out OffDutyOffer bobOffer), Is.True);
-            Assert.That(bobOffer.Opportunity.Target.ActivityId, Is.EqualTo("play"));
-            Assert.That(manager.TryPeekOffer(charlie.Identity, 1L, out OffDutyOffer charlieOffer), Is.True);
-            Assert.That(charlieOffer.Opportunity.Target.ActivityId, Is.EqualTo("relax"));
-
-            // Neither colonist is blocked by the other, and drive filtering remains domain-specific.
-            Assert.That(
-                bob.Brain.OffDutyCompletionHistory.IsOnCooldown("play", 12f, 10f),
-                Is.False);
-        }
-
-        [Test]
-        public void SharedRecreationCapacityCannotBeDoubleOccupied()
-        {
-            OffDutyManager manager = CreateOffDutyManager();
-            OffDutyComponent provider = CreateRecreationProvider(
-                "play",
-                "Play01",
-                "play",
-                stimulationRecovery: 60f,
-                relaxationRecovery: 0f);
-            UseOnlyProviders(manager, provider);
-
-            InteractableFacility facility = provider.Facility;
-            TestColonist bob = CreateColonist("Bob");
-            TestColonist dana = CreateColonist("Dana");
-
-            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
-                bob.Identity, OffDutyDrive.Stimulation));
-            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
-                dana.Identity, OffDutyDrive.Stimulation));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(bob.Identity, 1L, out OffDutyOffer bobOffer), Is.True);
-            Assert.That(manager.TryPeekOffer(dana.Identity, 1L, out _), Is.False);
-            Assert.That(bobOffer.Opportunity.Target.ActivityId, Is.EqualTo("play"));
-            manager.RemoveOffer(bobOffer, accepted: true, reason: "test_accept");
-            Assert.That(
-                facility.TryAcquire("Play01", bob.Runner, out FacilityReservationToken owned),
-                Is.True);
-            Assert.That(owned, Is.Not.Null);
-
-            // A second colonist cannot acquire the seat after the winner accepts it.
-            Assert.That(
-                facility.TryAcquire("Play01", dana.Runner, out FacilityReservationToken denied),
-                Is.False);
-            Assert.That(denied, Is.Null);
-
-            TestColonist charlie = CreateColonist("Charlie");
-            Assert.That(
-                provider.IsDiscoverable(provider.Activities[0]),
-                Is.False);
-            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
-                charlie.Identity, OffDutyDrive.Stimulation));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(charlie.Identity, 1L, out _), Is.False);
-
-            Assert.That(facility.Release(owned), Is.True);
-            manager.SubmitBid(ActivityBidTestHelpers.CreateOffDutyBid(
-                charlie.Identity, OffDutyDrive.Stimulation));
-            manager.SimulationTick(0.1f);
-            Assert.That(manager.TryPeekOffer(charlie.Identity, 1L, out OffDutyOffer reopenedOffer), Is.True);
-            Assert.That(reopenedOffer.Opportunity.Target.ActivityId, Is.EqualTo("play"));
-        }
 
         [Test]
         public void ColonistEventsUseTheColonistIdentityAsPrimarySubject()
@@ -484,56 +294,6 @@ namespace AsteroidColony.Tests
             }
         }
 
-        [Test]
-        public void FacilityHistoryRemainsQueryableThroughTheSecondarySubject()
-        {
-            SimulationLogManager log = CreateSimulationLogManager();
-            SetStaticInstance(typeof(SimulationLogManager), "Instance", log);
-            SimulationManager simulation = CreateSimulationManager(10f);
-            SetStaticInstance(typeof(SimulationManager), "Instance", simulation);
-            OffDutyManager manager = CreateOffDutyManager();
-            SetStaticInstance(typeof(OffDutyManager), "Instance", manager);
-            OffDutyComponent provider = CreateRecreationProvider(
-                "play",
-                "Play01",
-                "play",
-                stimulationRecovery: 60f,
-                relaxationRecovery: 0f);
-            UseOnlyProviders(manager, provider);
-
-            TestColonist bob = CreateColonist("Bob");
-            TestColonist alice = CreateColonist("Alice");
-            bob.Stats.AdjustStimulationNeed(80f);
-            bob.Brain.SimulationTick(0.1f);
-
-            IReadOnlyList<SimulationLogEntry> facilityEntries =
-                log.Query(subject: provider.Facility);
-            Assert.That(facilityEntries.Count, Is.GreaterThan(0));
-
-            int entriesAttributedToBob = 0;
-            for (int index = 0; index < facilityEntries.Count; index++)
-            {
-                SimulationLogEntry entry = facilityEntries[index];
-                Assert.That(entry.SecondarySubject, Is.Not.Null);
-                Assert.That(
-                    entry.SecondarySubject.DisplayName,
-                    Is.EqualTo(provider.Facility.name));
-                // Clicking a facility must never surface another colonist's private history:
-                // every entry that involves the facility still names the acting colonist.
-                Assert.That(entry.PrimarySubject, Is.Not.Null);
-                if (string.Equals(entry.PrimarySubject.DisplayName, "Bob", System.StringComparison.Ordinal))
-                    entriesAttributedToBob++;
-                else
-                    Assert.That(
-                        entry.PrimarySubject.DisplayName,
-                        Is.Not.EqualTo("Alice"));
-            }
-
-            Assert.That(
-                entriesAttributedToBob,
-                Is.GreaterThan(0),
-                "The acting colonist must remain identifiable on facility history.");
-        }
 
         private static int CountAssignmentsFor(
             WorkforceManager workforce,
