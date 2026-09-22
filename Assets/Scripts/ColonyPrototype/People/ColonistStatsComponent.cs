@@ -18,6 +18,9 @@ namespace AsteroidColony
         [SerializeField]
         private ColonistActivityRunner activityRunner;
 
+        [SerializeField]
+        private ColonistIdentity identity;
+
         [SerializeField, Min(0f)]
         private float sleepyThreshold = 70f;
 
@@ -192,6 +195,9 @@ namespace AsteroidColony
         {
             if (activityRunner == null)
                 activityRunner = GetComponent<ColonistActivityRunner>();
+
+            if (identity == null)
+                identity = GetComponent<ColonistIdentity>();
 
             CaptureThresholdState();
         }
@@ -496,6 +502,22 @@ namespace AsteroidColony
             wasRelaxationNeeded = relaxationNeeded;
         }
 
+        /// <summary>
+        /// Canonical structured-log subject. A need transition belongs to the colonist, not to
+        /// this stats component, so a query by ColonistIdentity finds threshold history even
+        /// though several of the colonist's components record events.
+        /// </summary>
+        private UnityEngine.Object LogSubject
+        {
+            get
+            {
+                if (identity == null)
+                    identity = GetComponent<ColonistIdentity>();
+
+                return identity != null ? (UnityEngine.Object)identity : (UnityEngine.Object)this;
+            }
+        }
+
         private void RecordTransition(
             string eventKey,
             bool wasActive,
@@ -510,7 +532,7 @@ namespace AsteroidColony
                 eventKey,
                 "Need",
                 "Info",
-                this,
+                LogSubject,
                 null,
                 new SimulationLogField("state", isActive ? "entered" : "exited"),
                 new SimulationLogField("value", value),

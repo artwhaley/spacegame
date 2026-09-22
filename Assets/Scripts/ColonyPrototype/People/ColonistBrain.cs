@@ -429,7 +429,7 @@ namespace AsteroidColony
                     "work.left_for_critical_need",
                     "Work",
                     "Warning",
-                    this,
+                    LogSubject,
                     workTargetInProgress != null ? workTargetInProgress.Facility : null,
                     new SimulationLogField("reason", "critical_hunger"),
                     new SimulationLogField("hunger", stats.Hunger));
@@ -703,7 +703,7 @@ namespace AsteroidColony
                 "offduty.target_selected",
                 "OffDuty",
                 "Info",
-                this,
+                LogSubject,
                 opportunity.Target.Facility,
                 new SimulationLogField("drive", driveLabel),
                 new SimulationLogField("need", need),
@@ -883,7 +883,7 @@ namespace AsteroidColony
                 completed ? "offduty.completed" : "offduty.interrupted",
                 "OffDuty",
                 "Info",
-                this,
+                LogSubject,
                 opportunityInProgress != null ? opportunityInProgress.Target.Facility : null,
                 new SimulationLogField("reason", reason),
                 new SimulationLogField("activeDuration", actualActiveOffDutyGameHours),
@@ -1001,6 +1001,23 @@ namespace AsteroidColony
                        out occurrence);
         }
 
+        /// <summary>
+        /// Canonical structured-log subject for this colonist. Game-side colonist events are
+        /// attributed to the ColonistIdentity instead of to whichever sibling component emitted
+        /// them, so querying "this colonist's history" cannot silently miss needs, decisions or
+        /// activity lifecycle entries recorded by another of the colonist's components.
+        /// </summary>
+        private UnityEngine.Object LogSubject
+        {
+            get
+            {
+                if (identity == null)
+                    identity = GetComponent<ColonistIdentity>();
+
+                return identity != null ? (UnityEngine.Object)identity : (UnityEngine.Object)this;
+            }
+        }
+
         private void RecordDecision(
             string eventKey,
             string reason,
@@ -1019,7 +1036,7 @@ namespace AsteroidColony
                 eventKey,
                 "Decision",
                 "Info",
-                this,
+                LogSubject,
                 target,
                 MergeFields(new SimulationLogField("reason", reason), fields));
         }
@@ -1061,7 +1078,7 @@ namespace AsteroidColony
                 eventKey,
                 "Activity",
                 activityEvent.Kind == ActivityLifecycleEventKind.Failed ? "Warning" : "Info",
-                this,
+                LogSubject,
                 activityEvent.Facility,
                 new SimulationLogField("activityId", activityEvent.ActivityId),
                 new SimulationLogField("reservationGroup", activityEvent.ReservationGroup),

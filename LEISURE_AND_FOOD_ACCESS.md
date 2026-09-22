@@ -113,3 +113,91 @@ Alice becomes Critically Hungry while Working
 
 No `NeedsComponent`, `ServiceManager`, `OpportunityManager`, Utility AI, or generic intent
 framework was introduced, and no Food inventory or resource economy exists yet.
+
+---
+
+# Multi-Colonist Expectations (Stack 2)
+
+Stack 2 changes nothing about the ownership model above. It adds the rule that every piece of
+*changing colonist state* is per instance, and that shared managers only ever answer questions
+about a colonist they were handed.
+
+## Per-colonist state that must never be shared
+
+```text
+brain state (Idle / Seeking / Active ...)
+current Sleep, Work, Eat and OffDuty targets
+stop-request flags and the latest free-time plan
+Fatigue / Hunger / Stimulation / Relaxation
+threshold-transition state
+OffDuty completion and cooldown history
+last decision signature (log deduplication)
+```
+
+None of these may live in a `static` field, and no manager may keep a single global "last target"
+whose value changes what a different colonist does. Manager singletons
+(`WorkforceManager.Instance`, `FoodManager.Instance`, `OffDutyManager.Instance`,
+`SimulationLogManager.Instance`) are colony/world authority and remain shared by design.
+
+## Canonical log subject
+
+Colonist-originated events use the **ColonistIdentity** as the primary subject, not whichever
+sibling component happened to emit them:
+
+```text
+ColonistBrain decision / offduty / activity-bridge events   primary = identity
+ColonistStatsComponent need-threshold transitions            primary = identity
+FoodManager discovery events                                 primary = seeking identity
+
+activity involving a facility                                secondary = facility
+```
+
+This makes "show me Bob's history" one meaning even though Bob's needs, decisions and physical
+activity lifecycle are recorded by three different components, and it keeps
+`click Cafeteria -> events involving the Cafeteria` working through the secondary subject.
+Management/system events may still use manager or system subjects.
+
+## Personal cooldowns are not colony memory
+
+```text
+Bob completes play -> Bob/play enters cooldown
+Dana has never completed play -> Dana/play is NOT on cooldown
+```
+
+The cooldown key is semantic (`play`, `relax`), not a facility instance, and the history object is
+owned by one colonist's brain. Shared `relax` capacity is contended by *reservation*, not by
+cooldown, so one colonist finishing an activity never removes the activity from anyone else.
+
+## Shared capacity without queues
+
+One public `Eat01` seat and one `Play01`/`Relax01` seat are shared by reservation group. There is
+still no queue, waiting line, ticket number or fairness scheduler, and there must not be one yet:
+
+```text
+FoodManager discovers for a specific requester; it never reserves on anyone's behalf
+ColonistActivityRunner reserves and releases; a lost race leaves it Idle, not stuck
+A losing colonist stays free to reconsider on a later tick and leaks nothing
+The next colonist may take the seat only after the current owner releases it
+```
+
+## Staffed service for several colonists at once
+
+Service availability is evaluated per requester, at the same instant, from the same facility:
+
+```text
+Alice physically Serving -> outsider Bob and outsider Dana both get public_staffed
+Alice off shift, still assigned -> Alice gets self_service, outsiders get unavailable
+Alice reassigned away -> employee self-service disappears
+
+Alice critically hungry while Serving
+    -> she leaves Work, the counter closes to NEW diners
+    -> she remains an assigned worker, so she may self-serve
+    -> she eats, returns to Work if the shift remains, and the counter reopens
+
+Bob already Eating when Alice leaves
+    -> Bob keeps his meal; only structural target validity is re-checked
+    -> a colonist still Seeking (walking/entering) loses access and unwinds
+```
+
+No colonist may be Working and Eating at the same time, and no worker is required merely for an
+assigned employee to feed herself.
