@@ -51,6 +51,36 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void LogicalStepMetadataUsesSimulatedSecondsAndCarriesNoLegacyRate()
+        {
+            manager = CreateManager();
+            manager.speedMultiplier = 1000f;
+
+            AdvanceTick(manager, 1f);
+
+            Assert.That(manager.CurrentSimulationSeconds, Is.EqualTo(1000d).Within(0.000001d));
+            Assert.That(manager.LogicalStepSimulationSeconds, Is.EqualTo(1f));
+            Assert.That(manager.MaxLogicalStepsPerFrame, Is.GreaterThanOrEqualTo(1000));
+        }
+
+        [Test]
+        public void LogicalDebtIsCappedPerFrameAndCarriedForward()
+        {
+            manager = CreateManager();
+            SetPrivateField(manager, "simulationDebtSeconds", 2.5d);
+            SetPrivateField(manager, "maxLogicalStepsPerFrame", 1);
+
+            InvokePrivate(manager, "Update");
+
+            Assert.That(manager.CurrentTick, Is.EqualTo(1));
+            Assert.That(manager.SimulationDebtSeconds, Is.GreaterThan(0.5d));
+            Assert.That(manager.SimulationDebtSeconds, Is.LessThan(4d));
+
+            InvokePrivate(manager, "Update");
+            Assert.That(manager.CurrentTick, Is.EqualTo(2));
+        }
+
+        [Test]
         public void SpeedMultiplierClampsToOneThroughOneThousand()
         {
             manager = CreateManager();
@@ -122,11 +152,25 @@ namespace AsteroidColony.Tests
 
         private static void AdvanceTick(SimulationManager simulationManager, float realDeltaSeconds)
         {
-            MethodInfo method = typeof(SimulationManager).GetMethod(
-                "AdvanceTick",
+            InvokePrivate(simulationManager, "AdvanceTick", realDeltaSeconds);
+        }
+
+        private static void InvokePrivate(object target, string methodName, params object[] arguments)
+        {
+            MethodInfo method = target.GetType().GetMethod(
+                methodName,
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null);
-            method.Invoke(simulationManager, new object[] { realDeltaSeconds });
+            method.Invoke(target, arguments);
+        }
+
+        private static void SetPrivateField(object target, string fieldName, object value)
+        {
+            FieldInfo field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null);
+            field.SetValue(target, value);
         }
 
         private sealed class TestPresentationSource : IPresentationSpeedSource

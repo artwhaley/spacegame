@@ -27,6 +27,8 @@ namespace AsteroidColony
         private const float MinSpeedMultiplier = 1f;
         private const float MaxSpeedMultiplier = 1000f;
         private const float DefaultSpeedMultiplier = 10f;
+        private const float DefaultLogicalStepSimulationSeconds = 1f;
+        private const int DefaultMaxLogicalStepsPerFrame = 10000;
 
         public static SimulationManager Instance { get; private set; }
 
@@ -45,17 +47,30 @@ namespace AsteroidColony
         // derived directly from real seconds and speedMultiplier.
         [HideInInspector]
         public float gameHoursPerRealSecond = 1f;
+        // Retained for scene compatibility. It no longer determines simulation
+        // time; logical stepping is expressed in simulated seconds below.
+        [HideInInspector]
         public float tickIntervalSeconds = 0.1f;
+
+        [Header("Deterministic Stepping")]
+        [Min(0.001f)]
+        [Tooltip("Size of one logical simulation step in simulated seconds. Keep fixed when comparing runs.")]
+        [SerializeField] private float logicalStepSimulationSeconds = DefaultLogicalStepSimulationSeconds;
+        [Min(1)]
+        [Tooltip("Maximum logical steps consumed by one rendered frame. Unconsumed debt is carried forward.")]
+        [SerializeField] private int maxLogicalStepsPerFrame = DefaultMaxLogicalStepsPerFrame;
 
         [Header("Runtime State")]
         [SerializeField] private float currentGameHour;
         [SerializeField] private long currentTick;
+        [SerializeField] private double simulationSeconds;
+        [SerializeField] private double simulationDebtSeconds;
 
         private readonly List<ISimulationTickable> tickables = new List<ISimulationTickable>();
         private readonly HashSet<ISimulationTickable> pendingAdds = new HashSet<ISimulationTickable>();
         private readonly HashSet<ISimulationTickable> pendingRemoves = new HashSet<ISimulationTickable>();
-        private float accumulator;
         private bool ticking;
+        private int lastFrameLogicalSteps;
 
         private void Awake()
         {
@@ -66,6 +81,9 @@ namespace AsteroidColony
                 return;
             }
             Instance = this;
+            if (simulationSeconds <= 0d && currentGameHour > 0f)
+                simulationSeconds = currentGameHour * SecondsPerGameHour;
+            currentGameHour = (float)(simulationSeconds / SecondsPerGameHour);
             PresentationTime.RegisterSource(this);
             ReadinessHistory.BeginSession();
             PruneDesiredTickables();
@@ -85,6 +103,11 @@ namespace AsteroidColony
 
         public float CurrentGameHour => currentGameHour;
         public long CurrentTick => currentTick;
+        public double CurrentSimulationSeconds => simulationSeconds;
+        public double SimulationDebtSeconds => simulationDebtSeconds;
+        public float LogicalStepSimulationSeconds => logicalStepSimulationSeconds;
+        public int MaxLogicalStepsPerFrame => maxLogicalStepsPerFrame;
+        public int LastFrameLogicalSteps => lastFrameLogicalSteps;
         public int CurrentDayIndex => SimulationTime.DayIndexAt(currentGameHour);
         public int CurrentDayNumber => SimulationTime.DayNumberAt(currentGameHour);
         public float CurrentHourOfDay => SimulationTime.HourOfDayAt(currentGameHour);
@@ -145,12 +168,14 @@ namespace AsteroidColony
             if (paused)
                 return;
 
-            float interval = Mathf.Max(0.0001f, tickIntervalSeconds);
-            accumulator += Time.unscaledDeltaTime;
-            while (accumulator >= interval)
+            simulationDebtSeconds += Time.unscaledDeltaTime * EffectiveSpeedMultiplier;
+            lastFrameLogicalSteps = 0;
+            double step = logicalStepSimulationSeconds;
+            while (simulationDebtSeconds >= step && lastFrameLogicalSteps < maxLogicalStepsPerFrame)
             {
-                accumulator -= interval;
-                AdvanceTick(interval);
+                simulationDebtSeconds -= step;
+                AdvanceLogicalStep((float)step);
+                lastFrameLogicalSteps++;
             }
         }
 
@@ -159,6 +184,19 @@ namespace AsteroidColony
             if (float.IsNaN(currentGameHour) || float.IsInfinity(currentGameHour))
                 currentGameHour = 0f;
             currentGameHour = Mathf.Max(0f, currentGameHour);
+
+            if (double.IsNaN(simulationSeconds) || double.IsInfinity(simulationSeconds))
+                simulationSeconds = currentGameHour * SecondsPerGameHour;
+            simulationSeconds = System.Math.Max(0d, simulationSeconds);
+
+            if (double.IsNaN(simulationDebtSeconds) || double.IsInfinity(simulationDebtSeconds))
+                simulationDebtSeconds = 0d;
+            simulationDebtSeconds = System.Math.Max(0d, simulationDebtSeconds);
+
+            if (float.IsNaN(logicalStepSimulationSeconds) || float.IsInfinity(logicalStepSimulationSeconds))
+                logicalStepSimulationSeconds = DefaultLogicalStepSimulationSeconds;
+            logicalStepSimulationSeconds = Mathf.Max(0.001f, logicalStepSimulationSeconds);
+            maxLogicalStepsPerFrame = Mathf.Max(1, maxLogicalStepsPerFrame);
 
             speedMultiplier = ClampSpeedMultiplier(speedMultiplier);
 
@@ -169,8 +207,19 @@ namespace AsteroidColony
 
         private void AdvanceTick(float realDeltaSeconds)
         {
-            float deltaGameHours = realDeltaSeconds * EffectiveSpeedMultiplier / SecondsPerGameHour;
-            currentGameHour += deltaGameHours;
+            if (float.IsNaN(realDeltaSeconds) || float.IsInfinity(realDeltaSeconds) || realDeltaSeconds <= 0f)
+                return;
+            AdvanceLogicalStep(realDeltaSeconds * EffectiveSpeedMultiplier);
+        }
+
+        private void AdvanceLogicalStep(float simulatedSeconds)
+        {
+            if (float.IsNaN(simulatedSeconds) || float.IsInfinity(simulatedSeconds) || simulatedSeconds <= 0f)
+                return;
+
+            double deltaGameHours = simulatedSeconds / SecondsPerGameHour;
+            simulationSeconds += simulatedSeconds;
+            currentGameHour = (float)(simulationSeconds / SecondsPerGameHour);
             currentTick++;
 
             ticking = true;
@@ -180,7 +229,7 @@ namespace AsteroidColony
                 ISimulationTickable tickable = snapshot[i];
                 if (pendingRemoves.Contains(tickable) || !IsLiveEnabled(tickable))
                     continue;
-                tickable.SimulationTick(deltaGameHours);
+                tickable.SimulationTick((float)deltaGameHours);
             }
             ticking = false;
             FlushPending();

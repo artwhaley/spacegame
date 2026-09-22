@@ -19,6 +19,26 @@ namespace Colony.Interactions
 
         public IReadOnlyList<FacilityActivityBinding> Activities => activities;
         public IReadOnlyList<FacilitySequenceBinding> Sequences => sequences;
+        public int ActiveReservationCount => reservations.Count;
+
+        /// <summary>
+        /// Read-only diagnostic access for stress monitors and editor tooling.
+        /// The returned token still belongs to this facility and must not be
+        /// retained as a replacement for the runner's lifecycle ownership.
+        /// </summary>
+        public bool TryGetReservation(
+            string reservationGroup,
+            out FacilityReservationToken token)
+        {
+            if (!string.IsNullOrWhiteSpace(reservationGroup) &&
+                reservations.TryGetValue(reservationGroup, out token))
+            {
+                return true;
+            }
+
+            token = null;
+            return false;
+        }
 
         public void AddEmptyActivityBinding()
         {

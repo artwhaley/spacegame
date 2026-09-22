@@ -1,11 +1,11 @@
 {
-    "name": "ColonyPrototype.Tests",
-    "rootNamespace": "AsteroidColony.Tests",
+    "name": "AsteroidColony.Stress.Editor",
+    "rootNamespace": "AsteroidColony.Stress.Editor",
     "references": [
+        "AsteroidColony.Stress.Runtime",
         "ColonyPrototype.Runtime",
         "Colony.Interactions.Runtime",
-        "AsteroidColony.Stress.Runtime",
-        "Unity.TextMeshPro"
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [
         "Editor"
@@ -13,13 +13,9 @@
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
-    "precompiledReferences": [
-        "nunit.framework.dll"
-    ],
+    "precompiledReferences": [],
     "autoReferenced": false,
-    "defineConstraints": [
-        "UNITY_INCLUDE_TESTS"
-    ],
+    "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
 }

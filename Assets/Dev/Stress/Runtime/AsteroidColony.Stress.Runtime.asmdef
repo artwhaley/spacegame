@@ -1,0 +1,17 @@
+{
+    "name": "AsteroidColony.Stress.Runtime",
+    "rootNamespace": "AsteroidColony.Stress",
+    "references": [
+        "ColonyPrototype.Runtime",
+        "Colony.Interactions.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

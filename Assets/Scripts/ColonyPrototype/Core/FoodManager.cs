@@ -55,9 +55,22 @@ namespace AsteroidColony
         private string lastAnonymousSignature;
         private readonly List<SeekerSignature> seekerSignatures =
             new List<SeekerSignature>();
+        private long foodQueryCount;
+        private long foodCandidateEvaluationCount;
+        private long foodSelectionCount;
 
         public IReadOnlyList<FoodServiceComponent> Services =>
             services ?? (IReadOnlyList<FoodServiceComponent>)Array.Empty<FoodServiceComponent>();
+        public long FoodQueryCount => foodQueryCount;
+        public long FoodCandidateEvaluationCount => foodCandidateEvaluationCount;
+        public long FoodSelectionCount => foodSelectionCount;
+
+        public void ResetDiagnostics()
+        {
+            foodQueryCount = 0;
+            foodCandidateEvaluationCount = 0;
+            foodSelectionCount = 0;
+        }
 
         private void Awake()
         {
@@ -120,6 +133,8 @@ namespace AsteroidColony
             if (query == null)
                 return false;
 
+            foodQueryCount++;
+
             PruneServices();
 
             float bestDistance = float.PositiveInfinity;
@@ -128,6 +143,7 @@ namespace AsteroidColony
             for (int index = 0; index < services.Count; index++)
             {
                 FoodServiceComponent candidate = services[index];
+                foodCandidateEvaluationCount++;
                 if (!TryEvaluateCandidate(
                         query,
                         candidate,
@@ -152,6 +168,8 @@ namespace AsteroidColony
 
             if (bestService == null)
                 return false;
+
+            foodSelectionCount++;
 
             opportunity = new FoodServiceOpportunity(
                 new ActivityTarget(bestService.Facility, bestService.EatActivityId),

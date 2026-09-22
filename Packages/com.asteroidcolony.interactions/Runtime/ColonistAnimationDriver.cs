@@ -40,6 +40,7 @@ namespace Colony.Interactions
         public event Action ActivityBodyCompleted;
         public event Action<AnimationSegment> SegmentStarted;
         public event Action<float> LocomotionTransitionStarted;
+        public event Action<string> FailureOccurred;
 
         public bool TryGetCurrentSegmentProgress(out float normalizedProgress)
         {
@@ -648,6 +649,7 @@ namespace Colony.Interactions
             CurrentSegmentIsLoop = false;
             ResetAnimatorToLocomotion();
             Debug.LogWarning($"{nameof(ColonistAnimationDriver)} on {name}: {reason}", this);
+            FailureOccurred?.Invoke(reason);
             StatusChanged?.Invoke($"Action failed: {reason}");
             return false;
         }

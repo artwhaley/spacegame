@@ -105,9 +105,19 @@ namespace AsteroidColony
 
         [SerializeField] private List<OffDutyComponent> providers =
             new List<OffDutyComponent>();
+        private long opportunityQueryCount;
+        private long opportunityCandidateEvaluationCount;
 
         public IReadOnlyList<OffDutyComponent> Providers =>
             providers ?? (IReadOnlyList<OffDutyComponent>)Array.Empty<OffDutyComponent>();
+        public long OpportunityQueryCount => opportunityQueryCount;
+        public long OpportunityCandidateEvaluationCount => opportunityCandidateEvaluationCount;
+
+        public void ResetDiagnostics()
+        {
+            opportunityQueryCount = 0;
+            opportunityCandidateEvaluationCount = 0;
+        }
 
         private void Awake()
         {
@@ -165,6 +175,8 @@ namespace AsteroidColony
                 return false;
             }
 
+            opportunityQueryCount++;
+
             PruneProviders();
             float bestDistance = float.PositiveInfinity;
             for (int providerIndex = 0; providerIndex < providers.Count; providerIndex++)
@@ -175,6 +187,7 @@ namespace AsteroidColony
                 {
                     OffDutyActivityBinding activity = activities[activityIndex];
                     report.EvaluatedActivities++;
+                    opportunityCandidateEvaluationCount++;
 
                     if (query.DesiredDrive.HasValue &&
                         !activity.Satisfies(query.DesiredDrive.Value))
