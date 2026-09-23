@@ -58,3 +58,24 @@
 - Files changed: `Assets/Scripts/ColonyPrototype/Vehicles/Flight/ShuttleFlightProfile.cs`, `ShuttleFlightState.cs`, `ShuttleFlightIntegrator.cs`, their Unity metadata, `Assets/GameData/Flight/ShuttleFlightProfile.asset` and its metadata, `Assets/Tests/EditMode/ShuttleFlightIntegratorTests.cs` and its metadata, and this report.
 - Concurrent authoring preserved: `Assets/Prefabs/Shuttle.prefab` gained a user-authored `RCS` transform group and six nozzle markers during A01. That file is unstaged and excluded from this checkpoint.
 - Limitations: the integrator is not yet attached to a Shuttle; no scene movement or visual acceptance is claimed.
+
+## A02 — Guidance and route seam
+
+### Checkpoint
+
+- Sprint baseline HEAD: `e4104fc4ca6bd6f6fbe828aafdfa96769b657255`
+- A02 start HEAD: `2be707fe` (A01 checkpoint).
+
+### Implementation
+
+- Added ordered `FlightRoute` and `FlightWaypoint` data, including Cruise, Approach, and Clearance semantics, an unobstructed direct-route factory, and progression checks that do not stop at ordinary Cruise waypoints.
+- Added stateless guidance for main-burn alignment, bounded RCS commands, cruise-speed coasting, braking distance/angle, rotation-time prediction, shortest-path angular control, and RCS settling toward a point.
+- Limited authored and commanded RCS acceleration to at most half of main acceleration. The starter asset remains at 25%.
+- Guidance and route data do not inspect colliders, asteroids, or scene objects.
+
+### Verification and files
+
+- Added 10 focused EditMode tests for thrust alignment, RCS bounds, coasting, settling, 3D orientation convergence, route shape, Cruise progression, and stopping calculations.
+- Verification: A01 and A02 runtime sources and both test files compiled with Roslyn against the installed UnityEngine and NUnit assemblies. Unity EditMode execution remains pending for the active-editor reason recorded above.
+- Files changed: `Assets/Scripts/ColonyPrototype/Vehicles/Flight/FlightRoute.cs`, `ShuttleFlightGuidance.cs`, their Unity metadata, the RCS validation in `ShuttleFlightProfile.cs`, `Assets/Tests/EditMode/ShuttleFlightGuidanceTests.cs` and its metadata, and this report.
+- Limitations: route creation is a direct two-endpoint route; voyage execution and scene wiring are not implemented yet.

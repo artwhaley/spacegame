@@ -29,7 +29,7 @@ namespace AsteroidColony
         private void OnValidate()
         {
             mainAcceleration = Positive(mainAcceleration, 8f);
-            rcsAcceleration = Positive(rcsAcceleration, 2f);
+            rcsAcceleration = Mathf.Min(Positive(rcsAcceleration, 2f), mainAcceleration * 0.5f);
             maxCruiseSpeed = Positive(maxCruiseSpeed, 25f);
             approachMaxSpeed = Positive(approachMaxSpeed, 3f);
             finalDockMaxSpeed = Positive(finalDockMaxSpeed, 0.5f);
