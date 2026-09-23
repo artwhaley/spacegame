@@ -79,3 +79,25 @@
 - Verification: A01 and A02 runtime sources and both test files compiled with Roslyn against the installed UnityEngine and NUnit assemblies. Unity EditMode execution remains pending for the active-editor reason recorded above.
 - Files changed: `Assets/Scripts/ColonyPrototype/Vehicles/Flight/FlightRoute.cs`, `ShuttleFlightGuidance.cs`, their Unity metadata, the RCS validation in `ShuttleFlightProfile.cs`, `Assets/Tests/EditMode/ShuttleFlightGuidanceTests.cs` and its metadata, and this report.
 - Limitations: route creation is a direct two-endpoint route; voyage execution and scene wiring are not implemented yet.
+
+## A03 — Docking ports and probe semantics
+
+### Checkpoint
+
+- Sprint baseline HEAD: `e4104fc4ca6bd6f6fbe828aafdfa96769b657255`
+- A03 start HEAD: `b281f459` (A02 checkpoint).
+
+### Implementation
+
+- Added `ShuttleDockingProbeComponent` with a serialized node reference. Its editor validation wires the existing `node_docking` spelling as well as `nodeDocking`; runtime code reads only the serialized reference.
+- Added `DockingPortComponent` with serialized docking, approach, and clearance nodes; Free/Reserved/Occupied/Closed state; single-Shuttle reservation/occupancy; idempotent Open/Close; and explicit configuration/capture-tolerance validation.
+- Added `DockingPoseUtility` to solve Shuttle root position and rotation from an offset probe for arbitrary 3D target poses.
+- Added the probe component to `Shuttle.prefab` and a port component with child references and starter capture tolerances to `Airlock.prefab`. `Shuttle Variant` inherits its probe from the base prefab.
+- The two prefab files still contain user-authored RCS markers and approach/clearance nodes. Their new component wiring is saved in the working tree but excluded from the A03 commit so those in-progress human-authored asset changes are not swept into a code checkpoint.
+
+### Verification and files
+
+- Added 7 focused EditMode tests for arbitrary probe offsets/orientations, port reservation and occupancy ownership, release, closure, authored odd angles, and invalid configuration.
+- Verification: all current flight runtime sources and A01–A03 test sources compiled with Roslyn against the installed UnityEngine and NUnit assemblies. Unity EditMode execution remains pending for the active-editor reason recorded above.
+- Files changed: `Assets/Scripts/ColonyPrototype/Vehicles/Flight/ShuttleDockingProbeComponent.cs`, `DockingPortComponent.cs`, `DockingPoseUtility.cs`, their Unity metadata, `Assets/Tests/EditMode/DockingPortTests.cs` and its metadata, `Assets/Prefabs/Shuttle.prefab`, `Assets/Prefabs/Airlock.prefab`, and this report.
+- Limitations: no voyage state machine or mechanical capture controller exists yet; the scene still has not been exercised in Play Mode.
