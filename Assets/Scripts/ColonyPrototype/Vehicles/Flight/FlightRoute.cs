@@ -22,6 +22,7 @@ namespace AsteroidColony
         [Min(0.01f)] public float arrivalRadius = 2f;
         public bool requiresLowArrivalSpeed;
         [Min(0f)] public float requiredArrivalSpeed = 0.5f;
+        [Min(0f)] public float maxPassSpeed;
 
         public FlightWaypoint() { }
 
@@ -43,11 +44,14 @@ namespace AsteroidColony
         public bool IsValid => ShuttleFlightIntegrator.IsFinite(worldPosition) &&
             ShuttleFlightIntegrator.IsFinite(arrivalRadius) && arrivalRadius > 0f &&
             ShuttleFlightIntegrator.IsFinite(requiredArrivalSpeed) && requiredArrivalSpeed >= 0f &&
+            ShuttleFlightIntegrator.IsFinite(maxPassSpeed) && maxPassSpeed >= 0f &&
             (!hasDesiredOrientation || ShuttleFlightIntegrator.IsFinite(desiredOrientation));
 
-        public static FlightWaypoint Cruise(Vector3 position, float radius = 2f)
+        public static FlightWaypoint Cruise(Vector3 position, float radius = 2f, float maxPassSpeed = 0f)
         {
-            return new FlightWaypoint(position, FlightWaypointKind.Cruise, radius);
+            FlightWaypoint waypoint = new FlightWaypoint(position, FlightWaypointKind.Cruise, radius);
+            waypoint.maxPassSpeed = Mathf.Max(0f, maxPassSpeed);
+            return waypoint;
         }
 
         public static FlightWaypoint Approach(Vector3 position, Quaternion? orientation = null,
@@ -113,7 +117,7 @@ namespace AsteroidColony
             }
         }
 
-        /// <summary>Creates the unobstructed Sprint A route; later planners can add Cruise points.</summary>
+        /// <summary>Creates the direct Sprint A route through authored clearance and approach nodes.</summary>
         public static FlightRoute CreateDirect(Vector3 originClearance, Vector3 destinationApproach,
             Quaternion? approachOrientation = null, float clearanceRadius = 1f, float approachRadius = 1f)
         {

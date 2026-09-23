@@ -8,6 +8,8 @@ namespace AsteroidColony.Editor
     {
         private ShuttleFlightProfile displayedProfile;
         private SerializedObject profileProperties;
+        private ShuttleNavigationProfile displayedNavigationProfile;
+        private SerializedObject navigationProperties;
 
         public override void OnInspectorGUI()
         {
@@ -58,17 +60,64 @@ namespace AsteroidColony.Editor
             {
                 EditorGUILayout.LabelField("Linear RCS", voyage.LinearRcsActivity.ToString());
                 EditorGUILayout.LabelField("Angular RCS", voyage.AngularRcsActivity.ToString());
+                EditorGUILayout.LabelField("Route", serializedObject.FindProperty("plannedRouteKind").enumDisplayNames[
+                    serializedObject.FindProperty("plannedRouteKind").enumValueIndex]);
+                EditorGUILayout.LabelField("Route Result", serializedObject.FindProperty("routeDiagnostic").stringValue);
             }
             if (GUILayout.Button("Save Flight Profile"))
             {
                 EditorUtility.SetDirty(profile);
                 AssetDatabase.SaveAssets();
             }
+
+            ShuttleNavigationProfile navigation = voyage.NavigationProfile;
+            if (navigation != null)
+            {
+                if (displayedNavigationProfile != navigation || navigationProperties == null)
+                {
+                    displayedNavigationProfile = navigation;
+                    navigationProperties = new SerializedObject(navigation);
+                }
+                navigationProperties.Update();
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Strategic navigation", EditorStyles.boldLabel);
+                DrawNavigationField("navigationRadius", "Shuttle Physical Radius");
+                DrawNavigationField("preferredClearance", "Preferred Clearance");
+                DrawNavigationField("emergencyClearance", "Emergency Clearance");
+                DrawNavigationField("detourPadding", "Detour Padding");
+                DrawNavigationField("maxRelevantObstacles", "Obstacle Budget");
+                DrawNavigationField("maxExpansionRounds", "Expansion Rounds");
+                DrawNavigationField("maxCandidatesPerObstacle", "Candidates Per Obstacle");
+                DrawNavigationField("maxGraphNodes", "Graph Node Budget");
+                DrawNavigationField("maxEdgeTests", "Edge Sweep Budget");
+                DrawNavigationField("straightTurnDegrees", "Straight Turn Threshold");
+                DrawNavigationField("moderateTurnDegrees", "Moderate Turn Threshold");
+                DrawNavigationField("sharpTurnDegrees", "Sharp Turn Threshold");
+                DrawNavigationField("moderateSpeedMultiplier", "Moderate Turn Speed");
+                DrawNavigationField("sharpSpeedMultiplier", "Sharp Turn Speed");
+                DrawNavigationField("hairpinSpeedMultiplier", "Hairpin Speed");
+                DrawNavigationField("cornerLookaheadDistance", "Corner Braking Lookahead");
+                DrawNavigationField("replanCooldownSeconds", "Safety Replan Cooldown");
+                EditorGUILayout.LabelField("Effective sweep radius", navigation.SweptRadius.ToString("0.###"));
+                navigationProperties.ApplyModifiedProperties();
+                if (GUILayout.Button("Save Navigation Profile"))
+                {
+                    EditorUtility.SetDirty(navigation);
+                    AssetDatabase.SaveAssets();
+                }
+            }
         }
 
         private void DrawField(string name, string label)
         {
             SerializedProperty property = profileProperties.FindProperty(name);
+            if (property != null)
+                EditorGUILayout.PropertyField(property, new GUIContent(label));
+        }
+
+        private void DrawNavigationField(string name, string label)
+        {
+            SerializedProperty property = navigationProperties.FindProperty(name);
             if (property != null)
                 EditorGUILayout.PropertyField(property, new GUIContent(label));
         }

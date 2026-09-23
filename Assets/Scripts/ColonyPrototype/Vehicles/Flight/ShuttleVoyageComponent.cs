@@ -3,6 +3,15 @@ using UnityEngine;
 
 namespace AsteroidColony
 {
+    public enum ShuttleLocalSafetyState
+    {
+        Clear,
+        Caution,
+        EmergencyBraking,
+        AvoidanceHold,
+        Replanning
+    }
+
     public enum ShuttleVoyagePhase
     {
         Docked,
@@ -31,11 +40,24 @@ namespace AsteroidColony
 
         [Header("Reusable flight setup")]
         [SerializeField] private ShuttleFlightProfile profile;
+        [SerializeField] private ShuttleNavigationProfile navigationProfile;
+        [SerializeField] private ShuttleRoutePlanner routePlanner;
         [SerializeField] private ShuttleDockingProbeComponent probe;
         [SerializeField] private DockingPortComponent currentDock;
 
         [Header("Voyage diagnostics")]
         [SerializeField] private ShuttleVoyagePhase phase = ShuttleVoyagePhase.Docked;
+        [SerializeField] private ShuttleRouteKind plannedRouteKind;
+        [SerializeField] private string routeDiagnostic;
+        [SerializeField] private int routeRelevantObstacleCount;
+        [SerializeField] private int routeCandidateNodeCount;
+        [SerializeField] private int routeEdgeSweepCount;
+        [SerializeField] private int routeExpansionCount;
+        [SerializeField] private float routeLength;
+        [SerializeField] private float routeLengthRatio = 1f;
+        [SerializeField] private float routePlanningMilliseconds;
+        [SerializeField] private ShuttleLocalSafetyState localSafetyState;
+        [SerializeField] private string localSafetyBlocker;
         [SerializeField] private DockingPortComponent destination;
         [SerializeField] private FlightRoute route = new FlightRoute();
         [SerializeField] private int waypointIndex;
@@ -64,10 +86,15 @@ namespace AsteroidColony
         private readonly List<ShuttleRcsPulseEvent> pendingRcsPulseEvents = new List<ShuttleRcsPulseEvent>();
         private bool usedLinearRcsThisSubstep;
         private bool usedAngularRcsThisSubstep;
+        private float safetyReplanCooldown;
+        private bool wasSafetyHolding;
+        private int brakingConstraintWaypointIndex = -1;
+        private float brakingConstraintSpeed;
 
         public int SimulationTickPriority => 250;
         public ShuttleVoyagePhase Phase => phase;
         public ShuttleFlightProfile Profile { get => profile; set => profile = value; }
+        public ShuttleNavigationProfile NavigationProfile { get => navigationProfile; set => navigationProfile = value; }
         public ShuttleDockingProbeComponent Probe { get => probe; set { probe = value; hasProbeOffset = false; } }
         public DockingPortComponent CurrentDock { get => currentDock; set => currentDock = value; }
         public DockingPortComponent Destination => destination;
@@ -86,6 +113,7 @@ namespace AsteroidColony
         public bool MainEngineFiring => mainEngineFiring;
         public ShuttleRcsActivity LinearRcsActivity => linearRcsActivity;
         public ShuttleRcsActivity AngularRcsActivity => angularRcsActivity;
+        public ShuttleLocalSafetyState LocalSafetyState => localSafetyState;
 
         public void DrainRcsPulseEvents(List<ShuttleRcsPulseEvent> receiver)
         {
@@ -130,15 +158,43 @@ namespace AsteroidColony
                 return false;
             }
 
-            FlightRoute directRoute = FlightRoute.CreateDirect(
-                currentDock.ClearanceNode.position,
-                requestedDestination.ApproachNode.position,
-                DockingPoseUtility.GetMatingProbeRotation(requestedDestination.ApproachNode.rotation),
-                Mathf.Max(0.1f, profile != null ? profile.positionTolerance * 2f : 1f),
-                Mathf.Max(0.1f, profile != null ? profile.positionTolerance * 2f : 1f));
-            directRoute[directRoute.Count - 1].requiredArrivalSpeed = profile != null
-                ? profile.approachMaxSpeed : 1f;
-            return TryRequestVoyage(requestedDestination, directRoute, out reason);
+            FlightRoute planned;
+            routePlanner = routePlanner != null ? routePlanner : GetComponent<ShuttleRoutePlanner>();
+            if (routePlanner != null && navigationProfile != null)
+            {
+                ShuttleRoutePlan plan = routePlanner.Plan(currentDock.ClearanceNode.position,
+                    requestedDestination.ApproachNode.position, navigationProfile,
+                    profile != null ? profile.maxCruiseSpeed : 25f, transform);
+                plannedRouteKind = plan.kind;
+                routeDiagnostic = plan.diagnostic;
+                RecordPlanMetrics(plan);
+                if (plan.failure != ShuttleRouteFailure.None)
+                {
+                    reason = $"{plan.failure}: {plan.diagnostic}";
+                    return false;
+                }
+                List<FlightWaypoint> waypoints = new List<FlightWaypoint>();
+                waypoints.Add(FlightWaypoint.Clearance(currentDock.ClearanceNode.position, null,
+                    Mathf.Max(0.1f, profile != null ? profile.positionTolerance * 2f : 1f)));
+                waypoints.AddRange(plan.cruiseWaypoints);
+                waypoints.Add(FlightWaypoint.Approach(requestedDestination.ApproachNode.position,
+                    DockingPoseUtility.GetMatingProbeRotation(requestedDestination.ApproachNode.rotation),
+                    Mathf.Max(0.1f, profile != null ? profile.positionTolerance * 2f : 1f),
+                    profile != null ? profile.approachMaxSpeed : 1f));
+                planned = new FlightRoute(waypoints);
+            }
+            else
+            {
+                planned = FlightRoute.CreateDirect(currentDock.ClearanceNode.position,
+                    requestedDestination.ApproachNode.position,
+                    DockingPoseUtility.GetMatingProbeRotation(requestedDestination.ApproachNode.rotation),
+                    Mathf.Max(0.1f, profile != null ? profile.positionTolerance * 2f : 1f),
+                    Mathf.Max(0.1f, profile != null ? profile.positionTolerance * 2f : 1f));
+                routeDiagnostic = "navigation planner/profile is unassigned; using Sprint A direct route";
+                plannedRouteKind = ShuttleRouteKind.Direct;
+            }
+            planned[planned.Count - 1].requiredArrivalSpeed = profile != null ? profile.approachMaxSpeed : 1f;
+            return TryRequestVoyage(requestedDestination, planned, out reason);
         }
 
         /// <summary>Starts one trip while consuming a caller-supplied, already-planned route.</summary>
@@ -189,6 +245,7 @@ namespace AsteroidColony
             destination = requestedDestination;
             route = routeCopy;
             waypointIndex = 0;
+            brakingConstraintWaypointIndex = -1;
             blockReason = string.Empty;
             safeDepartureRotation = flightState.rotation;
             mainEngineFiring = false;
@@ -283,6 +340,9 @@ namespace AsteroidColony
             if (phase == ShuttleVoyagePhase.FinalDocking && TryCapture())
                 return;
 
+            if (TryHandleLocalSafety(dt))
+                return;
+
             Vector3 linearAcceleration = Vector3.zero;
             Vector3 angularAcceleration = Vector3.zero;
             mainEngineFiring = false;
@@ -326,7 +386,7 @@ namespace AsteroidColony
                         SetPhase(ShuttleVoyagePhase.FlipForBraking);
                         return;
                     }
-                    if (Speed >= profile.maxCruiseSpeed - 0.001f)
+                    if (Speed >= CurrentCruiseSpeedLimit() - 0.001f)
                     {
                         SetPhase(ShuttleVoyagePhase.CruiseCoasting);
                         return;
@@ -348,7 +408,7 @@ namespace AsteroidColony
                     else
                     {
                         linearAcceleration = RcsToProbeTarget(CurrentWaypoint.worldPosition,
-                            profile.maxCruiseSpeed, dt);
+                            CurrentCruiseSpeedLimit(), dt);
                     }
                     angularAcceleration = AngularToward(accelerationRotation, dt);
                     break;
@@ -356,6 +416,8 @@ namespace AsteroidColony
                 case ShuttleVoyagePhase.CruiseCoasting:
                     if (!AdvanceCruiseWaypoints())
                         return;
+                    if (brakingConstraintWaypointIndex >= 0 && waypointIndex > brakingConstraintWaypointIndex)
+                        brakingConstraintWaypointIndex = -1;
                     if (ShouldBeginApproachAtLowSpeed())
                     {
                         SetPhase(ShuttleVoyagePhase.Approach);
@@ -364,6 +426,13 @@ namespace AsteroidColony
                     if (ShouldFlipForBraking())
                     {
                         SetPhase(ShuttleVoyagePhase.FlipForBraking);
+                        return;
+                    }
+                    bool holdingSpeedForUpcomingCorner = brakingConstraintWaypointIndex >= waypointIndex &&
+                        brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f;
+                    if (!holdingSpeedForUpcomingCorner && Speed < CurrentCruiseSpeedLimit() - 0.001f)
+                    {
+                        SetPhase(ShuttleVoyagePhase.CruiseAccelerating);
                         return;
                     }
                     if (CurrentWaypoint != null)
@@ -376,9 +445,9 @@ namespace AsteroidColony
                     break;
 
                 case ShuttleVoyagePhase.FlipForBraking:
-                    if (Speed <= profile.approachMaxSpeed)
+                    if (brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f)
                     {
-                        SetPhase(ShuttleVoyagePhase.Approach);
+                        SetPhase(ShuttleVoyagePhase.CruiseCoasting);
                         return;
                     }
                     Vector3 reverseDirection = -flightState.velocity.normalized;
@@ -388,9 +457,9 @@ namespace AsteroidColony
                     break;
 
                 case ShuttleVoyagePhase.CruiseBraking:
-                    if (Speed <= profile.approachMaxSpeed + 0.001f)
+                    if (brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f)
                     {
-                        SetPhase(ShuttleVoyagePhase.Approach);
+                        SetPhase(ShuttleVoyagePhase.CruiseCoasting);
                         return;
                     }
                     Vector3 brakeDirection = -flightState.velocity.normalized;
@@ -403,8 +472,10 @@ namespace AsteroidColony
                         return;
                     }
                     angularAcceleration = AngularToward(brakeRotation, dt);
+                    float brakeTarget = brakingConstraintWaypointIndex >= 0
+                        ? brakingConstraintSpeed : profile.approachMaxSpeed;
                     float throttle = Mathf.Min(profile.mainAcceleration,
-                        Mathf.Max(0f, Speed - profile.approachMaxSpeed) / dt);
+                        Mathf.Max(0f, Speed - brakeTarget) / dt);
                     linearAcceleration = (flightState.rotation * Vector3.forward).normalized * throttle;
                     mainEngineFiring = throttle > 0f;
                     break;
@@ -488,19 +559,24 @@ namespace AsteroidColony
                     break;
 
                 case ShuttleVoyagePhase.CruiseAccelerating:
-                    if (Speed >= profile.maxCruiseSpeed - 0.001f)
+                    if (Speed >= CurrentCruiseSpeedLimit() - 0.001f)
                         SetPhase(ShuttleVoyagePhase.CruiseCoasting);
                     break;
 
                 case ShuttleVoyagePhase.FlipForBraking:
-                    if (Speed > profile.approachMaxSpeed &&
+                    if (brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f)
+                        SetPhase(ShuttleVoyagePhase.CruiseCoasting);
+                    else if (Speed > (brakingConstraintWaypointIndex >= 0
+                            ? brakingConstraintSpeed : profile.approachMaxSpeed) &&
                         Vector3.Angle(flightState.rotation * Vector3.forward, -flightState.velocity) <=
                             profile.mainBurnAlignmentDegrees && AngularSpeed <= AngularSettleSpeed)
                         SetPhase(ShuttleVoyagePhase.CruiseBraking);
                     break;
 
                 case ShuttleVoyagePhase.CruiseBraking:
-                    if (Speed <= profile.approachMaxSpeed + 0.001f)
+                    if (brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f)
+                        SetPhase(ShuttleVoyagePhase.CruiseCoasting);
+                    else if (brakingConstraintWaypointIndex < 0 && Speed <= profile.approachMaxSpeed + 0.001f)
                         SetPhase(ShuttleVoyagePhase.Approach);
                     break;
 
@@ -552,22 +628,70 @@ namespace AsteroidColony
 
         private bool ShouldFlipForBraking()
         {
-            if (Speed <= profile.approachMaxSpeed + 0.001f)
+            if (!TryGetUpcomingSpeedConstraint(out float distanceToConstraint, out float targetSpeed,
+                    out int constraintIndex) ||
+                Speed <= targetSpeed + 0.001f)
             {
                 brakingDistance = 0f;
                 flipAllowanceDistance = 0f;
                 return false;
             }
             float acceleration = Mathf.Max(0.001f, profile.mainAcceleration);
-            brakingDistance = Speed * Speed / (2f * acceleration);
+            brakingDistance = Mathf.Max(0f, Speed * Speed - targetSpeed * targetSpeed) / (2f * acceleration);
             Vector3 antiVelocity = -flightState.velocity.normalized;
             float error = Vector3.Angle(flightState.rotation * Vector3.forward, antiVelocity);
             float turnTime = ShuttleFlightGuidance.EstimateRotationTime(error, AngularSpeed,
                 profile.angularAcceleration, Mathf.Min(profile.maxAngularSpeed, profile.rcsMaxTurnSpeed));
             turnTime += profile.rcsAngularPulseSeconds + profile.rcsMinimumCoastSeconds;
             flipAllowanceDistance = Speed * turnTime;
-            return DistanceToNextLowSpeedWaypoint() <=
-                brakingDistance + flipAllowanceDistance + profile.brakingSafetyMargin;
+            float cornerLookahead = navigationProfile != null ? navigationProfile.cornerLookaheadDistance : 0f;
+            bool shouldBrake = distanceToConstraint <= brakingDistance + flipAllowanceDistance +
+                profile.brakingSafetyMargin + cornerLookahead;
+            if (shouldBrake)
+            {
+                brakingConstraintWaypointIndex = constraintIndex;
+                brakingConstraintSpeed = targetSpeed;
+            }
+            return shouldBrake;
+        }
+
+        private float CurrentCruiseSpeedLimit()
+        {
+            float limit = profile.maxCruiseSpeed;
+            FlightWaypoint waypoint = CurrentWaypoint;
+            if (waypoint != null && waypoint.kind == FlightWaypointKind.Cruise && waypoint.maxPassSpeed > 0f)
+                limit = Mathf.Min(limit, waypoint.maxPassSpeed);
+            return Mathf.Max(0.1f, limit);
+        }
+
+        private bool TryGetUpcomingSpeedConstraint(out float distance, out float targetSpeed,
+            out int constraintIndex)
+        {
+            distance = float.PositiveInfinity;
+            targetSpeed = profile != null ? profile.approachMaxSpeed : 0f;
+            constraintIndex = -1;
+            if (route == null || route.Count == 0 || profile == null)
+                return false;
+            Vector3 cursor = ProbePosition();
+            float traversed = 0f;
+            for (int i = Mathf.Clamp(waypointIndex, 0, route.Count); i < route.Count; i++)
+            {
+                FlightWaypoint waypoint = route[i];
+                traversed += Vector3.Distance(cursor, waypoint.worldPosition);
+                cursor = waypoint.worldPosition;
+                float limit = waypoint.requiresLowArrivalSpeed
+                    ? waypoint.requiredArrivalSpeed
+                    : waypoint.maxPassSpeed > 0f ? Mathf.Min(profile.maxCruiseSpeed, waypoint.maxPassSpeed)
+                    : profile.maxCruiseSpeed;
+                if (limit + 0.001f < Speed)
+                {
+                    distance = traversed;
+                    targetSpeed = limit;
+                    constraintIndex = i;
+                    return true;
+                }
+            }
+            return false;
         }
 
         private float DistanceToNextLowSpeedWaypoint()
@@ -593,11 +717,25 @@ namespace AsteroidColony
             {
                 FlightWaypoint waypoint = route[waypointIndex];
                 if (waypoint.kind != FlightWaypointKind.Cruise ||
-                    !FlightRoute.CanAdvancePastWaypoint(ProbePosition(), ProbePointVelocity(), waypoint))
+                    (!FlightRoute.CanAdvancePastWaypoint(ProbePosition(), ProbePointVelocity(), waypoint) &&
+                     !HasPassedCruiseWaypoint(waypoint, waypointIndex)))
                     break;
                 waypointIndex++;
             }
             return route != null && waypointIndex < route.Count;
+        }
+
+        private bool HasPassedCruiseWaypoint(FlightWaypoint waypoint, int index)
+        {
+            if (waypoint == null || index <= 0)
+                return false;
+            Vector3 segment = waypoint.worldPosition - route[index - 1].worldPosition;
+            if (segment.sqrMagnitude <= 0.0001f)
+                return false;
+            Vector3 direction = segment.normalized;
+            if (Vector3.Dot(ProbePosition() - route[index - 1].worldPosition, direction) < segment.magnitude)
+                return false;
+            return Vector3.Distance(ProbePosition(), waypoint.worldPosition) <= waypoint.arrivalRadius;
         }
 
         private Vector3 NextRouteDirection()
@@ -678,6 +816,137 @@ namespace AsteroidColony
             if (command.started)
                 QueueRcsPulse(Vector3.zero, command.acceleration);
             return command.acceleration;
+        }
+
+        private bool TryHandleLocalSafety(float dt)
+        {
+            if (navigationProfile == null || routePlanner == null || destination == null ||
+                (phase != ShuttleVoyagePhase.CruiseAccelerating && phase != ShuttleVoyagePhase.CruiseCoasting &&
+                 phase != ShuttleVoyagePhase.FlipForBraking && phase != ShuttleVoyagePhase.CruiseBraking))
+            {
+                localSafetyState = ShuttleLocalSafetyState.Clear;
+                localSafetyBlocker = string.Empty;
+                wasSafetyHolding = false;
+                return false;
+            }
+
+            safetyReplanCooldown = Mathf.Max(0f, safetyReplanCooldown - dt);
+            float speed = flightState.velocity.magnitude;
+            Vector3 direction = speed > 0.05f ? flightState.velocity / speed : NextRouteDirection().normalized;
+            if (direction.sqrMagnitude <= 0.0001f)
+                return false;
+            float brakingDistance = ShuttleFlightGuidance.StoppingDistance(speed, profile.mainAcceleration);
+            float lookahead = Mathf.Max(2f, brakingDistance + profile.brakingSafetyMargin +
+                navigationProfile.emergencyClearance);
+            Vector3 start = ProbePosition();
+            Vector3 end = start + direction * lookahead;
+            SpaceNavigationObstacle blocker = SpaceClearanceQuery.FindFirstBlocker(start, end,
+                navigationProfile.navigationRadius + navigationProfile.preferredClearance, transform,
+                navigationProfile.navigationObstacleLayers.value);
+
+            if (blocker == null)
+            {
+                bool wasUnsafe = localSafetyState != ShuttleLocalSafetyState.Clear || wasSafetyHolding;
+                localSafetyState = wasUnsafe ? ShuttleLocalSafetyState.Replanning : ShuttleLocalSafetyState.Clear;
+                localSafetyBlocker = string.Empty;
+                wasSafetyHolding = false;
+                if (wasUnsafe)
+                    TryReplanFromCurrentPosition();
+                if (localSafetyState == ShuttleLocalSafetyState.Replanning)
+                    localSafetyState = ShuttleLocalSafetyState.Clear;
+                return false;
+            }
+
+            string stableId = blocker.StableId;
+            if (localSafetyBlocker != stableId)
+            {
+                localSafetyBlocker = stableId;
+                safetyReplanCooldown = 0f;
+            }
+            bool emergency = SpaceClearanceQuery.FindFirstBlocker(start,
+                start + direction * Mathf.Max(navigationProfile.SweptRadius, brakingDistance),
+                navigationProfile.navigationRadius + navigationProfile.emergencyClearance, transform,
+                navigationProfile.navigationObstacleLayers.value) != null;
+            localSafetyState = emergency ? ShuttleLocalSafetyState.EmergencyBraking : ShuttleLocalSafetyState.Caution;
+
+            if (speed <= 0.1f)
+            {
+                localSafetyState = ShuttleLocalSafetyState.AvoidanceHold;
+                wasSafetyHolding = true;
+                mainEngineFiring = false;
+                linearRcs.Reset();
+                angularRcs.Reset();
+                linearRcsActivity = ShuttleRcsActivity.Settled;
+                angularRcsActivity = ShuttleRcsActivity.Settled;
+                if (safetyReplanCooldown <= 0f)
+                {
+                    safetyReplanCooldown = navigationProfile.replanCooldownSeconds;
+                    TryReplanFromCurrentPosition();
+                }
+                return true;
+            }
+
+            mainEngineFiring = false;
+            linearRcs.Reset();
+            linearRcsActivity = ShuttleRcsActivity.Settled;
+            usedLinearRcsThisSubstep = false;
+            usedAngularRcsThisSubstep = true;
+            Vector3 antiVelocity = -flightState.velocity.normalized;
+            Quaternion brakingRotation = ShuttleFlightGuidance.RotationForForward(
+                antiVelocity, flightState.rotation * Vector3.up);
+            Vector3 angularAcceleration = AngularToward(brakingRotation, dt);
+            Vector3 linearAcceleration = Vector3.zero;
+            float turnError = Quaternion.Angle(flightState.rotation, brakingRotation);
+            if (turnError <= profile.mainBurnAlignmentDegrees)
+            {
+                float throttle = Mathf.Min(profile.mainAcceleration, speed / Mathf.Max(dt, 0.0001f));
+                linearAcceleration = (flightState.rotation * Vector3.forward).normalized * throttle;
+                mainEngineFiring = throttle > 0f;
+            }
+            ShuttleFlightIntegrator.StepSubstep(ref flightState, profile,
+                linearAcceleration, angularAcceleration, dt);
+            wasSafetyHolding = true;
+            return true;
+        }
+
+        private bool TryReplanFromCurrentPosition()
+        {
+            if (routePlanner == null || navigationProfile == null || destination == null ||
+                destination.ApproachNode == null || Speed > 0.1f)
+                return false;
+            ShuttleRoutePlan plan = routePlanner.Plan(ProbePosition(), destination.ApproachNode.position,
+                navigationProfile, profile.maxCruiseSpeed, transform);
+            RecordPlanMetrics(plan);
+            routeDiagnostic = plan.failure == ShuttleRouteFailure.None
+                ? $"safety replan: {plan.kind} ({plan.diagnostic})"
+                : $"safety hold: {plan.failure} ({plan.diagnostic})";
+            if (plan.failure != ShuttleRouteFailure.None)
+                return false;
+            List<FlightWaypoint> waypoints = new List<FlightWaypoint>(plan.cruiseWaypoints);
+            waypoints.Add(FlightWaypoint.Approach(destination.ApproachNode.position,
+                DockingPoseUtility.GetMatingProbeRotation(destination.ApproachNode.rotation),
+                Mathf.Max(0.1f, profile.positionTolerance * 2f), profile.approachMaxSpeed));
+            route = new FlightRoute(waypoints);
+            waypointIndex = 0;
+            brakingConstraintWaypointIndex = -1;
+            plannedRouteKind = plan.kind;
+            localSafetyState = ShuttleLocalSafetyState.Clear;
+            localSafetyBlocker = string.Empty;
+            wasSafetyHolding = false;
+            SetPhase(ShuttleVoyagePhase.CruiseAccelerating);
+            SimulationLog.Log($"{name} safety replan complete: {plan.kind}");
+            return true;
+        }
+
+        private void RecordPlanMetrics(ShuttleRoutePlan plan)
+        {
+            routeRelevantObstacleCount = plan.relevantObstacleCount;
+            routeCandidateNodeCount = plan.candidateNodeCount;
+            routeEdgeSweepCount = plan.edgeSweepCount;
+            routeExpansionCount = plan.graphExpansionCount;
+            routeLength = plan.routeLength;
+            routeLengthRatio = plan.routeLengthRatio;
+            routePlanningMilliseconds = (float)plan.planningMilliseconds;
         }
 
         private void QueueRcsPulse(Vector3 linearAcceleration, Vector3 angularAcceleration)
@@ -889,6 +1158,14 @@ namespace AsteroidColony
             }
         }
 
+        private void OnDrawGizmosSelected()
+        {
+            if (navigationProfile == null || routePlanner == null || !routePlanner.ShowDebugGizmos)
+                return;
+            Gizmos.color = new Color(0.2f, 0.9f, 1f, 0.45f);
+            Gizmos.DrawWireSphere(transform.position, navigationProfile.SweptRadius);
+        }
+
         private void Block(string reason)
         {
             blockReason = string.IsNullOrEmpty(reason) ? "unspecified flight structure failure" : reason;
@@ -906,6 +1183,8 @@ namespace AsteroidColony
                 return;
             ShuttleVoyagePhase previous = phase;
             phase = value;
+            if (value == ShuttleVoyagePhase.Approach)
+                brakingConstraintWaypointIndex = -1;
             linearRcs.Reset();
             angularRcs.Reset();
             linearRcsActivity = ShuttleRcsActivity.Settled;

@@ -555,6 +555,7 @@ GameObject:
   - component: {fileID: 5319117513105074176}
   - component: {fileID: 7781878458890062417}
   - component: {fileID: 7312468901234567890}
+  - component: {fileID: 6127643215764328901}
   m_Layer: 0
   m_Name: Shuttle
   m_TagString: Untagged
@@ -609,6 +610,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   profile: {fileID: 11400000, guid: 1c3672f3a7f14d1a9de1c5c09b314cd7, type: 2}
+  navigationProfile: {fileID: 11400000, guid: b47566aebadd4417a457a7c4a4e70592, type: 2}
+  routePlanner: {fileID: 6127643215764328901}
   probe: {fileID: 5319117513105074176}
   currentDock: {fileID: 0}
   phase: 0
@@ -617,6 +620,8 @@ MonoBehaviour:
     waypoints: []
   waypointIndex: 0
   blockReason: 
+  plannedRouteKind: 0
+  routeDiagnostic: 
   flightState:
     position: {x: 0, y: 0, z: 0}
     velocity: {x: 0, y: 0, z: 0}
@@ -649,6 +654,19 @@ MonoBehaviour:
   nozzleRoot: {fileID: 3901431055908459250}
   smokeMaterial: {fileID: 2100000, guid: b08ea750721f4144a26f47d0af96cc30, type: 2}
   vfxProfile: {fileID: 11400000, guid: 8d263213668b43bc81f1c9ac5749dad6, type: 2}
+--- !u!114 &6127643215764328901
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8573528919344420384}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 96c40b46611d48d99a8625aebdd687c8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ShuttleRoutePlanner
+  showDebugGizmos: 0
 --- !u!1 &9073013958715102793
 GameObject:
   m_ObjectHideFlags: 0
