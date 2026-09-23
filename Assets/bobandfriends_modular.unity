@@ -1853,8 +1853,8 @@ MonoBehaviour:
     workplace: {fileID: 2046073004}
     role: {fileID: 11400000, guid: 7b2e6c1f9a3448d0b6e5c2f18a3d740c, type: 2}
     shift:
-      startHour: 6
-      endHour: 18
+      startHour: 8
+      endHour: 20
   - colonist: {fileID: 2111000083}
     workplace: {fileID: 961555878}
     role: {fileID: 11400000, guid: 91d7a4c2e6b84f50a3c9d12e7f6548ab, type: 2}
@@ -1865,8 +1865,8 @@ MonoBehaviour:
     workplace: {fileID: 1819248629}
     role: {fileID: 11400000, guid: e3ffbd76b7b0c934194fe7094ce6bc6d, type: 2}
     shift:
-      startHour: 6
-      endHour: 18
+      startHour: 8
+      endHour: 20
 --- !u!1 &2050100014
 GameObject:
   m_ObjectHideFlags: 0

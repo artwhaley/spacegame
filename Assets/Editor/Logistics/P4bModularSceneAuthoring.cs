@@ -350,9 +350,13 @@ namespace AsteroidColony.Editor
             if (farmConverter == null || farmConverter.activeRecipe == null ||
                 farmConverter.activeRecipe.stableId != "simple-farm-food" ||
                 farmConverter.activeRecipe.executionMode != RecipeExecutionMode.Batch ||
-                !Mathf.Approximately(farmConverter.activeRecipe.durationHours, 1f))
+                !Mathf.Approximately(farmConverter.activeRecipe.durationHours, 2f) ||
+                farmConverter.activeRecipe.outputs == null ||
+                farmConverter.activeRecipe.outputs.Count != 1 ||
+                farmConverter.activeRecipe.outputs[0].resource != food ||
+                !Mathf.Approximately(farmConverter.activeRecipe.outputs[0].amount, 3f))
             {
-                Debug.LogError("Farm must batch one whole Food per staffed game-hour.");
+                Debug.LogError("Farm must batch three whole Food every two staffed game-hours.");
                 errors++;
             }
 

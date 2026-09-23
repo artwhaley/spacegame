@@ -14,12 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   stableId: simple-farm-food
   displayName: Simple Farm Food
-  description: One whole Food per staffed game-hour of farm work.
+  description: Three whole Food per two staffed game-hours; twelve per eight-hour shift.
   executionMode: 1
-  durationHours: 1
+  durationHours: 2
   inputs: []
   outputs:
   - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
-    amount: 1
+    amount: 3
   valid: 1
   validationError: 
