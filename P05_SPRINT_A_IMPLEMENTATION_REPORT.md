@@ -36,3 +36,25 @@
 - Behavior changes: none.
 - Files changed: `P05_SPRINT_A_IMPLEMENTATION_REPORT.md`.
 - Limitations: real flight and visual acceptance have not been performed.
+
+## A01 — Flight state, profile, and integrator
+
+### Checkpoint
+
+- Sprint baseline HEAD: `e4104fc4ca6bd6f6fbe828aafdfa96769b657255`
+- A01 start HEAD: `fbcc7f7f` (A00 report checkpoint).
+
+### Implementation
+
+- Added `ShuttleFlightProfile` and the initial `ShuttleFlightProfile.asset` with main acceleration 8 m/s², RCS acceleration 2 m/s², 25 m/s cruise speed, 60°/s² angular acceleration, 90°/s angular speed, and 0.1 s integration substeps.
+- Added authoritative state for world position/velocity, rotation, world-space angular velocity, and last applied accelerations.
+- Added a bounded kinematic integrator with constant-acceleration translation, speed-cap crossing, bounded angular acceleration/rate, normalized quaternion updates, and deterministic internal substeps.
+- Kept the integrator independent of scene objects, ports, routes, and runtime clocks. Callers supply simulated seconds and command accelerations.
+
+### Verification and files
+
+- Added 11 focused EditMode tests for inertial math, caps, normalization, determinism, grouping independence under constant commands, and zero elapsed time.
+- Verification: the A01 runtime files and EditMode test source compiled with the installed Roslyn compiler against UnityEngine and NUnit references. Unity EditMode execution remains pending; the Unity Editor is already open on this project, and I have not launched a competing editor process.
+- Files changed: `Assets/Scripts/ColonyPrototype/Vehicles/Flight/ShuttleFlightProfile.cs`, `ShuttleFlightState.cs`, `ShuttleFlightIntegrator.cs`, their Unity metadata, `Assets/GameData/Flight/ShuttleFlightProfile.asset` and its metadata, `Assets/Tests/EditMode/ShuttleFlightIntegratorTests.cs` and its metadata, and this report.
+- Concurrent authoring preserved: `Assets/Prefabs/Shuttle.prefab` gained a user-authored `RCS` transform group and six nozzle markers during A01. That file is unstaged and excluded from this checkpoint.
+- Limitations: the integrator is not yet attached to a Shuttle; no scene movement or visual acceptance is claimed.
