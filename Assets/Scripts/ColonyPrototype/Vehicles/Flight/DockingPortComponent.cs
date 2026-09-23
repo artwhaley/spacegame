@@ -90,6 +90,49 @@ namespace AsteroidColony
             return true;
         }
 
+        /// <summary>Checks the mating probe pose and its relative motion against this berth's capture limits.</summary>
+        public bool IsWithinCaptureTolerance(Vector3 probePosition, Quaternion probeRotation,
+            Vector3 relativeVelocity, float angularSpeedDegreesPerSecond, out string reason)
+        {
+            if (!ValidateConfiguration(out reason))
+                return false;
+            if (nodeDocking == null || !ShuttleFlightIntegrator.IsFinite(probePosition) ||
+                !ShuttleFlightIntegrator.IsFinite(probeRotation) ||
+                !ShuttleFlightIntegrator.IsFinite(relativeVelocity) ||
+                !ShuttleFlightIntegrator.IsFinite(angularSpeedDegreesPerSecond))
+            {
+                reason = "probe pose or motion is missing or non-finite";
+                return false;
+            }
+
+            float positionError = Vector3.Distance(probePosition, nodeDocking.position);
+            float angleError = Quaternion.Angle(probeRotation, nodeDocking.rotation);
+            float relativeSpeed = relativeVelocity.magnitude;
+            if (positionError > capturePositionTolerance)
+            {
+                reason = $"probe position error {positionError:0.###} m exceeds {capturePositionTolerance:0.###} m";
+                return false;
+            }
+            if (relativeSpeed > captureRelativeSpeedTolerance)
+            {
+                reason = $"relative speed {relativeSpeed:0.###} m/s exceeds {captureRelativeSpeedTolerance:0.###} m/s";
+                return false;
+            }
+            if (angleError > captureAngleToleranceDegrees)
+            {
+                reason = $"probe angle error {angleError:0.###}° exceeds {captureAngleToleranceDegrees:0.###}°";
+                return false;
+            }
+            if (angularSpeedDegreesPerSecond > captureAngularSpeedTolerance)
+            {
+                reason = $"angular speed {angularSpeedDegreesPerSecond:0.###}°/s exceeds {captureAngularSpeedTolerance:0.###}°/s";
+                return false;
+            }
+
+            reason = "within capture tolerances";
+            return true;
+        }
+
         public bool TryReserve(ShuttleDockingProbeComponent shuttle)
         {
             return TryReserve(shuttle, out _);

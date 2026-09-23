@@ -101,3 +101,32 @@
 - Verification: all current flight runtime sources and A01–A03 test sources compiled with Roslyn against the installed UnityEngine and NUnit assemblies. Unity EditMode execution remains pending for the active-editor reason recorded above.
 - Files changed: `Assets/Scripts/ColonyPrototype/Vehicles/Flight/ShuttleDockingProbeComponent.cs`, `DockingPortComponent.cs`, `DockingPoseUtility.cs`, their Unity metadata, `Assets/Tests/EditMode/DockingPortTests.cs` and its metadata, `Assets/Prefabs/Shuttle.prefab`, `Assets/Prefabs/Airlock.prefab`, and this report.
 - Limitations: no voyage state machine or mechanical capture controller exists yet; the scene still has not been exercised in Play Mode.
+
+## A04 — Deterministic berth-to-berth voyage phase machine
+
+### Checkpoint
+
+- Sprint baseline HEAD: `e4104fc4ca6bd6f6fbe828aafdfa96769b657255`
+- A04 start HEAD: `4ffb7c32` (A03 checkpoint).
+
+### Implementation
+
+- Added `ShuttleVoyageComponent` as the Shuttle root movement authority. It registers with `SimulationManager`, advances only from logical simulation hours converted to simulated seconds, integrates bounded substeps, and writes the root pose once per logical tick.
+- Implemented observable Undocking, AlignDeparture, CruiseAccelerating, CruiseCoasting, FlipForBraking, CruiseBraking, Approach, DockingTurn, FinalDocking, Captured, Docked, and Blocked phases.
+- Voyages validate the occupied source berth and authored route before reserving the destination. Invalid requests leave both pose and berth state unchanged. During flight the destination reservation is checked continuously and released on structural failure.
+- Undocking preserves the captured attitude until the Shuttle probe reaches the source clearance point at low speed; the source berth is released only at that boundary.
+- Cruise routes are consumed as world-space probe targets. Cruise waypoints progress without a stop requirement. The flip trigger includes conservative full stopping distance, predicted turn time multiplied by speed, and a tunable safety margin. Main braking thrust stays off during the inertial flip.
+- Approach and final docking use bounded RCS acceleration and angular feedback. Capture requires the authored probe position, relative speed, angle, and angular-rate tolerances before solving the exact root pose and occupying the destination.
+- Added reusable port capture-tolerance validation and inspector diagnostics plus context-menu debug requests for optional Port A/Port B references.
+
+### Verification and files
+
+- Added five focused EditMode tests covering request rejection, reserve-before-undock, a long multi-Cruise-point trip through odd-angle port transforms, flip/coast/braking and final backwards approach, capture rejection at speed/angle limits, and five alternating voyages without accumulated dock-pose drift or leaked reservations.
+- Verification: the current `ColonyPrototype.Runtime` sources and `ColonyPrototype.Tests` sources compiled successfully with the Unity 6000.5.9f1 Roslyn response files. The EditMode test suite has not been executed; Unity Editor is already open on this project, so I did not launch a competing editor process.
+- Files changed: `Assets/Scripts/ColonyPrototype/Vehicles/Flight/ShuttleVoyageComponent.cs` and metadata; the capture-check helper in `DockingPortComponent.cs`; `Assets/Tests/EditMode/ShuttleVoyageTests.cs` and metadata; and this report.
+- Prefab/scene changes remain unstaged and excluded from this checkpoint. The Airlock/ Shuttle component wiring and human-authored node/RCS changes are still in the working tree.
+
+### Limitations
+
+- Synthetic test sources compile but still need EditMode execution and a visual Play Mode flight in `BobInSpace.unity`.
+- No Rigidbody, collision response, obstacle-aware planning, crew gate, passenger/cargo behavior, or legacy transport integration was added.
