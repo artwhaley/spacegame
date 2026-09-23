@@ -22,6 +22,7 @@ namespace AsteroidColony
     {
         private const float MinimumDistance = 0.0001f;
         private const float MinimumWidth = 0.0001f;
+        private const float WalkAnchorSnapDistance = 1.5f;
 
         [SerializeField]
         private NavMeshSurface ownerSurface;
@@ -262,6 +263,12 @@ namespace AsteroidColony
                 return false;
             }
 
+            if (ownerSurface.navMeshData == null)
+            {
+                error = name + " is owned by a NavMeshSurface with no baked NavMeshData.";
+                return false;
+            }
+
             if (walkAnchor == null)
             {
                 error = name + " has no WalkAnchor.";
@@ -369,9 +376,25 @@ namespace AsteroidColony
             if (distanceSquared > maxDistance * maxDistance)
                 return false;
 
+            NavMeshHit aHit;
+            NavMeshHit bHit;
+            if (!TrySampleWalkableEndpoint(a, out aHit) ||
+                !TrySampleWalkableEndpoint(b, out bHit))
+            {
+                return false;
+            }
+
+            // Connection nodes sit at doorway height. Their WalkAnchors are inset
+            // into the rooms, but may still be above the floor; snap them to a
+            // Walkable polygon for the module's agent type before registering the link.
+            // The anchors remain parented to their module points, so the link's
+            // auto-update continues to follow modules after a later reposition.
+            a.walkAnchor.position = aHit.position;
+            b.walkAnchor.position = bHit.position;
+
             GameObject linkObject = new GameObject("ModuleNavMeshLink_" + a.name + "_" + b.name);
             linkObject.hideFlags = HideFlags.HideAndDontSave;
-            linkObject.transform.position = (a.walkAnchor.position + b.walkAnchor.position) * 0.5f;
+            linkObject.transform.position = (aHit.position + bHit.position) * 0.5f;
 
             NavMeshLink link = linkObject.AddComponent<NavMeshLink>();
             link.agentTypeID = a.ownerSurface.agentTypeID;
@@ -385,11 +408,56 @@ namespace AsteroidColony
             link.autoUpdate = true;
             link.activated = true;
 
+            NavMeshPath connectionPath = new NavMeshPath();
+            NavMeshQueryFilter filter = CreateWalkableFilter(a.ownerSurface.agentTypeID);
+            if (!NavMesh.CalculatePath(aHit.position, bHit.position, filter, connectionPath) ||
+                connectionPath.status != NavMeshPathStatus.PathComplete)
+            {
+                Debug.LogWarning(
+                    "Created a NavMeshLink between " + a.name + " and " + b.name +
+                    ", but the link endpoints still do not produce a complete path. " +
+                    "Check that the two module bakes meet at this doorway.",
+                    a);
+            }
+
             Connection newConnection = new Connection(a, b, link, linkObject);
             a.connection = newConnection;
             b.connection = newConnection;
             s_Connections.Add(newConnection);
             return true;
+        }
+
+        private static bool TrySampleWalkableEndpoint(
+            ModuleConnectionPoint point,
+            out NavMeshHit hit)
+        {
+            NavMeshQueryFilter filter = CreateWalkableFilter(point.ownerSurface.agentTypeID);
+            if (NavMesh.SamplePosition(
+                    point.walkAnchor.position,
+                    out hit,
+                    WalkAnchorSnapDistance,
+                    filter))
+            {
+                return true;
+            }
+
+            Debug.LogWarning(
+                "Cannot connect " + point.name + ": its WalkAnchor at " +
+                point.walkAnchor.position + " is more than " +
+                WalkAnchorSnapDistance + " units from a Walkable NavMesh for agent type " +
+                point.ownerSurface.agentTypeID + ". Check the module bake and anchor position.",
+                point);
+            return false;
+        }
+
+        private static NavMeshQueryFilter CreateWalkableFilter(int agentTypeID)
+        {
+            int walkableArea = NavMesh.GetAreaFromName("Walkable");
+            return new NavMeshQueryFilter
+            {
+                agentTypeID = agentTypeID,
+                areaMask = walkableArea >= 0 ? 1 << walkableArea : NavMesh.AllAreas
+            };
         }
 
         private static void WarnAboutAmbiguousCandidates(

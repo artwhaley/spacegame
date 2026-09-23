@@ -17,7 +17,7 @@ namespace AsteroidColony.Editor
     {
         private const float WalkAnchorInset = 0.5f;
         private const float DefaultPartnerDistance = 0.25f;
-        private const float DefaultLinkWidth = 0.5f;
+        private const float DefaultLinkWidth = 1.0f;
 
         private static readonly string[] ModulePrefabPaths =
         {

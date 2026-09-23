@@ -110,7 +110,7 @@ MonoBehaviour:
   ownerSurface: {fileID: 7362446536700782100}
   walkAnchor: {fileID: 5167094161127112324}
   maxPartnerDistance: 0.25
-  linkWidth: 0.5
+  linkWidth: 1
 --- !u!1 &1161840056251073100
 GameObject:
   m_ObjectHideFlags: 0
@@ -541,7 +541,7 @@ MonoBehaviour:
   ownerSurface: {fileID: 7362446536700782100}
   walkAnchor: {fileID: 5246739549599341803}
   maxPartnerDistance: 0.25
-  linkWidth: 0.5
+  linkWidth: 1
 --- !u!1 &4859909999561890594
 GameObject:
   m_ObjectHideFlags: 0
