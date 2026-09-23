@@ -159,7 +159,9 @@ namespace AsteroidColony.Tests
         [Test]
         public void WorkforceProviderRequiresGenuineActiveWorkForFoodProduction()
         {
-            ResourceDefinition food = CreateResource("Food", ResourceQuantityMode.Fractional);
+            ResourceDefinition food = CreateResource("Food", ResourceQuantityMode.Discrete);
+            food.hungerRecoveryPerUnit = 90f;
+            food.consumptionDurationGameHours = 0.25f;
             ConfigureInventory(input, 20f, 20f);
             ConfigureInventory(food, 20f, 0f);
 
@@ -215,7 +217,7 @@ namespace AsteroidColony.Tests
 
             RecipeDefinition recipe = CreateRecipe(
                 "farm food",
-                RecipeExecutionMode.Continuous,
+                RecipeExecutionMode.Batch,
                 new ResourceAmount { resource = input, amount = 1f },
                 new ResourceAmount { resource = food, amount = 1f });
             ResourceConverterComponent converter = CreateConverter(recipe);
@@ -231,9 +233,13 @@ namespace AsteroidColony.Tests
             SetPrivateField(runner, "activityActive", true);
             SetPrivateField(runner, "exitInProgress", false);
 
-            converter.SimulationTick(1f);
+            converter.SimulationTick(0.5f);
             Assert.That(converter.State, Is.EqualTo(ResourceConverterState.Running));
-            Assert.That(inventory.GetOnHand(food), Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(inventory.GetOnHand(food), Is.EqualTo(0f));
+            converter.SimulationTick(0.5f);
+            Assert.That(converter.State, Is.EqualTo(ResourceConverterState.Idle));
+            Assert.That(inventory.GetOnHand(food), Is.EqualTo(1f));
+            Assert.That(ResourceQuantityRules.IsWhole(inventory.GetOnHand(food)), Is.True);
 
             SetPrivateField(runner, "activityActive", false);
             converter.SimulationTick(1f);

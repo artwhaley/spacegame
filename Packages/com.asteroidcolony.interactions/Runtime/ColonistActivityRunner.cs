@@ -865,6 +865,9 @@ namespace Colony.Interactions
 
         private void BeginExit()
         {
+            if (ActiveActivityLocked)
+                return;
+
             if (exitInProgress || currentBinding == null || animationDriver == null)
             {
                 return;

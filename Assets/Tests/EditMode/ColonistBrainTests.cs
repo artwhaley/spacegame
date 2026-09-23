@@ -425,7 +425,6 @@ namespace AsteroidColony.Tests
             SetPrivateField(simulationObject.GetComponent<SimulationManager>(),
                 "currentGameHour", 2f);
             brain.SimulationTick(0.1f);
-            ColonistActivityRunner runner = colonistObject.GetComponent<ColonistActivityRunner>();
             runner.Stop();
             Assert.That(runner.ActiveActivityLocked, Is.True);
             Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
