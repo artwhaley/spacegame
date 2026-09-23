@@ -14,6 +14,7 @@ namespace AsteroidColony
     public sealed class DockingPortComponent : MonoBehaviour
     {
         [Header("Authored port nodes")]
+        [Tooltip("Port-side mating node. Its blue +Z axis points out of the socket; the Shuttle probe axis faces it from the opposite direction.")]
         [SerializeField] private Transform nodeDocking;
         [SerializeField] private Transform nodeApproach;
         [SerializeField] private Transform nodeClearance;
@@ -106,7 +107,8 @@ namespace AsteroidColony
             }
 
             float positionError = Vector3.Distance(probePosition, nodeDocking.position);
-            float angleError = Quaternion.Angle(probeRotation, nodeDocking.rotation);
+            Quaternion matingRotation = DockingPoseUtility.GetMatingProbeRotation(nodeDocking.rotation);
+            float angleError = Quaternion.Angle(probeRotation, matingRotation);
             float relativeSpeed = relativeVelocity.magnitude;
             if (positionError > capturePositionTolerance)
             {

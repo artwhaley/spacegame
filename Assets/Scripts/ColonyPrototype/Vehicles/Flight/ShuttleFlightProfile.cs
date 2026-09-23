@@ -18,6 +18,17 @@ namespace AsteroidColony
         [Min(0.01f)] public float maxAngularSpeed = 90f;
         [Range(0f, 180f)] public float mainBurnAlignmentDegrees = 8f;
 
+        [Header("RCS impulse flight")]
+        [Min(0.01f)] public float rcsLinearPulseSeconds = 0.4f;
+        [Min(0.01f)] public float rcsAngularPulseSeconds = 0.5f;
+        [Min(0f)] public float rcsMinimumCoastSeconds = 0.15f;
+        [Min(0.01f)] public float rcsMaxCorrectionSpeed = 3f;
+        [Min(0.01f)] public float rcsMaxTurnSpeed = 30f;
+        [Min(0f)] public float rcsPositionDeadband = 0.15f;
+        [Min(0f)] public float rcsVelocityDeadband = 0.08f;
+        [Min(0f)] public float rcsAngleDeadband = 0.8f;
+        [Min(0f)] public float rcsAngularSpeedDeadband = 0.75f;
+
         [Header("Guidance and capture")]
         [Min(0f)] public float positionTolerance = 0.2f;
         [Min(0f)] public float velocityTolerance = 0.1f;
@@ -36,6 +47,15 @@ namespace AsteroidColony
             angularAcceleration = Positive(angularAcceleration, 90f);
             maxAngularSpeed = Positive(maxAngularSpeed, 90f);
             mainBurnAlignmentDegrees = Mathf.Clamp(Finite(mainBurnAlignmentDegrees, 8f), 0f, 180f);
+            rcsLinearPulseSeconds = Positive(rcsLinearPulseSeconds, 0.4f);
+            rcsAngularPulseSeconds = Positive(rcsAngularPulseSeconds, 0.5f);
+            rcsMinimumCoastSeconds = NonNegative(rcsMinimumCoastSeconds, 0.15f);
+            rcsMaxCorrectionSpeed = Positive(rcsMaxCorrectionSpeed, 3f);
+            rcsMaxTurnSpeed = Mathf.Min(Positive(rcsMaxTurnSpeed, 30f), maxAngularSpeed);
+            rcsPositionDeadband = NonNegative(rcsPositionDeadband, 0.15f);
+            rcsVelocityDeadband = NonNegative(rcsVelocityDeadband, 0.08f);
+            rcsAngleDeadband = NonNegative(rcsAngleDeadband, 0.8f);
+            rcsAngularSpeedDeadband = NonNegative(rcsAngularSpeedDeadband, 0.75f);
             positionTolerance = NonNegative(positionTolerance, 0.2f);
             velocityTolerance = NonNegative(velocityTolerance, 0.1f);
             angleTolerance = NonNegative(angleTolerance, 1f);

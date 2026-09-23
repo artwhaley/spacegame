@@ -20,6 +20,15 @@ MonoBehaviour:
   angularAcceleration: 60
   maxAngularSpeed: 90
   mainBurnAlignmentDegrees: 8
+  rcsLinearPulseSeconds: 0.4
+  rcsAngularPulseSeconds: 0.5
+  rcsMinimumCoastSeconds: 0.15
+  rcsMaxCorrectionSpeed: 3
+  rcsMaxTurnSpeed: 30
+  rcsPositionDeadband: 0.15
+  rcsVelocityDeadband: 0.08
+  rcsAngleDeadband: 0.8
+  rcsAngularSpeedDeadband: 0.75
   positionTolerance: 0.2
   velocityTolerance: 0.1
   angleTolerance: 1

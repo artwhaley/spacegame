@@ -5,6 +5,16 @@ namespace AsteroidColony
     /// <summary>Solves a Shuttle root pose from the relative pose of its mating probe.</summary>
     public static class DockingPoseUtility
     {
+        /// <summary>
+        /// The port node's forward axis points out of the socket; the probe points into it.
+        /// Their blue axes therefore oppose each other when the Shuttle is captured.
+        /// </summary>
+        public static Quaternion GetMatingProbeRotation(Quaternion portNodeRotation)
+        {
+            return ShuttleFlightIntegrator.Normalize(
+                portNodeRotation * Quaternion.Euler(0f, 180f, 0f));
+        }
+
         public static bool TryGetProbePoseRelativeToRoot(Transform shuttleRoot, Transform probe,
             out Vector3 localPosition, out Quaternion localRotation)
         {

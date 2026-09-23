@@ -130,3 +130,43 @@
 
 - Synthetic test sources compile but still need EditMode execution and a visual Play Mode flight in `BobInSpace.unity`.
 - No Rigidbody, collision response, obstacle-aware planning, crew gate, passenger/cargo behavior, or legacy transport integration was added.
+
+## A05 — Scene catch-up and first real flight (in progress)
+
+### Checkpoint and scene review
+
+- A05 start HEAD: `17ea8093` (A04 checkpoint).
+- Re-read the current `git status` and reviewed the human-authored `BobInSpace.unity`, `Shuttle.prefab`, and `Airlock.prefab` changes before editing. The scene also contains the new Shuttle-follow camera; the working tree includes authored Shuttle RCS markers and a thruster audio asset. These changes are preserved.
+- The base `Shuttle.prefab` now has `ShuttleVoyageComponent` with `ShuttleFlightProfile.asset` assigned and its local docking probe reference wired. `Shuttle Variant` inherits this reusable setup. No legacy `ShipMovementComponent` is present on the Shuttle prefab.
+- Both Airlock prefab ports already contain serialized docking/approach/clearance references. The confirmed co-located approach/clearance transforms remain unchanged.
+- The user's mating-axis correction is now the reusable convention: the Airlock node's blue +Z faces outward and the Shuttle probe's blue +Z faces into the port, so the axes oppose when captured. Capture, approach, docking-turn, and final-pose calculations all use that convention.
+
+### Starting berth and scene wiring
+
+- The user confirmed the `nodeApproach` and `nodeClearance` transforms should remain together, and approved placing the Shuttle at Port A to establish its initial captured berth.
+- Set the Shuttle scene instance to the mating root pose at Port A: root position `(-1.144696, 1.20681164, 79.34)` with 180° yaw. This places the probe at Port A's authored docking position with the two blue +Z axes opposing.
+- Set Port A's scene-instance state to `Occupied` by this Shuttle's docking probe. The Shuttle scene instance now references Port A as `currentDock`, and both scene ports through the optional debug targets. Port B remains `Free`.
+- The Shuttle and Airlock prefab assets retain reusable flight profile, probe, voyage, and port wiring. The berth state and specific port links are scene-instance overrides. Both Airlock node layouts are unchanged.
+- `BobInSpace.unity` had no `SimulationManager`, so voyage requests could not advance. Added a scene-local manager at 1× with a 0.02 simulated-second step (50 Hz) so the Shuttle receives smooth low-compression movement updates. Added an on-screen panel with Port A/B dispatch buttons, phase/speed/berth state, and rejection/block reasons; trips begin when the opposite-port button is clicked.
+- The camera was targeting the Shuttle prefab asset instead of the live scene instance. Rewired it to the scene transform, added a runtime fallback to the active Shuttle, and enabled right-drag orbit and wheel zoom alongside Q/E, W/S, and R/F.
+
+### Verification and limitation
+
+- Human acceptance: the user reports successful Play Mode travel checks at multiple play speeds. No automated tests or Unity Editor run were performed for these corrections. No A05 commit has been created.
+
+## A06 — Shuttle RCS smoke visualization
+
+### Implementation
+
+- Added `ShuttleRcsSmokeController` to the reusable `Shuttle` prefab. It discovers the direct nozzle-marker children under the authored `RCS` transform and creates one lightweight Particle System per marker at runtime, so new direct-child nozzles are picked up without adding per-nozzle script wiring.
+- `ShuttleRcsPulseController` now applies short linear and angular accelerations separated by inertial coasts. It starts a counter-pulse when stopping distance or angle requires braking. The normal main-engine forward burn remains the cruise acceleration path. `ShuttleVoyageComponent` buffers each actual RCS pulse for presentation, including pulses that start and finish within one rendered frame.
+- `ShuttleRcsSmokeController` consumes those pulse events instead of repeating smoke on its own timer. Nozzle selection uses the authored blue +Z exhaust direction, opposite thrust direction, and torque from each nozzle's lever arm. A Play Mode preview action emits one burst from every authored nozzle while the Shuttle is stationary.
+- Added a transparent smoke-puff texture and an HDRP Unlit transparent material derived from the project's existing HDRP FX sprite material. Each particle now receives its size, lifetime, velocity, and opacity through `EmitParams`; the running Particle System is never reconfigured by an Inspector edit. Puff size starts at 0.13 units, twice the midpoint of the last visible size range, with eight particles per burst. Larger puffs spawn farther outside the nozzle to avoid hiding inside the hull.
+- Flight authority stays in `ShuttleVoyageComponent` and its `ShuttleFlightProfile`: acceleration, speed limits, pulse timing, and deadbands. The voyage publishes local acceleration directions and normalized pulse strength. `ShuttleRcsSmokeController` consumes those events and uses a separate `ShuttleRcsVfxProfile` for appearance only. The Voyage Inspector exposes flight settings; the Smoke Inspector exposes VFX settings and Preview Burst.
+- Default VFX tuning aims for a short, narrow exhaust cone: 0.055 unit particle width, 0.085 second lifetime, 5 units/second exit speed, 7 degree cone half angle, 18 particles per pulse, and 0.85 opacity. Particles spawn along a short cone so the jet appears already formed, then expire quickly.
+
+### Verification
+
+- Automated verification: no permanent test added. Per `TESTING_IN_EXPLORATION_MODE.md`, this visual prefab behavior belongs to human Unity acceptance.
+- Human Unity acceptance: open `Assets/BobInSpace.unity`, press Play, select the live Shuttle, click Preview Burst, and tune Jet Width, Particle Lifetime, Exit Speed, Cone Half Angle, and Particles Per Pulse on the Smoke component. Confirm the jet is brief and directional with no Unity duration warning. Launch a trip and tune pulse duration and coast spacing on the Voyage component; use the separate Save VFX Profile and Save Flight Profile buttons to retain chosen values.
+- Unity Editor and Play Mode were not run here; the user performs the project's visual acceptance check.

@@ -27,6 +27,7 @@ namespace AsteroidColony
     {
         private const float PoseEpsilon = 0.01f;
         private const float AngularSettleSpeed = 1f;
+        private const int MaxPendingRcsPulseEvents = 32;
 
         [Header("Reusable flight setup")]
         [SerializeField] private ShuttleFlightProfile profile;
@@ -45,6 +46,8 @@ namespace AsteroidColony
         [SerializeField] private float brakingDistance;
         [SerializeField] private float flipAllowanceDistance;
         [SerializeField] private float angularErrorDegrees;
+        [SerializeField] private ShuttleRcsActivity linearRcsActivity = ShuttleRcsActivity.Settled;
+        [SerializeField] private ShuttleRcsActivity angularRcsActivity = ShuttleRcsActivity.Settled;
 
         [Header("Optional inspector debug targets")]
         [SerializeField] private DockingPortComponent debugPortA;
@@ -56,6 +59,11 @@ namespace AsteroidColony
         private Quaternion probeLocalRotation = Quaternion.identity;
         private bool hasInitialState;
         private bool hasProbeOffset;
+        private readonly ShuttleRcsPulseController linearRcs = new ShuttleRcsPulseController();
+        private readonly ShuttleRcsPulseController angularRcs = new ShuttleRcsPulseController();
+        private readonly List<ShuttleRcsPulseEvent> pendingRcsPulseEvents = new List<ShuttleRcsPulseEvent>();
+        private bool usedLinearRcsThisSubstep;
+        private bool usedAngularRcsThisSubstep;
 
         public int SimulationTickPriority => 250;
         public ShuttleVoyagePhase Phase => phase;
@@ -76,6 +84,16 @@ namespace AsteroidColony
         public float FlipAllowanceDistance => flipAllowanceDistance;
         public float AngularErrorDegrees => angularErrorDegrees;
         public bool MainEngineFiring => mainEngineFiring;
+        public ShuttleRcsActivity LinearRcsActivity => linearRcsActivity;
+        public ShuttleRcsActivity AngularRcsActivity => angularRcsActivity;
+
+        public void DrainRcsPulseEvents(List<ShuttleRcsPulseEvent> receiver)
+        {
+            if (receiver == null)
+                return;
+            receiver.AddRange(pendingRcsPulseEvents);
+            pendingRcsPulseEvents.Clear();
+        }
 
         private void Awake()
         {
@@ -91,6 +109,11 @@ namespace AsteroidColony
         private void OnDisable()
         {
             SimulationManager.UnregisterTickable(this);
+            linearRcs.Reset();
+            angularRcs.Reset();
+            linearRcsActivity = ShuttleRcsActivity.Settled;
+            angularRcsActivity = ShuttleRcsActivity.Settled;
+            pendingRcsPulseEvents.Clear();
         }
 
         public bool TryRequestVoyage(DockingPortComponent requestedDestination)
@@ -110,7 +133,7 @@ namespace AsteroidColony
             FlightRoute directRoute = FlightRoute.CreateDirect(
                 currentDock.ClearanceNode.position,
                 requestedDestination.ApproachNode.position,
-                requestedDestination.ApproachNode.rotation,
+                DockingPoseUtility.GetMatingProbeRotation(requestedDestination.ApproachNode.rotation),
                 Mathf.Max(0.1f, profile != null ? profile.positionTolerance * 2f : 1f),
                 Mathf.Max(0.1f, profile != null ? profile.positionTolerance * 2f : 1f));
             directRoute[directRoute.Count - 1].requiredArrivalSpeed = profile != null
@@ -169,6 +192,7 @@ namespace AsteroidColony
             blockReason = string.Empty;
             safeDepartureRotation = flightState.rotation;
             mainEngineFiring = false;
+            pendingRcsPulseEvents.Clear();
             SetPhase(ShuttleVoyagePhase.Undocking);
             SimulationLog.Log($"{name} voyage requested: {originPort.name} → {destination.name}");
             reason = "voyage reserved and queued for undocking";
@@ -262,6 +286,8 @@ namespace AsteroidColony
             Vector3 linearAcceleration = Vector3.zero;
             Vector3 angularAcceleration = Vector3.zero;
             mainEngineFiring = false;
+            usedLinearRcsThisSubstep = false;
+            usedAngularRcsThisSubstep = false;
 
             switch (phase)
             {
@@ -284,8 +310,6 @@ namespace AsteroidColony
                         departDirection = NextRouteDirection();
                     Quaternion departRotation = ShuttleFlightGuidance.RotationForForward(
                         departDirection, flightState.rotation * Vector3.up);
-                    linearAcceleration = RcsToProbeTarget(originPort.ClearanceNode.position,
-                        profile.approachMaxSpeed, dt);
                     angularAcceleration = AngularToward(departRotation, dt);
                     break;
 
@@ -315,10 +339,17 @@ namespace AsteroidColony
                     Vector3 accelerationDirection = CurrentWaypoint.worldPosition - ProbePosition();
                     Quaternion accelerationRotation = ShuttleFlightGuidance.RotationForForward(
                         accelerationDirection, flightState.rotation * Vector3.up);
-                    Vector3 rcsCorrection = RcsToProbeTarget(CurrentWaypoint.worldPosition,
-                        profile.maxCruiseSpeed, dt);
-                    linearAcceleration = ShuttleFlightGuidance.CalculateCruiseAcceleration(
-                        flightState, accelerationDirection, rcsCorrection, profile, out mainEngineFiring);
+                    if (ShuttleFlightGuidance.TryGetMainEngineAcceleration(flightState,
+                            accelerationDirection, profile, out Vector3 mainAcceleration))
+                    {
+                        linearAcceleration = mainAcceleration;
+                        mainEngineFiring = true;
+                    }
+                    else
+                    {
+                        linearAcceleration = RcsToProbeTarget(CurrentWaypoint.worldPosition,
+                            profile.maxCruiseSpeed, dt);
+                    }
                     angularAcceleration = AngularToward(accelerationRotation, dt);
                     break;
 
@@ -384,7 +415,8 @@ namespace AsteroidColony
                         Block("destination approach node disappeared");
                         return;
                     }
-                    Quaternion approachRootRotation = RootRotationForProbe(destination.ApproachNode.rotation);
+                    Quaternion approachRootRotation = RootRotationForProbe(
+                        DockingPoseUtility.GetMatingProbeRotation(destination.ApproachNode.rotation));
                     angularAcceleration = AngularToward(approachRootRotation, dt);
                     linearAcceleration = RcsToProbeTarget(destination.ApproachNode.position,
                         profile.approachMaxSpeed, dt);
@@ -396,7 +428,8 @@ namespace AsteroidColony
                         Block("destination docking or approach node disappeared");
                         return;
                     }
-                    Quaternion dockingRootRotation = RootRotationForProbe(destination.DockingNode.rotation);
+                    Quaternion dockingRootRotation = RootRotationForProbe(
+                        DockingPoseUtility.GetMatingProbeRotation(destination.DockingNode.rotation));
                     angularAcceleration = AngularToward(dockingRootRotation, dt);
                     linearAcceleration = RcsToProbeTarget(destination.ApproachNode.position,
                         profile.approachMaxSpeed, dt);
@@ -408,11 +441,23 @@ namespace AsteroidColony
                         Block("destination docking node disappeared");
                         return;
                     }
-                    Quaternion finalRootRotation = RootRotationForProbe(destination.DockingNode.rotation);
+                    Quaternion finalRootRotation = RootRotationForProbe(
+                        DockingPoseUtility.GetMatingProbeRotation(destination.DockingNode.rotation));
                     angularAcceleration = AngularToward(finalRootRotation, dt);
                     linearAcceleration = RcsToProbeTarget(destination.DockingNode.position,
                         profile.finalDockMaxSpeed, dt);
                     break;
+            }
+
+            if (!usedLinearRcsThisSubstep)
+            {
+                linearRcs.Reset();
+                linearRcsActivity = ShuttleRcsActivity.Settled;
+            }
+            if (!usedAngularRcsThisSubstep)
+            {
+                angularRcs.Reset();
+                angularRcsActivity = ShuttleRcsActivity.Settled;
             }
 
             ShuttleFlightIntegrator.StepSubstep(ref flightState, profile,
@@ -434,9 +479,7 @@ namespace AsteroidColony
                     break;
 
                 case ShuttleVoyagePhase.AlignDeparture:
-                    if (originPort != null && originPort.ClearanceNode != null &&
-                        Vector3.Distance(ProbePosition(), originPort.ClearanceNode.position) <= profile.positionTolerance * 2f &&
-                        Quaternion.Angle(flightState.rotation,
+                    if (Quaternion.Angle(flightState.rotation,
                             ShuttleFlightGuidance.RotationForForward(CurrentWaypoint != null
                                 ? CurrentWaypoint.worldPosition - ProbePosition() : NextRouteDirection(),
                                 flightState.rotation * Vector3.up)) <= profile.mainBurnAlignmentDegrees &&
@@ -464,7 +507,8 @@ namespace AsteroidColony
                 case ShuttleVoyagePhase.Approach:
                     if (destination != null && destination.ApproachNode != null &&
                         IsSettledAtProbePose(destination.ApproachNode.position,
-                            destination.ApproachNode.rotation, profile.positionTolerance,
+                            DockingPoseUtility.GetMatingProbeRotation(destination.ApproachNode.rotation),
+                            profile.positionTolerance,
                             profile.velocityTolerance, profile.angleTolerance,
                             profile.captureAngularSpeedTolerance))
                         SetPhase(ShuttleVoyagePhase.DockingTurn);
@@ -473,7 +517,8 @@ namespace AsteroidColony
                 case ShuttleVoyagePhase.DockingTurn:
                     if (destination != null && destination.ApproachNode != null && destination.DockingNode != null &&
                         IsSettledAtProbePose(destination.ApproachNode.position,
-                            destination.DockingNode.rotation, profile.positionTolerance,
+                            DockingPoseUtility.GetMatingProbeRotation(destination.DockingNode.rotation),
+                            profile.positionTolerance,
                             profile.velocityTolerance, profile.angleTolerance,
                             profile.captureAngularSpeedTolerance))
                         SetPhase(ShuttleVoyagePhase.FinalDocking);
@@ -518,7 +563,8 @@ namespace AsteroidColony
             Vector3 antiVelocity = -flightState.velocity.normalized;
             float error = Vector3.Angle(flightState.rotation * Vector3.forward, antiVelocity);
             float turnTime = ShuttleFlightGuidance.EstimateRotationTime(error, AngularSpeed,
-                profile.angularAcceleration, profile.maxAngularSpeed);
+                profile.angularAcceleration, Mathf.Min(profile.maxAngularSpeed, profile.rcsMaxTurnSpeed));
+            turnTime += profile.rcsAngularPulseSeconds + profile.rcsMinimumCoastSeconds;
             flipAllowanceDistance = Speed * turnTime;
             return DistanceToNextLowSpeedWaypoint() <=
                 brakingDistance + flipAllowanceDistance + profile.brakingSafetyMargin;
@@ -577,7 +623,8 @@ namespace AsteroidColony
                 return false;
 
             if (!DockingPoseUtility.TrySolveRootPose(probeLocalPosition, probeLocalRotation,
-                    destination.DockingNode.position, destination.DockingNode.rotation,
+                    destination.DockingNode.position,
+                    DockingPoseUtility.GetMatingProbeRotation(destination.DockingNode.rotation),
                     out Vector3 exactRootPosition, out Quaternion exactRootRotation))
             {
                 Block("could not solve exact root pose for the captured probe");
@@ -611,16 +658,38 @@ namespace AsteroidColony
 
         private Vector3 RcsToProbeTarget(Vector3 targetPosition, float maxSpeed, float dt)
         {
-            return ShuttleFlightGuidance.CalculateRcsSettleAcceleration(
+            usedLinearRcsThisSubstep = true;
+            ShuttleRcsPulseCommand command = linearRcs.StepLinear(
                 ProbePosition(), ProbePointVelocity(), targetPosition,
-                Mathf.Max(0.01f, maxSpeed), profile.rcsAcceleration,
-                profile.positionTolerance, profile.velocityTolerance, dt);
+                Mathf.Max(0.01f, maxSpeed), profile, dt);
+            linearRcsActivity = command.activity;
+            if (command.started)
+                QueueRcsPulse(command.acceleration, Vector3.zero);
+            return command.acceleration;
         }
 
         private Vector3 AngularToward(Quaternion targetRotation, float dt)
         {
-            return ShuttleFlightGuidance.CalculateAngularAcceleration(flightState,
-                targetRotation, profile, dt, out angularErrorDegrees);
+            usedAngularRcsThisSubstep = true;
+            ShuttleRcsPulseCommand command = angularRcs.StepAngular(
+                flightState.rotation, flightState.angularVelocity, targetRotation,
+                profile, dt, out angularErrorDegrees);
+            angularRcsActivity = command.activity;
+            if (command.started)
+                QueueRcsPulse(Vector3.zero, command.acceleration);
+            return command.acceleration;
+        }
+
+        private void QueueRcsPulse(Vector3 linearAcceleration, Vector3 angularAcceleration)
+        {
+            if (pendingRcsPulseEvents.Count >= MaxPendingRcsPulseEvents)
+                return;
+            Quaternion inverseRotation = Quaternion.Inverse(flightState.rotation);
+            float strength = linearAcceleration.sqrMagnitude > 0f
+                ? Mathf.Clamp01(linearAcceleration.magnitude / Mathf.Max(0.001f, profile.rcsAcceleration))
+                : Mathf.Clamp01(angularAcceleration.magnitude / Mathf.Max(0.001f, profile.angularAcceleration));
+            pendingRcsPulseEvents.Add(new ShuttleRcsPulseEvent(
+                inverseRotation * linearAcceleration, inverseRotation * angularAcceleration, strength));
         }
 
         private Quaternion RootRotationForProbe(Quaternion worldProbeRotation)
@@ -715,7 +784,7 @@ namespace AsteroidColony
             if (last.kind != FlightWaypointKind.Approach || !last.requiresLowArrivalSpeed ||
                 Vector3.Distance(last.worldPosition, requestedDestination.ApproachNode.position) > PoseEpsilon ||
                 (last.hasDesiredOrientation && Quaternion.Angle(last.desiredOrientation,
-                    requestedDestination.ApproachNode.rotation) > 0.1f))
+                    DockingPoseUtility.GetMatingProbeRotation(requestedDestination.ApproachNode.rotation)) > 0.1f))
             {
                 reason = "route must end at the destination's authored approach node and orientation";
                 return false;
@@ -837,6 +906,10 @@ namespace AsteroidColony
                 return;
             ShuttleVoyagePhase previous = phase;
             phase = value;
+            linearRcs.Reset();
+            angularRcs.Reset();
+            linearRcsActivity = ShuttleRcsActivity.Settled;
+            angularRcsActivity = ShuttleRcsActivity.Settled;
             if (Application.isPlaying)
                 SimulationLog.Log($"{name} shuttle phase: {previous} → {phase}");
         }

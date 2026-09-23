@@ -141,7 +141,8 @@ namespace AsteroidColony.Tests
             Assert.That(closestFinalDockDistance, Is.LessThan(finalDockStartDistance - 1f));
             Assert.That(Vector3.Distance(rig.probe.ProbeTransform.position, rig.portB.DockingNode.position),
                 Is.LessThan(0.001f));
-            Assert.That(Quaternion.Angle(rig.probe.ProbeTransform.rotation, rig.portB.DockingNode.rotation),
+            Assert.That(Quaternion.Angle(rig.probe.ProbeTransform.rotation,
+                    DockingPoseUtility.GetMatingProbeRotation(rig.portB.DockingNode.rotation)),
                 Is.LessThan(0.001f));
             Assert.That(rig.voyage.FlightState.velocity.magnitude, Is.LessThan(0.001f));
             Assert.That(rig.voyage.FlightState.angularVelocity.magnitude, Is.LessThan(0.001f));
@@ -167,7 +168,8 @@ namespace AsteroidColony.Tests
                 Assert.That(target.State, Is.EqualTo(DockingPortState.Occupied));
                 Assert.That(Vector3.Distance(rig.probe.ProbeTransform.position, target.DockingNode.position),
                     Is.LessThan(0.001f));
-                Assert.That(Quaternion.Angle(rig.probe.ProbeTransform.rotation, target.DockingNode.rotation),
+                Assert.That(Quaternion.Angle(rig.probe.ProbeTransform.rotation,
+                        DockingPoseUtility.GetMatingProbeRotation(target.DockingNode.rotation)),
                     Is.LessThan(0.001f));
 
                 target = target == rig.portA ? rig.portB : rig.portA;
@@ -184,7 +186,7 @@ namespace AsteroidColony.Tests
         {
             DockingPortComponent port = CreatePort("capture port", new Vector3(2f, -3f, 4f),
                 Quaternion.Euler(27f, 63f, -14f), Quaternion.identity);
-            Quaternion correctRotation = port.DockingNode.rotation;
+            Quaternion correctRotation = DockingPoseUtility.GetMatingProbeRotation(port.DockingNode.rotation);
 
             Assert.That(port.IsWithinCaptureTolerance(port.DockingNode.position, correctRotation,
                 Vector3.right, 0f, out string speedReason), Is.False);
@@ -206,7 +208,8 @@ namespace AsteroidColony.Tests
             result.AddWaypoint(FlightWaypoint.Clearance(start, null, 1f, 1f));
             result.AddWaypoint(FlightWaypoint.Cruise(first, 5f));
             result.AddWaypoint(FlightWaypoint.Cruise(second, 5f));
-            result.AddWaypoint(FlightWaypoint.Approach(end, destination.ApproachNode.rotation, 1f, 1f));
+            result.AddWaypoint(FlightWaypoint.Approach(end,
+                DockingPoseUtility.GetMatingProbeRotation(destination.ApproachNode.rotation), 1f, 1f));
             return result;
         }
 
@@ -226,7 +229,11 @@ namespace AsteroidColony.Tests
             voyage.Profile = profile;
             voyage.Probe = probe;
             voyage.CurrentDock = portA;
-            Assert.That(DockingPoseUtility.TrySolveRootPose(root.transform, probeNode, portA.DockingNode,
+            Assert.That(DockingPoseUtility.TryGetProbePoseRelativeToRoot(root.transform, probeNode,
+                out Vector3 probeLocalPosition, out Quaternion probeLocalRotation), Is.True);
+            Assert.That(DockingPoseUtility.TrySolveRootPose(probeLocalPosition, probeLocalRotation,
+                portA.DockingNode.position,
+                DockingPoseUtility.GetMatingProbeRotation(portA.DockingNode.rotation),
                 out Vector3 rootPosition, out Quaternion rootRotation), Is.True);
             root.transform.SetPositionAndRotation(rootPosition, rootRotation);
             Assert.That(portA.TryReserve(probe), Is.True);

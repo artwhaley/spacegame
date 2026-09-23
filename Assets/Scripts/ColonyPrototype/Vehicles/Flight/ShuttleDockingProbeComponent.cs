@@ -5,6 +5,7 @@ namespace AsteroidColony
     /// <summary>Serialized link to the Shuttle-side mechanical mating probe.</summary>
     public sealed class ShuttleDockingProbeComponent : MonoBehaviour
     {
+        [Tooltip("Shuttle-side mating node. Its blue +Z axis points toward the socket and opposes the port node's blue +Z axis at capture.")]
         [SerializeField] private Transform nodeDocking;
 
         public Transform ProbeTransform
