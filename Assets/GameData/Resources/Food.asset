@@ -14,5 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   stableId: food
   displayName: Food
-  description: Colony food supply.
-  quantityMode: 0
+  description: One whole meal unit.
+  quantityMode: 1
+  hungerRecoveryPerUnit: 90
+  consumptionDurationGameHours: 0.25

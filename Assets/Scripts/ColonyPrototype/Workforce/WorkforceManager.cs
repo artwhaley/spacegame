@@ -188,6 +188,65 @@ namespace AsteroidColony
             return false;
         }
 
+        public bool TryGetCurrentDuty(
+            ColonistIdentity colonist,
+            float absoluteGameHour,
+            out WorkAssignment assignment)
+        {
+            assignment = null;
+            return TryGetConfiguredAssignment(colonist, out assignment) &&
+                   IsFinite(absoluteGameHour) &&
+                   TryGetCurrentShift(colonist, absoluteGameHour, out _);
+        }
+
+        /// <summary>
+        /// True only while the colonist's assigned shift is active and the Brain
+        /// confirms that work owns the colonist. Facility staffing remains a
+        /// separate query through HasEnoughActiveWorkers.
+        /// </summary>
+        public bool IsGenuinelyOnDuty(
+            ColonistIdentity colonist,
+            WorkplaceComponent workplace,
+            JobRoleDefinition role,
+            float absoluteGameHour)
+        {
+            if (workplace == null || role == null ||
+                !TryGetCurrentDuty(colonist, absoluteGameHour, out WorkAssignment assignment) ||
+                assignment.Workplace != workplace || assignment.Role != role)
+            {
+                return false;
+            }
+
+            ColonistBrain brain = colonist.GetComponent<ColonistBrain>();
+            if (brain == null || brain.State != ColonistBrainState.Working)
+                return false;
+
+            if (workplace.ExecutionMode == WorkplaceExecutionMode.MobileDuty)
+                return true;
+
+            return IsActivelyStaffing(colonist, workplace, role, absoluteGameHour);
+        }
+
+        public bool IsActivelyStaffing(
+            ColonistIdentity colonist,
+            WorkplaceComponent workplace,
+            JobRoleDefinition role,
+            float absoluteGameHour)
+        {
+            if (workplace == null || workplace.ExecutionMode != WorkplaceExecutionMode.FacilityActivity ||
+                role == null || !TryGetCurrentDuty(colonist, absoluteGameHour, out WorkAssignment assignment) ||
+                assignment.Workplace != workplace || assignment.Role != role ||
+                !workplace.TryGetRoleBinding(role, out WorkplaceRoleBinding binding))
+            {
+                return false;
+            }
+
+            ColonistActivityRunner runner = colonist.GetComponent<ColonistActivityRunner>();
+            return runner != null && runner.IsActivityActive &&
+                   runner.ActiveFacility == workplace.Facility &&
+                   string.Equals(runner.ActiveActivityId, binding.ActivityId, StringComparison.Ordinal);
+        }
+
         public bool TryGetNextShift(
             ColonistIdentity colonist,
             float absoluteGameHour,
@@ -228,6 +287,7 @@ namespace AsteroidColony
         {
             if (workplace == null ||
                 role == null ||
+                workplace.ExecutionMode != WorkplaceExecutionMode.FacilityActivity ||
                 minimumActiveWorkers < 1 ||
                 !IsFinite(minimumRemainingHours) ||
                 minimumRemainingHours < 0f ||

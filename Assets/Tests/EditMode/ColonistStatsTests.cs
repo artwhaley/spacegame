@@ -264,7 +264,7 @@ namespace AsteroidColony.Tests
 
 
         [Test]
-        public void ActiveEatUsesConfiguredFoodRecoveryRate()
+        public void ActiveEatingDoesNotApplyGradualHungerRecovery()
         {
             CreateRunnerAndStats();
             InteractableFacility facility = CreateFoodFacility(
@@ -274,10 +274,11 @@ namespace AsteroidColony.Tests
             SetRunnerState(runner, binding, activityActive: true, exitInProgress: false);
             SetHunger(50f);
 
-            Assert.That(stats.EffectiveHungerPerGameHour, Is.EqualTo(-60f).Within(0.0001f));
+            Assert.That(stats.EffectiveHungerPerGameHour,
+                Is.EqualTo(stats.BaselineHungerPerGameHour));
             stats.SimulationTick(1f);
-
-            Assert.That(stats.Hunger, Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(stats.Hunger,
+                Is.EqualTo(50f + stats.BaselineHungerPerGameHour).Within(0.0001f));
         }
 
         [Test]
@@ -292,14 +293,14 @@ namespace AsteroidColony.Tests
             SetHunger(50f);
 
             stats.SimulationTick(1f);
-            Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
+            Assert.That(stats.Hunger, Is.EqualTo(50f + stats.BaselineHungerPerGameHour).Within(0.0001f));
 
             SetPrivateField(runner, "activityActive", true);
             SetPrivateField(runner, "exitInProgress", true);
             SetHunger(50f);
             stats.SimulationTick(1f);
 
-            Assert.That(stats.Hunger, Is.EqualTo(58f).Within(0.0001f));
+            Assert.That(stats.Hunger, Is.EqualTo(50f + stats.BaselineHungerPerGameHour).Within(0.0001f));
         }
 
 
@@ -447,7 +448,8 @@ namespace AsteroidColony.Tests
 
         private InteractableFacility CreateFoodFacility(
             out FoodServiceComponent service,
-            out FacilityActivityBinding binding)
+            out FacilityActivityBinding binding,
+            string eatActivityId = "Eat")
         {
             foodFacilityObject = new GameObject("Food Facility Test");
             InteractableFacility facility =
@@ -455,15 +457,15 @@ namespace AsteroidColony.Tests
             Transform approach = new GameObject("Food Approach").transform;
             approach.SetParent(foodFacilityObject.transform, false);
             binding = new FacilityActivityBinding();
-            SetPrivateField(binding, "activityId", "Eat");
+            SetPrivateField(binding, "activityId", eatActivityId);
             SetPrivateField(binding, "reservationGroup", "Eat01");
             SetPrivateField(binding, "externallyRequestable", true);
             SetPrivateField(binding, "approachAnchor", approach);
             SetPrivateField(facility, "activities", new[] { binding });
             service = foodFacilityObject.AddComponent<FoodServiceComponent>();
             SetPrivateField(service, "facility", facility);
-            SetPrivateField(service, "eatActivityId", "Eat");
-            SetPrivateField(service, "hungerRecoveryPerGameHour", 60f);
+            SetPrivateField(service, "eatActivityId", eatActivityId);
+            service.RefreshStaticBindingMetadata();
             return facility;
         }
 

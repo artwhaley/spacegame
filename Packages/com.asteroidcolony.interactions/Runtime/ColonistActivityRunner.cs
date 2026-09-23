@@ -60,6 +60,7 @@ namespace Colony.Interactions
         private ContactRigDriver contactRigDriver;
         private bool activityActive;
         private bool stopRequested;
+        private bool activeActivityLocked;
         private bool exitInProgress;
         private bool returnPlacementStarted;
         private bool exitAnimationCompleted;
@@ -100,6 +101,14 @@ namespace Colony.Interactions
                 : null;
         public bool HasPendingRequest => pendingFacility != null && !string.IsNullOrEmpty(pendingActivityId);
         public bool HasActiveSequence => activeSequence != null;
+        public bool ActiveActivityLocked => activeActivityLocked && IsActivityActive;
+
+        // A committed, timed interaction can refuse ordinary stop/replacement requests.
+        // Its owner releases this lock when the authored duration has elapsed.
+        public void SetActiveActivityLock(bool locked)
+        {
+            activeActivityLocked = locked && IsActivityActive;
+        }
 
         public event Action<string> StatusChanged;
         public event Action<ActivityLifecycleEvent> ActivityLifecycleChanged;
@@ -171,6 +180,11 @@ namespace Colony.Interactions
                 return false;
             }
 
+            if (ActiveActivityLocked &&
+                (currentFacility != facility || currentBinding == null ||
+                 !string.Equals(currentBinding.ActivityId, activityId, StringComparison.Ordinal)))
+                return false;
+
             // A direct activity request is an explicit override of an automatic
             // sequence.  Keep the current activity's graceful exit path, but do
             // not let the sequence advance to another step afterward.
@@ -241,6 +255,9 @@ namespace Colony.Interactions
             InteractableFacility facility,
             string sequenceId)
         {
+            if (ActiveActivityLocked)
+                return false;
+
             if (facility == null)
             {
                 RejectSequence("No facility was provided for the activity sequence.");
@@ -312,6 +329,9 @@ namespace Colony.Interactions
 
         public void Stop()
         {
+            if (ActiveActivityLocked)
+                return;
+
             // Stop cancels automatic advancement, then lets the current
             // activity use its normal graceful exit when it is already active.
             CancelSequenceIntent();
@@ -363,6 +383,7 @@ namespace Colony.Interactions
 
         private void ResetActivityLifecycle()
         {
+            activeActivityLocked = false;
             activityActive = false;
             stopRequested = false;
             exitInProgress = false;

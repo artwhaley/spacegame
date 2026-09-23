@@ -521,7 +521,18 @@ namespace AsteroidColony.Tests
             fixture.Service = fixture.GameObject.AddComponent<FoodServiceComponent>();
             SetPrivateField(fixture.Service, "facility", fixture.Facility);
             SetPrivateField(fixture.Service, "eatActivityId", "Eat");
-            SetPrivateField(fixture.Service, "hungerRecoveryPerGameHour", 60f);
+            ResourceDefinition food = ScriptableObject.CreateInstance<ResourceDefinition>();
+            food.stableId = "test-food";
+            food.quantityMode = ResourceQuantityMode.Discrete;
+            food.hungerRecoveryPerUnit = 90f;
+            food.consumptionDurationGameHours = 0.25f;
+            assets.Add(food);
+            InventoryComponent inventory = fixture.GameObject.AddComponent<InventoryComponent>();
+            Assert.That(inventory.SetCapacity(food, 20f), Is.True);
+            Assert.That(inventory.Add(food, 20f), Is.EqualTo(20f));
+            SetPrivateField(fixture.Service, "inventoryAccountingEnabled", true);
+            SetPrivateField(fixture.Service, "foodInventory", inventory);
+            SetPrivateField(fixture.Service, "foodResource", food);
             SetPrivateField(fixture.Service, "requiresStaff", requiresStaff);
             SetPrivateField(
                 fixture.Service,

@@ -108,33 +108,9 @@ namespace AsteroidColony
             }
         }
 
-        public float EffectiveHungerPerGameHour
-        {
-            get
-            {
-                if (activityRunner != null &&
-                    activityRunner.ActiveFacility != null &&
-                    string.Equals(
-                        activityRunner.ActiveActivityId,
-                        "Eat",
-                        System.StringComparison.Ordinal))
-                {
-                    FoodServiceComponent service =
-                        activityRunner.ActiveFacility.GetComponent<FoodServiceComponent>();
-                    if (service != null &&
-                        service.IsConfigured &&
-                        string.Equals(
-                            service.EatActivityId,
-                            activityRunner.ActiveActivityId,
-                            System.StringComparison.Ordinal))
-                    {
-                        return -service.HungerRecoveryPerGameHour;
-                    }
-                }
-
-                return baselineHungerPerGameHour;
-            }
-        }
+        // Hunger accrues normally while eating. A whole meal applies its one-shot
+        // recovery only after the resource's consumption duration is complete.
+        public float EffectiveHungerPerGameHour => baselineHungerPerGameHour;
 
         // Effective leisure rates are baseline accumulation minus the recovery authored by the
         // discretionary activity the colonist is genuinely performing right now. Navigation,

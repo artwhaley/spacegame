@@ -420,8 +420,6 @@ namespace AsteroidColony.Editor
 
             serialized.FindProperty("facility").objectReferenceValue = facility;
             serialized.FindProperty("eatActivityId").stringValue = Eat01;
-            serialized.FindProperty("hungerRecoveryPerGameHour").floatValue =
-                source.HungerRecoveryPerGameHour;
             serialized.FindProperty("requiresStaff").boolValue = source.RequiresStaff;
             serialized.FindProperty("requiredWorkplace").objectReferenceValue = requiredWorkplace;
             serialized.FindProperty("requiredRole").objectReferenceValue = requiredRole;
@@ -432,7 +430,6 @@ namespace AsteroidColony.Editor
                 source.InventoryAccountingEnabled;
             serialized.FindProperty("foodInventory").objectReferenceValue = stationFoodStore;
             serialized.FindProperty("foodResource").objectReferenceValue = source.FoodResource;
-            serialized.FindProperty("foodPerMeal").floatValue = source.FoodPerMeal;
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
             destination.RefreshStaticBindingMetadata();

@@ -4,7 +4,8 @@
     "references": [
         "Colony.Interactions.Runtime",
         "Unity.TextMeshPro",
-        "Unity.AI.Navigation"
+        "Unity.AI.Navigation",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

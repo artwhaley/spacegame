@@ -392,8 +392,8 @@ MonoBehaviour:
   restPreferredThreshold: 60
   exhaustionThreshold: 100
   hunger: 0
-  baselineHungerPerGameHour: 8
-  hungryThreshold: 60
+  baselineHungerPerGameHour: 5
+  hungryThreshold: 80
   starvationThreshold: 100
   criticalHungerThreshold: 90
 --- !u!114 &7346298053187492011

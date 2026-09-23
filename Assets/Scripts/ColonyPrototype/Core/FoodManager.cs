@@ -219,9 +219,6 @@ namespace AsteroidColony
             }
 
             FoodServiceComponent service = offer.Opportunity.Service;
-            if (!service.InventoryAccountingEnabled)
-                return true;
-
             if (!service.HasUsableFoodInventory ||
                 !service.FoodInventory.Reserve(service.FoodResource, service.FoodPerMeal))
             {
@@ -396,8 +393,8 @@ namespace AsteroidColony
             out string noOfferReason)
         {
             opportunity = null;
-            noOfferReason = "no_service";
             PruneServices();
+            noOfferReason = services.Count == 0 ? "no_registered_service" : "no_eligible_service";
             float bestDistance = float.PositiveInfinity;
             for (int index = 0; index < services.Count; index++)
             {
@@ -407,13 +404,17 @@ namespace AsteroidColony
                         new FoodQuery(bid.Requester, bid.Position, bid.CurrentGameHour),
                         candidate,
                         out FoodServiceAccessMode accessMode,
-                        out FacilityActivityBinding binding))
+                        out FacilityActivityBinding binding,
+                        out string candidateFailure))
+                {
+                    SetMoreSpecificFailure(ref noOfferReason, candidateFailure);
                     continue;
+                }
 
                 string groupKey = ReservationGroupKey(candidate);
                 if (offeredGroups.Contains(groupKey))
                 {
-                    noOfferReason = "reserved";
+                    SetMoreSpecificFailure(ref noOfferReason, "reservation_group_already_offered");
                     continue;
                 }
 
@@ -425,7 +426,7 @@ namespace AsteroidColony
                     virtualStock.TryGetValue(stockKey, out float alreadyOffered);
                     if (candidate.FoodAvailable - alreadyOffered + 0.0001f < candidate.FoodPerMeal)
                     {
-                        noOfferReason = "no_inventory";
+                        SetMoreSpecificFailure(ref noOfferReason, "no_inventory");
                         continue;
                     }
                 }
@@ -523,7 +524,8 @@ namespace AsteroidColony
                         query,
                         candidate,
                         out FoodServiceAccessMode accessMode,
-                        out FacilityActivityBinding binding))
+                        out FacilityActivityBinding binding,
+                        out _))
                 {
                     continue;
                 }
@@ -669,20 +671,68 @@ namespace AsteroidColony
             FoodQuery query,
             FoodServiceComponent service,
             out FoodServiceAccessMode accessMode,
-            out FacilityActivityBinding binding)
+            out FacilityActivityBinding binding,
+            out string failureReason)
         {
             accessMode = FoodServiceAccessMode.Unavailable;
             binding = null;
+            failureReason = "service_unconfigured";
             if (service == null || !service.TryGetCachedEatBinding(out binding))
                 return false;
 
             if (service.Facility.IsReserved(binding.ReservationGroup))
+            {
+                failureReason = "activity_reserved";
                 return false;
+            }
 
             accessMode = service.EvaluateAccessFromCachedConfiguration(
                 query.Seeker,
                 query.CurrentGameHour);
-            return accessMode != FoodServiceAccessMode.Unavailable && service.HasAvailableMeal();
+            if (accessMode == FoodServiceAccessMode.Unavailable)
+            {
+                if (service.RequiresStaff && !service.HasActivePublicStaff(query.CurrentGameHour))
+                    failureReason = service.AllowsSelfService(query.Seeker)
+                        ? "staff_unavailable"
+                        : "self_service_denied";
+                else
+                    failureReason = "service_unavailable";
+                return false;
+            }
+
+            if (!service.HasAvailableMeal())
+            {
+                failureReason = "no_inventory";
+                return false;
+            }
+
+            failureReason = string.Empty;
+            return true;
+        }
+
+        private static void SetMoreSpecificFailure(ref string currentReason, string candidateReason)
+        {
+            int currentPriority = FailureReasonPriority(currentReason);
+            int candidatePriority = FailureReasonPriority(candidateReason);
+            if (candidatePriority > currentPriority)
+                currentReason = candidateReason;
+        }
+
+        private static int FailureReasonPriority(string reason)
+        {
+            switch (reason)
+            {
+                case "no_registered_service": return 0;
+                case "no_eligible_service": return 1;
+                case "service_unconfigured": return 2;
+                case "service_unavailable": return 3;
+                case "staff_unavailable":
+                case "self_service_denied": return 4;
+                case "activity_reserved":
+                case "reservation_group_already_offered": return 5;
+                case "no_inventory": return 6;
+                default: return 0;
+            }
         }
 
         private bool IsConfiguredService(FoodServiceComponent service)

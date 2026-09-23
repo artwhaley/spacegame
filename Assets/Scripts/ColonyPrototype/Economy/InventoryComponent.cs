@@ -59,6 +59,10 @@ namespace AsteroidColony
     {
         private static readonly List<InventoryComponent> knownInventories = new List<InventoryComponent>();
         [SerializeField] private List<InventoryEntry> entries = new List<InventoryEntry>();
+        [NonSerialized] private readonly List<InventoryReservationToken> ownedReservations =
+            new List<InventoryReservationToken>();
+        [NonSerialized] private readonly Dictionary<ResourceDefinition, float> legacyReservations =
+            new Dictionary<ResourceDefinition, float>();
 
         public IReadOnlyList<InventoryEntry> Entries => entries;
         public static IReadOnlyList<InventoryComponent> Inventories => knownInventories;
@@ -81,6 +85,28 @@ namespace AsteroidColony
                 if (entries[i].resource == resource)
                     return entries[i];
             return null;
+        }
+
+        /// <summary>Sets an inventory slot's capacity while preserving its current stock.</summary>
+        public bool SetCapacity(ResourceDefinition resource, float capacity)
+        {
+            if (!TryNormalizeMutation(resource, capacity, out float normalized))
+                return false;
+
+            InventoryEntry entry = GetOrCreate(resource);
+            if (entry == null)
+                return false;
+
+            if (normalized + ResourceQuantityRules.WholeNumberEpsilon < entry.onHand)
+                return false;
+
+            entry.capacity = normalized;
+            if (entry.reserved > entry.onHand)
+                entry.reserved = entry.onHand;
+            ReconcileOwnedReservations(resource, entry);
+            entry.Refresh();
+            OnChanged?.Invoke(this, resource);
+            return true;
         }
 
         private InventoryEntry GetOrCreate(ResourceDefinition resource)
@@ -183,6 +209,7 @@ namespace AsteroidColony
             entry.onHand -= removed;
             if (entry.reserved > entry.onHand)
                 entry.reserved = entry.onHand;
+            ReconcileOwnedReservations(resource, entry);
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
             return removed;
@@ -202,6 +229,7 @@ namespace AsteroidColony
             if (entry.Available < normalized)
                 return false;
             entry.reserved += normalized;
+            AddLegacyReservation(resource, normalized);
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
             return true;
@@ -216,7 +244,10 @@ namespace AsteroidColony
             if (entry == null)
                 return;
             entry.Refresh();
-            entry.reserved = Mathf.Max(0f, entry.reserved - normalized);
+            float legacyAmount = GetLegacyReservation(resource);
+            float released = Mathf.Min(normalized, legacyAmount);
+            entry.reserved = Mathf.Max(0f, entry.reserved - released);
+            SetLegacyReservation(resource, legacyAmount - released);
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
         }
@@ -230,15 +261,208 @@ namespace AsteroidColony
             if (entry == null)
                 return 0f;
             entry.Refresh();
-            float withdrawable = Mathf.Min(entry.reserved, entry.onHand);
+            float withdrawable = Mathf.Min(
+                GetLegacyReservation(resource),
+                Mathf.Min(entry.reserved, entry.onHand));
             float withdrawn = Mathf.Min(normalized, withdrawable);
             if (resource.IsDiscrete)
                 withdrawn = Mathf.Floor(withdrawn + ResourceQuantityRules.WholeNumberEpsilon);
             entry.reserved -= withdrawn;
+            SetLegacyReservation(resource, GetLegacyReservation(resource) - withdrawn);
             entry.onHand -= withdrawn;
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
             return withdrawn;
+        }
+
+        /// <summary>Creates a reservation owned by one physical freight allocation.</summary>
+        public bool TryReserveOwned(
+            ResourceDefinition resource,
+            float amount,
+            out InventoryReservationToken token)
+        {
+            token = null;
+            if (!TryNormalizeMutation(resource, amount, out float normalized) || normalized <= 0f)
+                return false;
+
+            InventoryEntry entry = GetOrCreate(resource);
+            if (entry == null)
+                return false;
+            entry.Refresh();
+            if (entry.Available < normalized)
+                return false;
+
+            token = new InventoryReservationToken(this, resource, normalized);
+            ownedReservations.Add(token);
+            entry.reserved += normalized;
+            entry.Refresh();
+            OnChanged?.Invoke(this, resource);
+            return true;
+        }
+
+        /// <summary>Releases only the quantity owned by this reservation token.</summary>
+        public float ReleaseOwned(InventoryReservationToken token)
+        {
+            if (!Owns(token) || !token.IsActive)
+                return 0f;
+
+            InventoryEntry entry = GetEntry(token.Resource);
+            float released = Mathf.Min(
+                token.Remaining,
+                entry != null ? entry.reserved : 0f);
+            if (entry == null)
+            {
+                token.Invalidate();
+                return 0f;
+            }
+
+            entry.reserved = Mathf.Max(0f, entry.reserved - released);
+            token.Reduce(released);
+            if (token.Remaining <= ResourceQuantityRules.WholeNumberEpsilon)
+                token.Invalidate();
+            entry.Refresh();
+            OnChanged?.Invoke(this, token.Resource);
+            return released;
+        }
+
+        /// <summary>
+        /// Moves reserved stock directly between inventories. Both inventories are
+        /// updated before either change event fires, so observers see a conserved transfer.
+        /// </summary>
+        public float TransferOwnedTo(
+            InventoryReservationToken token,
+            InventoryComponent destination,
+            float amount)
+        {
+            if (!Owns(token) || !token.IsActive || destination == null ||
+                destination == this ||
+                !TryNormalizeMutation(token.Resource, amount, out float normalized) ||
+                normalized <= 0f)
+            {
+                return 0f;
+            }
+
+            InventoryEntry sourceEntry = GetEntry(token.Resource);
+            if (sourceEntry == null)
+                return 0f;
+            InventoryEntry destinationEntry = destination.GetOrCreate(token.Resource);
+            sourceEntry.Refresh();
+            destinationEntry.Refresh();
+
+            float transfer = Mathf.Min(
+                normalized,
+                Mathf.Min(token.Remaining,
+                    Mathf.Min(sourceEntry.reserved,
+                        Mathf.Min(sourceEntry.onHand,
+                            destinationEntry.capacity - destinationEntry.onHand))));
+            if (token.Resource.IsDiscrete)
+                transfer = Mathf.Floor(transfer + ResourceQuantityRules.WholeNumberEpsilon);
+            if (transfer <= 0f)
+                return 0f;
+
+            sourceEntry.onHand -= transfer;
+            sourceEntry.reserved -= transfer;
+            token.Reduce(transfer);
+            if (token.Remaining <= ResourceQuantityRules.WholeNumberEpsilon)
+                token.Invalidate();
+            destinationEntry.onHand += transfer;
+            sourceEntry.Refresh();
+            destinationEntry.Refresh();
+
+            OnChanged?.Invoke(this, token.Resource);
+            destination.OnChanged?.Invoke(destination, token.Resource);
+            return transfer;
+        }
+
+        /// <summary>Moves available, unreserved stock atomically into another inventory.</summary>
+        public float TransferAvailableTo(
+            InventoryComponent destination,
+            ResourceDefinition resource,
+            float amount)
+        {
+            if (destination == null || destination == this ||
+                !TryNormalizeMutation(resource, amount, out float normalized) ||
+                normalized <= 0f)
+            {
+                return 0f;
+            }
+
+            InventoryEntry sourceEntry = GetEntry(resource);
+            if (sourceEntry == null)
+                return 0f;
+            InventoryEntry destinationEntry = destination.GetOrCreate(resource);
+            sourceEntry.Refresh();
+            destinationEntry.Refresh();
+            float transfer = Mathf.Min(
+                normalized,
+                Mathf.Min(sourceEntry.Available,
+                    destinationEntry.capacity - destinationEntry.onHand));
+            if (resource.IsDiscrete)
+                transfer = Mathf.Floor(transfer + ResourceQuantityRules.WholeNumberEpsilon);
+            if (transfer <= 0f)
+                return 0f;
+
+            sourceEntry.onHand -= transfer;
+            destinationEntry.onHand += transfer;
+            sourceEntry.Refresh();
+            destinationEntry.Refresh();
+            OnChanged?.Invoke(this, resource);
+            destination.OnChanged?.Invoke(destination, resource);
+            return transfer;
+        }
+
+        private bool Owns(InventoryReservationToken token)
+        {
+            return token != null && token.Owner == this && ownedReservations.Contains(token);
+        }
+
+        private void AddLegacyReservation(ResourceDefinition resource, float amount)
+        {
+            SetLegacyReservation(resource, GetLegacyReservation(resource) + amount);
+        }
+
+        private float GetLegacyReservation(ResourceDefinition resource)
+        {
+            return resource != null && legacyReservations.TryGetValue(resource, out float amount)
+                ? amount
+                : 0f;
+        }
+
+        private void SetLegacyReservation(ResourceDefinition resource, float amount)
+        {
+            if (resource == null)
+                return;
+            if (amount <= ResourceQuantityRules.WholeNumberEpsilon)
+                legacyReservations.Remove(resource);
+            else
+                legacyReservations[resource] = amount;
+        }
+
+        private void ReconcileOwnedReservations(ResourceDefinition resource, InventoryEntry entry)
+        {
+            float legacy = Mathf.Min(entry.reserved, GetLegacyReservation(resource));
+            SetLegacyReservation(resource, legacy);
+            float ownedLimit = Mathf.Max(0f, entry.reserved - legacy);
+            float ownedTotal = 0f;
+            for (int i = 0; i < ownedReservations.Count; i++)
+            {
+                InventoryReservationToken token = ownedReservations[i];
+                if (token != null && token.IsActive && token.Resource == resource)
+                    ownedTotal += token.Remaining;
+            }
+
+            float excess = Mathf.Max(0f, ownedTotal - ownedLimit);
+            for (int i = ownedReservations.Count - 1; i >= 0 && excess > 0f; i--)
+            {
+                InventoryReservationToken token = ownedReservations[i];
+                if (token == null || !token.IsActive || token.Resource != resource)
+                    continue;
+                float reduced = Mathf.Min(excess, token.Remaining);
+                token.Reduce(reduced);
+                excess -= reduced;
+                if (token.Remaining <= ResourceQuantityRules.WholeNumberEpsilon)
+                    token.Invalidate();
+            }
         }
 
         private void OnValidate()
@@ -256,6 +480,37 @@ namespace AsteroidColony
             if (resource != null)
                 Debug.LogError($"Rejected invalid {resource.name} inventory quantity: {amount}.");
             return false;
+        }
+    }
+
+    /// <summary>Identity and remaining quantity for one inventory-owned reservation.</summary>
+    public sealed class InventoryReservationToken
+    {
+        internal InventoryReservationToken(
+            InventoryComponent owner,
+            ResourceDefinition resource,
+            float amount)
+        {
+            Owner = owner;
+            Resource = resource;
+            Remaining = amount;
+            IsActive = true;
+        }
+
+        internal InventoryComponent Owner { get; }
+        public ResourceDefinition Resource { get; }
+        public float Remaining { get; private set; }
+        public bool IsActive { get; private set; }
+
+        internal void Reduce(float amount)
+        {
+            Remaining = Mathf.Max(0f, Remaining - Mathf.Max(0f, amount));
+        }
+
+        internal void Invalidate()
+        {
+            Remaining = 0f;
+            IsActive = false;
         }
     }
 }

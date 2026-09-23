@@ -129,7 +129,7 @@ namespace AsteroidColony.Tests
             Assert.That(bob.Runner.CurrentReservationGroup, Is.EqualTo("Eat01"));
             Assert.That(
                 bob.Stats.EffectiveHungerPerGameHour,
-                Is.EqualTo(-60f).Within(0.0001f));
+                Is.EqualTo(bob.Stats.BaselineHungerPerGameHour).Within(0.0001f));
 
             // New public diners are refused, but the seated diner keeps eating.
             Assert.That(
@@ -392,7 +392,18 @@ namespace AsteroidColony.Tests
             cafeteria.Service = cafeteria.GameObject.AddComponent<FoodServiceComponent>();
             SetPrivateField(cafeteria.Service, "facility", cafeteria.Facility);
             SetPrivateField(cafeteria.Service, "eatActivityId", "Eat");
-            SetPrivateField(cafeteria.Service, "hungerRecoveryPerGameHour", 60f);
+            ResourceDefinition food = ScriptableObject.CreateInstance<ResourceDefinition>();
+            food.stableId = "test-food";
+            food.quantityMode = ResourceQuantityMode.Discrete;
+            food.hungerRecoveryPerUnit = 90f;
+            food.consumptionDurationGameHours = 0.25f;
+            assets.Add(food);
+            InventoryComponent inventory = cafeteria.GameObject.AddComponent<InventoryComponent>();
+            Assert.That(inventory.SetCapacity(food, 20f), Is.True);
+            Assert.That(inventory.Add(food, 20f), Is.EqualTo(20f));
+            SetPrivateField(cafeteria.Service, "inventoryAccountingEnabled", true);
+            SetPrivateField(cafeteria.Service, "foodInventory", inventory);
+            SetPrivateField(cafeteria.Service, "foodResource", food);
             SetPrivateField(cafeteria.Service, "requiresStaff", requiresStaff);
             SetPrivateField(
                 cafeteria.Service,

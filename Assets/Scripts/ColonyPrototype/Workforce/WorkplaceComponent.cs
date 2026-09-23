@@ -5,6 +5,12 @@ using UnityEngine;
 
 namespace AsteroidColony
 {
+    public enum WorkplaceExecutionMode
+    {
+        FacilityActivity,
+        MobileDuty
+    }
+
     [Serializable]
     public sealed class WorkplaceRoleBinding
     {
@@ -21,14 +27,30 @@ namespace AsteroidColony
         public string ActivityId => activityId;
         public int MaximumConcurrentScheduledWorkers =>
             maximumConcurrentScheduledWorkers;
+
+        public WorkplaceRoleBinding()
+        {
+        }
+
+        public WorkplaceRoleBinding(JobRoleDefinition role, string activityId, int capacity)
+        {
+            this.role = role;
+            this.activityId = activityId ?? string.Empty;
+            maximumConcurrentScheduledWorkers = Mathf.Max(1, capacity);
+        }
     }
 
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(InteractableFacility))]
     public sealed class WorkplaceComponent : MonoBehaviour
     {
         [SerializeField]
+        private WorkplaceExecutionMode executionMode = WorkplaceExecutionMode.FacilityActivity;
+
+        [SerializeField]
         private InteractableFacility facility;
+
+        [SerializeField]
+        private Transform dutyAnchor;
 
         [SerializeField]
         private WorkplaceRoleBinding[] roles = Array.Empty<WorkplaceRoleBinding>();
@@ -41,6 +63,9 @@ namespace AsteroidColony
                 return facility;
             }
         }
+
+        public WorkplaceExecutionMode ExecutionMode => executionMode;
+        public Transform DutyAnchor => dutyAnchor;
 
         public IReadOnlyList<WorkplaceRoleBinding> Roles =>
             roles ?? Array.Empty<WorkplaceRoleBinding>();
@@ -89,11 +114,35 @@ namespace AsteroidColony
 
         private bool IsBindingUsable(WorkplaceRoleBinding binding)
         {
-            return binding.Role != null &&
-                   !string.IsNullOrWhiteSpace(binding.ActivityId) &&
-                   binding.MaximumConcurrentScheduledWorkers >= 1 &&
+            if (binding.Role == null || binding.MaximumConcurrentScheduledWorkers < 1)
+                return false;
+            if (executionMode == WorkplaceExecutionMode.MobileDuty)
+                return dutyAnchor != null;
+            return !string.IsNullOrWhiteSpace(binding.ActivityId) &&
                    Facility != null &&
                    Facility.TryGetBinding(binding.ActivityId, out _);
+        }
+
+        public void ConfigureMobileDuty(
+            JobRoleDefinition role,
+            int capacity,
+            Transform anchor)
+        {
+            executionMode = WorkplaceExecutionMode.MobileDuty;
+            facility = null;
+            dutyAnchor = anchor;
+            roles = role == null
+                ? Array.Empty<WorkplaceRoleBinding>()
+                : new[] { new WorkplaceRoleBinding(role, string.Empty, capacity) };
+        }
+
+        public void ConfigureFacilityActivity(
+            InteractableFacility activeFacility,
+            WorkplaceRoleBinding[] bindings)
+        {
+            executionMode = WorkplaceExecutionMode.FacilityActivity;
+            facility = activeFacility;
+            roles = bindings ?? Array.Empty<WorkplaceRoleBinding>();
         }
 
         private void ResolveFacility()
@@ -104,8 +153,15 @@ namespace AsteroidColony
 
         private void ValidateAuthoring()
         {
-            if (Facility == null)
+            if (executionMode == WorkplaceExecutionMode.MobileDuty)
             {
+                if (dutyAnchor == null)
+                    Debug.LogError($"{name}: mobile-duty workplace needs a duty anchor.", this);
+            }
+            else if (Facility == null)
+            {
+                if (Roles.Count == 0)
+                    return;
                 Debug.LogError(
                     $"{name}: WorkplaceComponent requires a sibling InteractableFacility.",
                     this);
@@ -137,6 +193,13 @@ namespace AsteroidColony
                     Debug.LogError(
                         $"{name}: duplicate workplace role {binding.Role.name}.",
                         this);
+                }
+
+                if (executionMode == WorkplaceExecutionMode.MobileDuty)
+                {
+                    if (binding.MaximumConcurrentScheduledWorkers < 1)
+                        Debug.LogError($"{name}: mobile role capacity must be at least 1.", this);
+                    continue;
                 }
 
                 if (string.IsNullOrWhiteSpace(binding.ActivityId))

@@ -15,7 +15,7 @@ MonoBehaviour:
   stableId: hydroponic-food
   displayName: Hydroponic Food
   description: Converts Water into Food while the Farm is staffed.
-  executionMode: 0
+  executionMode: 1
   durationHours: 1
   inputs:
   - resource: {fileID: 11400000, guid: e95a6b7c8d9e0f1a2b3c4d5e6f708190, type: 2}

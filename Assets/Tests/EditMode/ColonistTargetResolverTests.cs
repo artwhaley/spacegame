@@ -14,6 +14,7 @@ namespace AsteroidColony.Tests
         private GameObject foodManagerObject;
         private GameObject foodFacilityObject;
         private JobRoleDefinition role;
+        private ResourceDefinition foodResource;
 
         [TearDown]
         public void TearDown()
@@ -33,6 +34,8 @@ namespace AsteroidColony.Tests
                 Object.DestroyImmediate(foodFacilityObject);
             if (role != null)
                 Object.DestroyImmediate(role);
+            if (foodResource != null)
+                Object.DestroyImmediate(foodResource);
         }
 
         [Test]
@@ -262,7 +265,18 @@ namespace AsteroidColony.Tests
                 foodFacilityObject.AddComponent<FoodServiceComponent>();
             SetPrivateField(service, "facility", facility);
             SetPrivateField(service, "eatActivityId", "Eat");
-            SetPrivateField(service, "hungerRecoveryPerGameHour", 60f);
+            foodResource = ScriptableObject.CreateInstance<ResourceDefinition>();
+            foodResource.stableId = "test-food";
+            foodResource.quantityMode = ResourceQuantityMode.Discrete;
+            foodResource.hungerRecoveryPerUnit = 90f;
+            foodResource.consumptionDurationGameHours = 0.25f;
+            InventoryComponent inventory = foodFacilityObject.AddComponent<InventoryComponent>();
+            Assert.That(inventory.SetCapacity(foodResource, 20f), Is.True);
+            Assert.That(inventory.Add(foodResource, 20f), Is.EqualTo(20f));
+            SetPrivateField(service, "inventoryAccountingEnabled", true);
+            SetPrivateField(service, "foodInventory", inventory);
+            SetPrivateField(service, "foodResource", foodResource);
+            service.RefreshStaticBindingMetadata();
         }
 
         private static ActivityTarget CreateTarget(

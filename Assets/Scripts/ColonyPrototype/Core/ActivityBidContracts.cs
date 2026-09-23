@@ -141,6 +141,8 @@ namespace AsteroidColony
             Inventory = inventory;
             Resource = resource;
             Amount = amount;
+            HungerRecovery = resource != null ? resource.hungerRecoveryPerUnit : 0f;
+            DurationGameHours = resource != null ? resource.consumptionDurationGameHours : 0f;
         }
 
         public ColonistIdentity Requester { get; }
@@ -148,6 +150,9 @@ namespace AsteroidColony
         public InventoryComponent Inventory { get; }
         public ResourceDefinition Resource { get; }
         public float Amount { get; }
+        public float HungerRecovery { get; }
+        public float DurationGameHours { get; }
+        public bool Completed { get; internal set; }
         public bool Reserved { get; internal set; }
         public bool Consumed { get; internal set; }
         public bool Released { get; internal set; }

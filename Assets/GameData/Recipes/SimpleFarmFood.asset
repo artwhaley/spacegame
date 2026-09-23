@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   stableId: simple-farm-food
   displayName: Simple Farm Food
-  description: Stack 3 local farm output. One Food per game-hour while a Farmer is genuinely active.
-  executionMode: 0
+  description: One whole Food per staffed game-hour of farm work.
+  executionMode: 1
   durationHours: 1
   inputs: []
   outputs:

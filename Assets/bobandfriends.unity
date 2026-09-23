@@ -2232,7 +2232,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4e5f60718293a4b5c6d7e8f9012b3c4d, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.FacilityPerformanceComponent
   additionalProviders: []
 --- !u!114 &1856994488
@@ -2245,12 +2245,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f9e8d7c6b5a4938271605f4e3d2c1b0a, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WorkforcePerformanceProvider
   requiredWorkplace: {fileID: 1856994486}
   requiredRole: {fileID: 11400000, guid: cd34ef5601789012cd34ef5601789012, type: 2}
   minimumActiveWorkers: 1
-  lastBlockedReason:
+  lastBlockedReason: 
 --- !u!114 &1856994489
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2261,7 +2261,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4c5d6e7f8091a2b3c4d5e6f708192a30, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ResourceConverterComponent
   inventory: {fileID: 2200000003}
   performance: {fileID: 1856994487}
@@ -2273,7 +2273,7 @@ MonoBehaviour:
   state: 0
   progress: 0
   throughputMultiplier: 1
-  blockedReason:
+  blockedReason: 
   batchActive: 0
   batchProgress: 0
 --- !u!1 &1947619468
@@ -2309,8 +2309,17 @@ MonoBehaviour:
   speedMultiplier: 10
   gameHoursPerRealSecond: 0.1
   tickIntervalSeconds: 0.1
+  logicalStepSimulationSeconds: 1
+  maxLogicalStepsPerFrame: 10000
+  maximumPendingSimulationSeconds: 250
   currentGameHour: 5.5
   currentTick: 0
+  simulationSeconds: 0
+  simulationDebtSeconds: 0
+  requestedSimulationSeconds: 0
+  paceShortfallSeconds: 0
+  maximumObservedDebtSeconds: 0
+  admissionLimitHitCount: 0
 --- !u!4 &1947619470
 Transform:
   m_ObjectHideFlags: 0
@@ -2683,55 +2692,6 @@ MonoBehaviour:
   foodInventory: {fileID: 2200000003}
   foodResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
   foodPerMeal: 1
---- !u!1 &2200000001
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2200000002}
-  - component: {fileID: 2200000003}
-  m_Layer: 0
-  m_Name: Station Food Store
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &2200000002
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2200000001}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -5, y: 0, z: -4}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
---- !u!114 &2200000003
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2200000001}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9d4e5f60718293a4b5c6d7e8f90a1b2c, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.InventoryComponent
-  entries:
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
-    onHand: 6
-    reserved: 0
-    capacity: 20
-    available: 6
 --- !u!1 &2050100014
 GameObject:
   m_ObjectHideFlags: 0
@@ -2822,6 +2782,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.OffDutyManager
   providers: []
+  declinedOfferSuppressionRounds: 6
 --- !u!1 &2100000011
 GameObject:
   m_ObjectHideFlags: 0
@@ -4680,6 +4641,56 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: b6849b056c7b4474d93989bff971e110, type: 3}
+--- !u!1 &2200000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2200000002}
+  - component: {fileID: 2200000003}
+  m_Layer: 0
+  m_Name: Station Food Store
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2200000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2200000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -5, y: 0, z: -4}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2200000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2200000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d4e5f60718293a4b5c6d7e8f90a1b2c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.InventoryComponent
+  entries:
+  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
+    onHand: 6
+    reserved: 0
+    capacity: 20
+    available: 6
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -4697,3 +4708,4 @@ SceneRoots:
   - {fileID: 2111000084}
   - {fileID: 2111000082}
   - {fileID: 2111000080}
+  - {fileID: 2200000002}

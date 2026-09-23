@@ -189,8 +189,8 @@ namespace AsteroidColony.Tests
         private FoodServiceComponent CreateFoodService(
             string name,
             Vector3 position,
-            bool inventoryAccounting = false,
-            float startingFood = 0f)
+            bool inventoryAccounting = true,
+            float startingFood = 20f)
         {
             GameObject serviceObject = new GameObject(name);
             serviceObject.transform.position = position;
@@ -208,19 +208,18 @@ namespace AsteroidColony.Tests
 
             FoodServiceComponent service = serviceObject.AddComponent<FoodServiceComponent>();
             SetPrivateField(service, "eatActivityId", "Eat");
-            SetPrivateField(service, "hungerRecoveryPerGameHour", 60f);
-            SetPrivateField(service, "inventoryAccountingEnabled", inventoryAccounting);
-            if (inventoryAccounting)
+            SetPrivateField(service, "inventoryAccountingEnabled", true);
             {
                 InventoryComponent inventory = serviceObject.AddComponent<InventoryComponent>();
                 ResourceDefinition food = ScriptableObject.CreateInstance<ResourceDefinition>();
                 food.stableId = name + "Food";
                 food.quantityMode = ResourceQuantityMode.Discrete;
+                food.hungerRecoveryPerUnit = 90f;
+                food.consumptionDurationGameHours = 0.25f;
                 assets.Add(food);
                 ConfigureInventory(inventory, food, 20f, startingFood);
                 SetPrivateField(service, "foodInventory", inventory);
                 SetPrivateField(service, "foodResource", food);
-                SetPrivateField(service, "foodPerMeal", 1f);
                 service.RefreshStaticBindingMetadata();
             }
             managerUnderTest?.Register(service);

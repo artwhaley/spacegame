@@ -22,6 +22,7 @@ namespace AsteroidColony.Tests
         private GameObject staffedWorkplaceObject;
         private JobRoleDefinition role;
         private JobRoleDefinition staffedRole;
+        private ResourceDefinition foodResource;
 
         [TearDown]
         public void TearDown()
@@ -55,6 +56,8 @@ namespace AsteroidColony.Tests
                 Object.DestroyImmediate(role);
             if (staffedRole != null)
                 Object.DestroyImmediate(staffedRole);
+            if (foodResource != null)
+                Object.DestroyImmediate(foodResource);
         }
 
 
@@ -136,7 +139,7 @@ namespace AsteroidColony.Tests
             // Hunger recovery keeps applying to the diner even though the counter is closed.
             Assert.That(
                 colonistObject.GetComponent<ColonistStatsComponent>().EffectiveHungerPerGameHour,
-                Is.EqualTo(-60f).Within(0.0001f));
+                Is.EqualTo(colonistObject.GetComponent<ColonistStatsComponent>().BaselineHungerPerGameHour).Within(0.0001f));
         }
 
 
@@ -404,82 +407,57 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
-        public void OrdinaryEatingContinuesUntilWorkMealThresholdWhenWorkBecomesCurrent()
+        public void CommittedMealFinishesAfterFifteenMinutesEvenWhenShiftStarts()
         {
             ColonistBrain brain = CreateBrain(0f);
             CreateSchedule(1.6f, new DailyShiftWindow(2f, 6f), true);
             CreateFoodManagerAndService();
             ConfigureEatingLifecycle(brain, hunger: 80f);
+            ColonistStatsComponent stats = colonistObject.GetComponent<ColonistStatsComponent>();
 
             brain.SimulationTick(0.1f);
+            ColonistActivityRunner runner = colonistObject.GetComponent<ColonistActivityRunner>();
+            runner.Stop();
+            Assert.That(runner.ActiveActivityLocked, Is.True);
             Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+            Assert.That(stats.Hunger, Is.EqualTo(80f));
 
-            SetPrivateField(
-                simulationObject.GetComponent<SimulationManager>(),
-                "currentGameHour",
-                2f);
+            SetPrivateField(simulationObject.GetComponent<SimulationManager>(),
+                "currentGameHour", 2f);
             brain.SimulationTick(0.1f);
-
+            ColonistActivityRunner runner = colonistObject.GetComponent<ColonistActivityRunner>();
+            runner.Stop();
+            Assert.That(runner.ActiveActivityLocked, Is.True);
             Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
+            Assert.That(stats.Hunger, Is.EqualTo(80f));
 
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                55f);
-            brain.SimulationTick(0.1f);
-
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                39f);
-            brain.SimulationTick(0.1f);
-
+            brain.SimulationTick(0.05f);
             Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
-            Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_ended_for_work"));
+            Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_completed_fully"));
+            Assert.That(stats.Hunger, Is.EqualTo(0f));
         }
 
-
         [Test]
-        public void EatingWithoutWorkContinuesUntilZero()
+        public void WholeMealAppliesRecoveryOnceAtDefinitionDuration()
         {
             ColonistBrain brain = CreateBrain(0f);
             CreateSchedule(0f, null, false);
             CreateFoodManagerAndService();
-            ConfigureEatingLifecycle(brain, hunger: 60f);
+            ConfigureEatingLifecycle(brain, hunger: 95f);
+            ColonistStatsComponent stats = colonistObject.GetComponent<ColonistStatsComponent>();
 
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                40f);
-            brain.SimulationTick(0.1f);
+            brain.SimulationTick(0.24f);
+            Assert.That(stats.Hunger, Is.EqualTo(95f));
             Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
 
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                20f);
-            brain.SimulationTick(0.1f);
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                5f);
-            brain.SimulationTick(0.1f);
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.False);
-
-            SetPrivateField(
-                colonistObject.GetComponent<ColonistStatsComponent>(),
-                "hunger",
-                0f);
-            brain.SimulationTick(0.1f);
-
-            Assert.That((bool)InvokePrivate(brain, "eatStopRequested"), Is.True);
+            brain.SimulationTick(0.01f);
+            Assert.That(stats.Hunger, Is.EqualTo(5f));
+            Assert.That(brain.FoodMealCommitment.Completed, Is.True);
             Assert.That(brain.LastDecisionReason, Is.EqualTo("meal_completed_fully"));
-        }
 
+            brain.SimulationTick(0.1f);
+            Assert.That(stats.Hunger, Is.EqualTo(5f), "A meal grants recovery once.");
+        }
 
         [Test]
         public void HungryColonistWithImminentWorkCanBeginEatingBeforeShift()
@@ -791,6 +769,20 @@ namespace AsteroidColony.Tests
                 brain,
                 "eatTargetInProgress",
                 new ActivityTarget(facility, "Eat"));
+            FoodServiceComponent service = foodFacilityObject.GetComponent<FoodServiceComponent>();
+            Assert.That(service.FoodInventory.Remove(foodResource, 1f), Is.EqualTo(1f));
+            ConstructorInfo constructor = typeof(FoodMealCommitment).GetConstructor(
+                BindingFlags.Instance | BindingFlags.NonPublic, null,
+                new[] { typeof(ColonistIdentity), typeof(FoodServiceComponent),
+                    typeof(InventoryComponent), typeof(ResourceDefinition), typeof(float) }, null);
+            Assert.That(constructor, Is.Not.Null);
+            FoodMealCommitment commitment = (FoodMealCommitment)constructor.Invoke(
+                new object[] { colonistObject.GetComponent<ColonistIdentity>(), service,
+                    service.FoodInventory, foodResource, 1f });
+            SetPrivateProperty(commitment, "Consumed", true);
+            SetPrivateField(brain, "foodMealCommitment", commitment);
+            SetPrivateField(brain, "activeMealGameHours", 0f);
+            runner.SetActiveActivityLock(true);
             SetPrivateField(brain, "eatStopRequested", false);
             SetPrivateField(brain, "state", ColonistBrainState.Eating);
         }
@@ -908,7 +900,18 @@ namespace AsteroidColony.Tests
                 foodFacilityObject.AddComponent<FoodServiceComponent>();
             SetPrivateField(service, "facility", facility);
             SetPrivateField(service, "eatActivityId", "Eat");
-            SetPrivateField(service, "hungerRecoveryPerGameHour", 60f);
+            foodResource = ScriptableObject.CreateInstance<ResourceDefinition>();
+            foodResource.stableId = "test-food";
+            foodResource.quantityMode = ResourceQuantityMode.Discrete;
+            foodResource.hungerRecoveryPerUnit = 90f;
+            foodResource.consumptionDurationGameHours = 0.25f;
+            InventoryComponent inventory = foodFacilityObject.AddComponent<InventoryComponent>();
+            Assert.That(inventory.SetCapacity(foodResource, 20f), Is.True);
+            Assert.That(inventory.Add(foodResource, 20f), Is.EqualTo(20f));
+            SetPrivateField(service, "inventoryAccountingEnabled", true);
+            SetPrivateField(service, "foodInventory", inventory);
+            SetPrivateField(service, "foodResource", foodResource);
+            service.RefreshStaticBindingMetadata();
         }
 
         private static object InvokePrivate(

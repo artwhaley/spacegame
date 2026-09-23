@@ -22,8 +22,6 @@ namespace AsteroidColony
     public sealed class ColonistBrain : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         private const float ObligationWakeLeadGameHours = 0.5f;
-        private const float WorkMealReleaseHungerThreshold = 40f;
-        private const string MealEndedForWorkReason = "meal_ended_for_work";
         private const string MealCompletedFullyReason = "meal_completed_fully";
 
         [SerializeField] private ColonistStatsComponent stats;
@@ -42,7 +40,12 @@ namespace AsteroidColony
             new OffDutyCompletionHistory();
         private bool wakeRequested;
         private bool workStopRequested;
+        private WorkAssignment mobileDutyAssignment;
+        private bool workExcursionActive;
+        private bool workExcursionHasCargo;
+        private WorkplaceComponent workExcursionWorkplace;
         private bool eatStopRequested;
+        private float activeMealGameHours;
         private bool offDutyStopRequested;
         private ActivityTarget localSleepOffer;
         private long localSleepOfferValidTick = -1L;
@@ -59,6 +62,13 @@ namespace AsteroidColony
         private ColonistFreeTimePlan latestFreeTimePlan;
 
         public ColonistBrainState State => state;
+        public bool IsCriticallyHungry => stats != null && stats.IsCriticallyHungry;
+        public bool WorkExcursionReady => workExcursionActive &&
+            !workExcursionHasCargo && !activityRunner.HasActiveRequest &&
+            HasCurrentWorkObligation() && !stats.IsCriticallyHungry;
+        public bool ShouldAbortWorkExcursionBeforePickup => workExcursionActive &&
+            !workExcursionHasCargo &&
+            (stats.IsCriticallyHungry || !HasCurrentWorkObligation());
         public int SimulationTickPriority => 100;
         public OffDutyOpportunity OpportunityInProgress => opportunityInProgress;
         public OffDutyOpportunity OffDutyOpportunity => opportunityInProgress;
@@ -181,7 +191,7 @@ namespace AsteroidColony
                     TickEatSeeking();
                     break;
                 case ColonistBrainState.Eating:
-                    TickEating();
+                    TickEating(deltaGameHours);
                     break;
                 case ColonistBrainState.OffDutySeeking:
                     TickOffDutySeeking();
@@ -428,6 +438,7 @@ namespace AsteroidColony
             lastOfferChosen = "food";
             eatTargetInProgress = offer.Opportunity.Target;
             eatStopRequested = false;
+            activeMealGameHours = 0f;
             state = ColonistBrainState.EatSeeking;
             RecordDecision(
                 "colonist.decision.eat",
@@ -618,6 +629,35 @@ namespace AsteroidColony
 
         private void TickWorking()
         {
+            if (workExcursionActive)
+            {
+                // Once loaded, the worker owns the run through delivery even if a
+                // shift boundary or critical need occurs during the trip.
+                if (workExcursionHasCargo)
+                    return;
+                return;
+            }
+
+            if (mobileDutyAssignment != null)
+            {
+                WalkingFreightCarrierComponent carrier =
+                    GetComponent<WalkingFreightCarrierComponent>();
+                if (carrier != null && carrier.HasCargo)
+                    return;
+                if (stats.IsCriticallyHungry || !HasCurrentWorkObligation())
+                {
+                    RecordDecision(
+                        stats.IsCriticallyHungry
+                            ? "colonist.decision.interrupted"
+                            : "colonist.decision.reconsidered",
+                        stats.IsCriticallyHungry
+                            ? "work_interrupted_for_critical_hunger"
+                            : "work_ended");
+                    FinishWorkLifecycle();
+                }
+                return;
+            }
+
             if (workTargetInProgress == null || !workTargetInProgress.IsConfigured)
             {
                 RequestWorkStop();
@@ -643,6 +683,25 @@ namespace AsteroidColony
 
         private bool TryStartWork()
         {
+            if (WorkforceManager.Instance != null && identity != null &&
+                SimulationManager.Instance != null &&
+                WorkforceManager.Instance.TryGetCurrentDuty(
+                    identity,
+                    SimulationManager.Instance.CurrentGameHour,
+                    out WorkAssignment assignment) &&
+                assignment.Workplace.ExecutionMode == WorkplaceExecutionMode.MobileDuty)
+            {
+                mobileDutyAssignment = assignment;
+                workStopRequested = false;
+                state = ColonistBrainState.Working;
+                ColonistMotor mobileDutyMotor = GetComponent<ColonistMotor>();
+                if (mobileDutyMotor != null && assignment.Workplace.DutyAnchor != null)
+                    mobileDutyMotor.MoveTo(assignment.Workplace.DutyAnchor);
+                RecordDecision("colonist.decision.work", "mobile_duty_started",
+                    assignment.Workplace);
+                return true;
+            }
+
             if (!targetResolver.TryResolveTarget(
                     ActivityPurpose.Work,
                     out ActivityTarget target) ||
@@ -657,6 +716,53 @@ namespace AsteroidColony
             workStopRequested = false;
             state = ColonistBrainState.WorkSeeking;
             return true;
+        }
+
+        public bool CanBeginWorkExcursion(WorkplaceComponent workplace)
+        {
+            if (workplace == null || state != ColonistBrainState.Working ||
+                workTargetInProgress == null || workExcursionActive ||
+                stats.IsCriticallyHungry || !HasCurrentWorkObligation() ||
+                WorkforceManager.Instance == null || identity == null ||
+                !WorkforceManager.Instance.TryGetAssignment(identity, out WorkAssignment assignment) ||
+                assignment.Workplace != workplace ||
+                workplace.ExecutionMode != WorkplaceExecutionMode.FacilityActivity ||
+                activityRunner == null || !activityRunner.IsActivityActive)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public bool TryBeginWorkExcursion(WorkplaceComponent workplace)
+        {
+            if (!CanBeginWorkExcursion(workplace))
+                return false;
+
+            workExcursionActive = true;
+            workExcursionHasCargo = false;
+            workExcursionWorkplace = workplace;
+            activityRunner.Stop();
+            RecordDecision("colonist.decision.work", "authorized_work_excursion", workplace);
+            return true;
+        }
+
+        public void SetWorkExcursionCargo(bool hasCargo)
+        {
+            if (workExcursionActive)
+                workExcursionHasCargo = hasCargo;
+        }
+
+        public void CompleteWorkExcursion()
+        {
+            if (!workExcursionActive)
+                return;
+
+            workExcursionActive = false;
+            workExcursionHasCargo = false;
+            workExcursionWorkplace = null;
+            FinishWorkLifecycle();
         }
 
         private void RequestWorkStop()
@@ -700,6 +806,7 @@ namespace AsteroidColony
         private void FinishWorkLifecycle()
         {
             workTargetInProgress = null;
+            mobileDutyAssignment = null;
             workStopRequested = false;
             state = ColonistBrainState.Idle;
         }
@@ -708,29 +815,17 @@ namespace AsteroidColony
         {
             bool targetValid = IsFoodTargetValid(eatTargetInProgress);
             bool accessValid = targetValid && CanRequesterStillAccessFood(eatTargetInProgress);
-            bool workMealFloorReached = HasReachedWorkMealFloor();
-            if (!targetValid ||
-                !accessValid ||
-                workMealFloorReached)
+            if (!targetValid || !accessValid)
             {
-                RequestEatStop(
-                    !targetValid
-                        ? "food_target_invalid"
-                        : !accessValid
-                            ? "food_access_lost"
-                            : workMealFloorReached
-                                ? MealEndedForWorkReason
-                                : null);
+                RequestEatStop(!targetValid ? "food_target_invalid" : "food_access_lost");
                 if (!activityRunner.HasActiveRequest)
                     FinishEatLifecycle();
                 return;
             }
 
             if (activityRunner.IsActivityActive &&
-                string.Equals(
-                    activityRunner.ActiveActivityId,
-                    eatTargetInProgress.ActivityId,
-                    StringComparison.Ordinal))
+                string.Equals(activityRunner.ActiveActivityId,
+                    eatTargetInProgress.ActivityId, StringComparison.Ordinal))
             {
                 state = ColonistBrainState.Eating;
                 return;
@@ -740,101 +835,53 @@ namespace AsteroidColony
                 FinishEatLifecycle();
         }
 
-        private void TickEating()
+        private void TickEating(float deltaGameHours)
         {
-            bool targetInvalid = !IsFoodTargetValid(eatTargetInProgress) ||
-                                 !IsCurrentEatActivity();
-            bool workMealFloorReached = HasReachedWorkMealFloor();
-            // The meal itself is already served: only structural target validity matters here.
-            // Current staffing access is deliberately not re-checked, so a diner is never
-            // ejected because the waiter clocked out. A colonist with work pressure may
-            // finish enough of the meal to reach the work-release threshold, but should
-            // not be forced to stop merely because Critical Hunger has cleared.
-            if (targetInvalid ||
-                stats.Hunger <= 0f ||
-                workMealFloorReached)
-            {
-                RequestEatStop(
-                    targetInvalid
-                        ? "food_target_invalid"
-                        : workMealFloorReached
-                            ? MealEndedForWorkReason
-                            : null);
-            }
-
-            if (eatStopRequested)
+            // A served meal is a committed interaction. Work, sleep, staffing and
+            // changing need levels may all wait until its full duration has elapsed.
+            if (foodMealCommitment == null || !foodMealCommitment.Consumed)
             {
                 if (!activityRunner.HasActiveRequest)
                     FinishEatLifecycle();
                 return;
             }
 
+            if (!foodMealCommitment.Completed)
+            {
+                activeMealGameHours += deltaGameHours;
+                if (activeMealGameHours + 0.000001f >= foodMealCommitment.DurationGameHours)
+                {
+                    foodMealCommitment.Completed = true;
+                    activityRunner.SetActiveActivityLock(false);
+                    stats.AdjustHunger(-foodMealCommitment.HungerRecovery);
+                    SimulationLogManager.RecordEvent(
+                        "food.meal_completed", "Food", "Info", LogSubject,
+                        foodMealCommitment.Service != null
+                            ? foodMealCommitment.Service.Facility : null,
+                        new SimulationLogField("hungerRecovery", foodMealCommitment.HungerRecovery),
+                        new SimulationLogField("durationGameHours", foodMealCommitment.DurationGameHours),
+                        new SimulationLogField("hunger", stats.Hunger));
+                    RequestEatStop(MealCompletedFullyReason);
+                }
+            }
+
             if (!activityRunner.HasActiveRequest)
                 FinishEatLifecycle();
         }
 
-        private void RequestEatStop(string reason = null)
+        private void RequestEatStop(string reason)
         {
             if (eatStopRequested)
                 return;
 
             eatStopRequested = true;
-            string stopReason = !string.IsNullOrEmpty(reason)
-                ? reason
-                : stats.Hunger <= 0f
-                    ? MealCompletedFullyReason
-                    : HasReachedWorkMealFloor()
-                        ? MealEndedForWorkReason
-                        : HasCurrentWorkObligation()
-                            ? "work_started"
-                            : stats.IsCriticallyHungry
-                                ? "critical_hunger_satisfied"
-                                : "hunger_satisfied";
-            if (string.Equals(stopReason, MealEndedForWorkReason, StringComparison.Ordinal))
-            {
-                RecordDecision(
-                    "colonist.decision.interrupted",
-                    stopReason,
-                    null,
-                    new SimulationLogField("hunger", stats.Hunger),
-                    new SimulationLogField(
-                        "workMealReleaseThreshold",
-                        WorkMealReleaseHungerThreshold));
-                SimulationLogManager.RecordEvent(
-                    MealEndedForWorkReason,
-                    "Food",
-                    "Info",
-                    LogSubject,
-                    eatTargetInProgress != null ? eatTargetInProgress.Facility : null,
-                    new SimulationLogField("hunger", stats.Hunger),
-                    new SimulationLogField(
-                        "workMealReleaseThreshold",
-                        WorkMealReleaseHungerThreshold));
-            }
-            else
-            {
-                RecordDecision("colonist.decision.interrupted", stopReason);
-                if (string.Equals(stopReason, MealCompletedFullyReason, StringComparison.Ordinal))
-                {
-                    SimulationLogManager.RecordEvent(
-                        MealCompletedFullyReason,
-                        "Food",
-                        "Info",
-                        LogSubject,
-                        eatTargetInProgress != null ? eatTargetInProgress.Facility : null,
-                        new SimulationLogField("hunger", stats.Hunger));
-                }
-            }
+            RecordDecision(
+                reason == MealCompletedFullyReason
+                    ? "colonist.decision.eat_completed"
+                    : "colonist.decision.interrupted",
+                reason);
             if (activityRunner.HasActiveRequest)
                 activityRunner.Stop();
-        }
-
-        private bool HasReachedWorkMealFloor()
-        {
-            return (HasCurrentWorkObligation() ||
-                    HasWorkStartingWithinPreparationWindow()) &&
-                   stats != null &&
-                   stats.Hunger <= WorkMealReleaseHungerThreshold;
         }
 
         private bool CanRequesterStillAccessFood(ActivityTarget target)
@@ -871,6 +918,7 @@ namespace AsteroidColony
             foodMealCommitment = null;
             eatTargetInProgress = null;
             eatStopRequested = false;
+            activeMealGameHours = 0f;
             state = ColonistBrainState.Idle;
         }
 
@@ -1220,12 +1268,19 @@ namespace AsteroidColony
                     {
                         activityRunner.Stop();
                     }
+                    else
+                    {
+                        activeMealGameHours = 0f;
+                        activityRunner.SetActiveActivityLock(true);
+                        state = ColonistBrainState.Eating;
+                    }
                 }
-                else if ((activityEvent.Kind == ActivityLifecycleEventKind.Failed ||
-                          activityEvent.Kind == ActivityLifecycleEventKind.Released) &&
-                         !foodMealCommitment.Consumed)
+                else if (activityEvent.Kind == ActivityLifecycleEventKind.Failed ||
+                         activityEvent.Kind == ActivityLifecycleEventKind.Released)
                 {
-                    FoodManager.Instance?.ReleaseMeal(foodMealCommitment);
+                    activityRunner.SetActiveActivityLock(false);
+                    if (!foodMealCommitment.Consumed)
+                        FoodManager.Instance?.ReleaseMeal(foodMealCommitment);
                 }
             }
 

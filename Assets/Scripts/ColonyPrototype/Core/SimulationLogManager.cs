@@ -24,6 +24,7 @@ namespace AsteroidColony
         public IReadOnlyList<SimulationLogEntry> Entries =>
             entries ?? (IReadOnlyList<SimulationLogEntry>)Array.Empty<SimulationLogEntry>();
         public string JsonlPath => jsonlPath ?? string.Empty;
+        public event Action<SimulationLogEntry> EntryRecorded;
 
         private void Awake()
         {
@@ -250,6 +251,15 @@ namespace AsteroidColony
                 {
                     Debug.LogWarning($"Simulation log JSONL write failed: {exception.Message}", this);
                 }
+            }
+
+            try
+            {
+                EntryRecorded?.Invoke(entry);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"Simulation log listener failed: {exception.Message}", this);
             }
 
             if (echoToConsole)

@@ -29,9 +29,6 @@ namespace AsteroidColony
         [SerializeField]
         private string eatActivityId = "Eat";
 
-        [SerializeField, Min(0f)]
-        private float hungerRecoveryPerGameHour = 60f;
-
         [SerializeField]
         private bool requiresStaff;
 
@@ -57,9 +54,6 @@ namespace AsteroidColony
         [SerializeField]
         private ResourceDefinition foodResource;
 
-        [SerializeField, Min(0.0001f)]
-        private float foodPerMeal = 1f;
-
         [NonSerialized] private bool staticBindingCacheInitialized;
         [NonSerialized] private InteractableFacility cachedFacility;
         [NonSerialized] private string cachedEatActivityId;
@@ -81,10 +75,10 @@ namespace AsteroidColony
 
         public string EatActivityId => eatActivityId;
 
-        public float HungerRecoveryPerGameHour =>
-            IsFinite(hungerRecoveryPerGameHour)
-                ? Mathf.Max(0f, hungerRecoveryPerGameHour)
-                : 0f;
+        public float HungerRecoveryPerMeal => foodResource != null
+            ? foodResource.hungerRecoveryPerUnit : 0f;
+        public float MealDurationGameHours => foodResource != null
+            ? foodResource.consumptionDurationGameHours : 0f;
 
         public bool RequiresStaff => requiresStaff;
 
@@ -100,12 +94,11 @@ namespace AsteroidColony
         public bool InventoryAccountingEnabled => inventoryAccountingEnabled;
         public InventoryComponent FoodInventory => foodInventory;
         public ResourceDefinition FoodResource => foodResource;
-        public float FoodPerMeal =>
-            IsFinite(foodPerMeal) ? Mathf.Max(0f, foodPerMeal) : 0f;
+        public float FoodPerMeal => 1f;
 
         public bool HasUsableFoodInventory =>
-            !inventoryAccountingEnabled ||
-            (foodInventory != null && foodResource != null && FoodPerMeal > 0f);
+            inventoryAccountingEnabled && foodInventory != null &&
+            foodResource != null && foodResource.IsEdible;
 
         public float FoodOnHand =>
             HasUsableFoodInventory && foodInventory != null && foodResource != null
@@ -124,8 +117,7 @@ namespace AsteroidColony
 
         public bool HasAvailableMeal()
         {
-            return !inventoryAccountingEnabled ||
-                   (HasUsableFoodInventory && FoodAvailable + 0.0001f >= FoodPerMeal);
+            return HasUsableFoodInventory && FoodAvailable >= FoodPerMeal;
         }
 
         /// <summary>
@@ -141,11 +133,11 @@ namespace AsteroidColony
                 if (!isActiveAndEnabled ||
                     cachedFacility == null ||
                     string.IsNullOrWhiteSpace(eatActivityId) ||
-                    HungerRecoveryPerGameHour <= 0f ||
+                    !inventoryAccountingEnabled ||
+                    !HasUsableFoodInventory ||
                     cachedEatBinding == null ||
                     !cachedRequiredStaffConfiguration ||
-                    !IsUsableBinding(cachedEatBinding) ||
-                    (inventoryAccountingEnabled && !HasUsableFoodInventory))
+                    !IsUsableBinding(cachedEatBinding))
                 {
                     return false;
                 }
@@ -189,7 +181,8 @@ namespace AsteroidColony
             if (cachedEatBinding == null ||
                 !cachedRequiredStaffConfiguration ||
                 !IsUsableBinding(cachedEatBinding) ||
-                (inventoryAccountingEnabled && !HasUsableFoodInventory))
+                !inventoryAccountingEnabled ||
+                !HasUsableFoodInventory)
             {
                 return FoodServiceAccessMode.Unavailable;
             }
@@ -290,9 +283,6 @@ namespace AsteroidColony
         private void OnValidate()
         {
             ResolveFacility();
-            if (!IsFinite(hungerRecoveryPerGameHour))
-                hungerRecoveryPerGameHour = 0f;
-            hungerRecoveryPerGameHour = Mathf.Max(0f, hungerRecoveryPerGameHour);
             minimumActiveWorkers = Mathf.Max(1, minimumActiveWorkers);
             RefreshStaticBindingMetadata();
         }
@@ -313,7 +303,8 @@ namespace AsteroidColony
             EnsureStaticBindingCache();
             binding = cachedEatBinding;
             return isActiveAndEnabled &&
-                   HungerRecoveryPerGameHour > 0f &&
+                   inventoryAccountingEnabled &&
+                   HasUsableFoodInventory &&
                    cachedEatBinding != null &&
                    cachedRequiredStaffConfiguration &&
                    IsUsableBinding(cachedEatBinding);
