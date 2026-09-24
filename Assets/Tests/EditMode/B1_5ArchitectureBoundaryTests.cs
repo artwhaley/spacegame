@@ -54,6 +54,21 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void FreightLogisticsManagerOwnsJobStateTransitions()
+        {
+            PropertyInfo state = typeof(FreightDeliveryJob).GetProperty("State");
+            Assert.That(state, Is.Not.Null);
+            Assert.That(state.GetSetMethod(true).IsPrivate, Is.True);
+
+            var managerType = typeof(FreightLogisticsManager);
+            Assert.That(managerType.GetMethod("SetJobState"), Is.Null);
+            Assert.That(managerType.GetMethod("TryPickup"), Is.Null);
+            Assert.That(managerType.GetMethod("TryDeliver"), Is.Null);
+            Assert.That(managerType.GetMethod("BlockJob"), Is.Null);
+            Assert.That(managerType.GetMethod("ResumeJob"), Is.Null);
+        }
+
+        [Test]
         public void FreightLogisticsManagerApiDoesNotBindAColonistWorker()
         {
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static |

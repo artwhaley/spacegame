@@ -45,29 +45,39 @@ namespace AsteroidColony
 
     public sealed class FreightDeliveryJob
     {
+        private readonly object mutationAuthority;
+        private float quantity;
+        private InventoryReservationToken reservation;
+
         internal FreightDeliveryJob(FreightAllocation allocation,
-            IFreightLegExecution activeLegExecution, InventoryReservationToken reservation)
+            IFreightLegExecution activeLegExecution,
+            InventoryReservationToken reservation,
+            object mutationAuthority)
         {
-            if (allocation == null || activeLegExecution == null || reservation == null)
+            if (allocation == null || activeLegExecution == null || reservation == null ||
+                mutationAuthority == null)
                 throw new ArgumentNullException(
-                    "A freight job requires an allocation, leg execution, and source reservation.");
+                    "A freight job requires an allocation, leg execution, source reservation, and manager authority.");
 
             Allocation = allocation;
             ActiveLegExecution = activeLegExecution;
-            Reservation = reservation;
-            CurrentLegIndex = activeLegExecution.LegIndex;
+            this.reservation = reservation;
+            this.mutationAuthority = mutationAuthority;
+            quantity = allocation.Quantity;
+            CurrentLegIndex = 0;
             if (CurrentLegIndex < 0 || CurrentLegIndex >= allocation.RoutePlan.Legs.Count)
-                throw new ArgumentOutOfRangeException(nameof(activeLegExecution),
-                    "The active execution must reference a leg in the allocation route.");
+                throw new ArgumentException("The freight route must contain a first leg.", nameof(allocation));
             State = FreightJobState.Assigned;
         }
 
         public FreightAllocation Allocation { get; }
-        public IFreightLegExecution ActiveLegExecution { get; internal set; }
+        public IFreightLegExecution ActiveLegExecution { get; private set; }
         public LogisticsRoutePlan RoutePlan => Allocation.RoutePlan;
-        public int CurrentLegIndex { get; internal set; }
+        public int CurrentLegIndex { get; private set; }
         public LogisticsRouteLeg CurrentLeg => CurrentLegIndex >= 0 &&
             CurrentLegIndex < RoutePlan.Legs.Count ? RoutePlan.Legs[CurrentLegIndex] : null;
+        public bool IsAwaitingLegAssignment =>
+            !IsTerminal && State == FreightJobState.Assigned && ActiveLegExecution == null;
         public InventoryComponent CargoInventory => ActiveLegExecution != null
             ? ActiveLegExecution.CargoInventory : null;
         public string Id => Allocation.Id;
@@ -75,13 +85,64 @@ namespace AsteroidColony
         public ResourceDefinition Resource => Allocation.Resource;
         public LogisticsStockComponent Source => Allocation.Source;
         public LogisticsStockComponent Destination => Allocation.FinalDestination;
-        public InventoryReservationToken Reservation { get; }
-        public float Quantity { get => Allocation.Quantity; internal set => Allocation.Quantity = value; }
+        public InventoryReservationToken Reservation => reservation;
+        public float Quantity => quantity;
         public bool IsEmergencyWork => ActiveLegExecution != null && ActiveLegExecution.IsEmergency;
-        public FreightJobState State { get; internal set; }
-        public bool HasPickedUp { get; internal set; }
+        public FreightJobState State { get; private set; }
+        public bool HasPickedUp { get; private set; }
         public bool IsTerminal => State == FreightJobState.Completed || State == FreightJobState.Cancelled;
-        public long RetryAtTick { get; internal set; }
+        public long RetryAtTick { get; private set; }
+
+        internal void SetState(object authority, FreightJobState state)
+        {
+            VerifyAuthority(authority);
+            State = state;
+        }
+
+        internal void SetHasPickedUp(object authority, bool hasPickedUp)
+        {
+            VerifyAuthority(authority);
+            HasPickedUp = hasPickedUp;
+        }
+
+        internal void SetQuantity(object authority, float newQuantity)
+        {
+            VerifyAuthority(authority);
+            quantity = Mathf.Max(0f, newQuantity);
+        }
+
+        internal void SetReservation(object authority, InventoryReservationToken newReservation)
+        {
+            VerifyAuthority(authority);
+            reservation = newReservation;
+        }
+
+        internal void SetActiveLegExecution(object authority, IFreightLegExecution execution)
+        {
+            VerifyAuthority(authority);
+            ActiveLegExecution = execution;
+        }
+
+        internal void SetRetryAtTick(object authority, long retryAtTick)
+        {
+            VerifyAuthority(authority);
+            RetryAtTick = retryAtTick;
+        }
+
+        internal bool AdvanceLeg(object authority)
+        {
+            VerifyAuthority(authority);
+            if (CurrentLegIndex + 1 >= RoutePlan.Legs.Count)
+                return false;
+            CurrentLegIndex++;
+            return true;
+        }
+
+        private void VerifyAuthority(object authority)
+        {
+            if (!ReferenceEquals(authority, mutationAuthority))
+                throw new InvalidOperationException("Only the owning FreightLogisticsManager may mutate this job.");
+        }
     }
 
     /// <summary>Owns local stock orders and walking freight allocations for P4b.</summary>
@@ -94,6 +155,7 @@ namespace AsteroidColony
         private const long BlockedRetryTicks = 5;
         private static long nextOrderId;
         private static long nextJobId;
+        private readonly object jobMutationAuthority = new object();
 
         [NonSerialized] private readonly List<FreightOrder> orders = new List<FreightOrder>();
         [NonSerialized] private readonly List<FreightDeliveryJob> jobs = new List<FreightDeliveryJob>();
@@ -183,22 +245,108 @@ namespace AsteroidColony
             DispatchRoutineJobs();
         }
 
-        public void SetJobState(FreightDeliveryJob job, FreightJobState state, string reason = null)
+        internal bool ReportExecution(
+            FreightDeliveryJob job,
+            IFreightLegExecution execution,
+            FreightExecutionReport report,
+            FreightFailureReason failureReason = FreightFailureReason.None,
+            string detail = null)
+        {
+            if (!IsCurrentExecution(job, execution))
+                return false;
+
+            switch (report)
+            {
+                case FreightExecutionReport.PickupRouteStarted:
+                    if (job.State != FreightJobState.Assigned || job.HasPickedUp)
+                        return false;
+                    TransitionJob(job, FreightJobState.TravelingToPickup);
+                    return true;
+
+                case FreightExecutionReport.ProviderAtSource:
+                    if (job.State != FreightJobState.TravelingToPickup || job.HasPickedUp)
+                        return false;
+                    return PickupAtCurrentLeg(job);
+
+                case FreightExecutionReport.LoadedRouteStarted:
+                    if (!job.HasPickedUp ||
+                        (job.State != FreightJobState.PickingUp && job.State != FreightJobState.Blocked))
+                    {
+                        return false;
+                    }
+                    job.SetRetryAtTick(jobMutationAuthority, 0L);
+                    TransitionJob(job, FreightJobState.TravelingToDropoff);
+                    return true;
+
+                case FreightExecutionReport.LoadedLegArrived:
+                    if (!job.HasPickedUp || job.State != FreightJobState.TravelingToDropoff)
+                        return false;
+                    return CompleteCurrentLeg(job);
+
+                case FreightExecutionReport.Failed:
+                    if (failureReason == FreightFailureReason.None)
+                        return false;
+                    if (job.HasPickedUp)
+                        BlockJob(job, failureReason, detail);
+                    else
+                        CancelBeforePickup(job, failureReason, detail);
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        internal WorkReleaseDisposition RequestExecutionRelease(
+            FreightDeliveryJob job,
+            IFreightLegExecution execution,
+            WorkReleaseReason reason)
+        {
+            if (!IsCurrentExecution(job, execution))
+                return WorkReleaseDisposition.ReleasedNow;
+            if (job.HasPickedUp)
+                return WorkReleaseDisposition.Deferred;
+
+            CancelBeforePickup(job, FreightFailureReason.WorkReleasedBeforePickup, reason.ToString());
+            return WorkReleaseDisposition.ReleasedNow;
+        }
+
+        private bool IsCurrentExecution(
+            FreightDeliveryJob job,
+            IFreightLegExecution execution)
+        {
+            return IsKnown(job) && execution != null && execution.IsActive &&
+                   ReferenceEquals(job.ActiveLegExecution, execution) &&
+                   job.CurrentLegIndex == execution.LegIndex && !job.IsTerminal;
+        }
+
+        private void TransitionJob(
+            FreightDeliveryJob job,
+            FreightJobState state,
+            FreightFailureReason reason = FreightFailureReason.None,
+            string detail = null)
         {
             if (!IsKnown(job) || job.State == state)
                 return;
-            job.State = state;
-            Log(state == FreightJobState.Blocked ? "logistics.job_blocked" : "logistics.job_state_changed",
-                state == FreightJobState.Blocked ? "Warning" : "Info",
-                job.ActiveLegExecution.ProviderContext, job.Destination,
+
+            job.SetState(jobMutationAuthority, state);
+            IFreightLegExecution execution = job.ActiveLegExecution;
+            string eventKey = state == FreightJobState.Blocked ? "logistics.job_blocked" :
+                state == FreightJobState.Cancelled ? "logistics.job_cancelled" :
+                "logistics.job_state_changed";
+            Log(eventKey,
+                state == FreightJobState.Blocked || state == FreightJobState.Cancelled ? "Warning" : "Info",
+                execution != null ? execution.ProviderContext : null, job.CurrentLeg?.Destination,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Allocation.Id),
                 new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
                 new SimulationLogField("state", state),
-                new SimulationLogField("reason", reason ?? string.Empty),
+                new SimulationLogField("reason", FailureCode(reason)),
+                new SimulationLogField("detail", detail ?? string.Empty),
                 new SimulationLogField("quantity", job.Quantity),
                 new SimulationLogField("routeDistance", job.RoutePlan.TotalEstimatedLoadedDistance),
-                new SimulationLogField("positioningDistance", job.ActiveLegExecution.PositioningDistance),
+                new SimulationLogField("positioningDistance", execution != null ? execution.PositioningDistance : 0f),
+                new SimulationLogField("currentLegIndex", job.CurrentLegIndex),
                 new SimulationLogField("freightLeg", state == FreightJobState.TravelingToPickup ||
                     state == FreightJobState.PickingUp ? "pickup" :
                     state == FreightJobState.TravelingToDropoff || state == FreightJobState.DroppingOff
@@ -206,143 +354,247 @@ namespace AsteroidColony
                 new SimulationLogField("reservationActive", job.Reservation != null && job.Reservation.IsActive));
         }
 
-        public bool TryPickup(FreightDeliveryJob job)
+        private static string FailureCode(FreightFailureReason reason)
         {
-            if (!IsKnown(job) || job.HasPickedUp || job.IsTerminal ||
-                job.Source == null || job.Source.Inventory == null ||
-                job.Destination == null || job.Destination.Inventory == null ||
-                job.Reservation == null || !job.Reservation.IsActive)
+            switch (reason)
             {
-                CancelBeforePickup(job, "pickup_precondition_failed");
-                return false;
+                case FreightFailureReason.PickupPreconditionFailed: return "pickup_precondition_failed";
+                case FreightFailureReason.AllocationNoLongerFits: return "allocation_no_longer_fits";
+                case FreightFailureReason.WorkerInventoryMissing: return "worker_inventory_missing";
+                case FreightFailureReason.ReservedStockUnavailable: return "reserved_stock_unavailable";
+                case FreightFailureReason.DestinationOrCarrierUnavailable: return "destination_or_carrier_unavailable";
+                case FreightFailureReason.OrderFulfilledCarrierRetainsExcessCargo:
+                    return "order_fulfilled_carrier_retains_excess_cargo";
+                case FreightFailureReason.DestinationHasNoCapacity: return "destination_has_no_capacity";
+                case FreightFailureReason.CarrierRetainsUnacceptedCargo: return "carrier_retains_unaccepted_cargo";
+                case FreightFailureReason.PickupAnchorMissing: return "pickup_anchor_missing";
+                case FreightFailureReason.DropoffAnchorMissing: return "dropoff_anchor_missing";
+                case FreightFailureReason.PersonnelRouteRunnerMissing: return "personnel_route_runner_missing";
+                case FreightFailureReason.PickupRouteUnavailable: return "pickup_route_unavailable";
+                case FreightFailureReason.DropoffRouteUnavailable: return "dropoff_route_unavailable";
+                case FreightFailureReason.FreightRouteFailed: return "freight_route_failed";
+                case FreightFailureReason.WorkReleasedBeforePickup: return "work_release_before_pickup";
+                case FreightFailureReason.StageReservationFailed: return "stage_reservation_failed";
+                case FreightFailureReason.DemandPublicationExpired: return "demand_publication_expired";
+                default: return string.Empty;
             }
+        }
 
-            FreightOrder order = job.Order;
-            float otherInbound = GetCommittedCapacity(job.Destination.Inventory,
-                job.Resource, job);
-            float availableDestinationCapacity = Mathf.Max(0f,
-                job.Destination.Inventory.GetFreeCapacity(job.Resource) - otherInbound);
-            if (availableDestinationCapacity + QuantityEpsilon < job.Quantity ||
-                job.Reservation.Remaining + QuantityEpsilon < job.Quantity)
-            {
-                CancelBeforePickup(job, "allocation_no_longer_fits");
-                return false;
-            }
-
-            job.State = FreightJobState.PickingUp;
+        private bool PickupAtCurrentLeg(FreightDeliveryJob job)
+        {
+            LogisticsRouteLeg leg = job.CurrentLeg;
+            InventoryComponent sourceInventory = leg != null && leg.Origin != null
+                ? leg.Origin.Inventory : null;
             InventoryComponent cargoInventory = job.CargoInventory;
+            if (leg == null || sourceInventory == null || leg.Destination == null ||
+                leg.Destination.Inventory == null || job.Reservation == null ||
+                !job.Reservation.IsActive || job.Reservation.Owner != sourceInventory)
+            {
+                CancelBeforePickup(job, FreightFailureReason.PickupPreconditionFailed);
+                return false;
+            }
+
+            TransitionJob(job, FreightJobState.PickingUp);
             if (cargoInventory == null)
             {
-                CancelBeforePickup(job, "worker_inventory_missing");
-                return false;
-            }
-            float moved = job.Source.Inventory.TransferOwnedTo(
-                job.Reservation,
-                cargoInventory,
-                job.Quantity);
-            if (moved <= QuantityEpsilon)
-            {
-                CancelBeforePickup(job, "reserved_stock_unavailable");
+                CancelBeforePickup(job, FreightFailureReason.WorkerInventoryMissing);
                 return false;
             }
 
+            if (leg.Destination == job.Destination)
+            {
+                float otherInbound = GetCommittedCapacity(job.Destination.Inventory,
+                    job.Resource, job);
+                float availableDestinationCapacity = Mathf.Max(0f,
+                    job.Destination.Inventory.GetFreeCapacity(job.Resource) - otherInbound);
+                if (availableDestinationCapacity + QuantityEpsilon < job.Quantity)
+                {
+                    CancelBeforePickup(job, FreightFailureReason.AllocationNoLongerFits);
+                    return false;
+                }
+            }
+
+            if (job.Reservation.Remaining + QuantityEpsilon < job.Quantity)
+            {
+                CancelBeforePickup(job, FreightFailureReason.AllocationNoLongerFits);
+                return false;
+            }
+
+            float moved = sourceInventory.TransferOwnedToAndReserveDestination(
+                job.Reservation, cargoInventory, job.Quantity, out InventoryReservationToken cargoReservation);
+            if (moved <= QuantityEpsilon || cargoReservation == null)
+            {
+                CancelBeforePickup(job, FreightFailureReason.ReservedStockUnavailable);
+                return false;
+            }
+
+            if (job.Reservation.IsActive)
+                sourceInventory.ReleaseOwned(job.Reservation);
             float reduced = Mathf.Max(0f, job.Quantity - moved);
-            order.Committed = Mathf.Max(0f, order.Committed - reduced);
-            job.Quantity = moved;
-            job.HasPickedUp = true;
-            Log("logistics.pickup_completed", "Info", job.ActiveLegExecution.ProviderContext, job.Source,
+            job.Order.Committed = Mathf.Max(0f, job.Order.Committed - reduced);
+            job.SetQuantity(jobMutationAuthority, moved);
+            job.SetReservation(jobMutationAuthority, cargoReservation);
+            job.SetHasPickedUp(jobMutationAuthority, true);
+            Log("logistics.pickup_completed", "Info", job.ActiveLegExecution.ProviderContext, leg.Origin,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Id),
                 new SimulationLogField("resource", job.Resource.name),
                 new SimulationLogField("quantity", moved),
-                new SimulationLogField("demandId", order.Id));
+                new SimulationLogField("currentLegIndex", job.CurrentLegIndex),
+                new SimulationLogField("demandId", job.Order.Id));
             return true;
         }
 
-        public bool TryDeliver(FreightDeliveryJob job)
+        private bool CompleteCurrentLeg(FreightDeliveryJob job)
         {
-            if (!IsKnown(job) || !job.HasPickedUp || job.IsTerminal ||
-                job.Destination == null || job.Destination.Inventory == null ||
-                job.CargoInventory == null)
+            LogisticsRouteLeg leg = job.CurrentLeg;
+            InventoryComponent destinationInventory = leg != null && leg.Destination != null
+                ? leg.Destination.Inventory : null;
+            InventoryComponent cargoInventory = job.CargoInventory;
+            if (leg == null || destinationInventory == null || cargoInventory == null ||
+                job.Reservation == null || !job.Reservation.IsActive ||
+                job.Reservation.Owner != cargoInventory)
             {
-                BlockJob(job, "destination_or_carrier_unavailable");
+                BlockJob(job, FreightFailureReason.DestinationOrCarrierUnavailable);
                 return false;
             }
 
-            float orderRemainder = Mathf.Max(0f, job.Order.Requested - job.Order.Delivered);
-            float requestedTransfer = Mathf.Min(job.Quantity, orderRemainder);
-            if (requestedTransfer <= QuantityEpsilon)
+            bool finalLeg = leg.Destination == job.Destination;
+            float requestedTransfer = job.Quantity;
+            float orderRemainderBeforeTransfer = float.PositiveInfinity;
+            if (finalLeg)
             {
-                BlockJob(job, "order_fulfilled_carrier_retains_excess_cargo");
+                orderRemainderBeforeTransfer = Mathf.Max(0f,
+                    job.Order.Requested - job.Order.Delivered);
+                requestedTransfer = Mathf.Min(job.Quantity, orderRemainderBeforeTransfer);
+                if (requestedTransfer <= QuantityEpsilon)
+                {
+                    BlockJob(job, FreightFailureReason.OrderFulfilledCarrierRetainsExcessCargo);
+                    return false;
+                }
+
+                float otherInbound = GetCommittedCapacity(destinationInventory, job.Resource, job);
+                float availableCapacity = Mathf.Max(0f,
+                    destinationInventory.GetFreeCapacity(job.Resource) - otherInbound);
+                requestedTransfer = Mathf.Min(requestedTransfer, availableCapacity);
+                if (requestedTransfer <= QuantityEpsilon)
+                {
+                    BlockJob(job, FreightFailureReason.DestinationHasNoCapacity);
+                    return false;
+                }
+            }
+            else if (destinationInventory.GetFreeCapacity(job.Resource) + QuantityEpsilon < requestedTransfer)
+            {
+                BlockJob(job, FreightFailureReason.DestinationHasNoCapacity);
                 return false;
             }
 
-            job.State = FreightJobState.DroppingOff;
-            float moved = job.CargoInventory.TransferAvailableTo(
-                job.Destination.Inventory,
-                job.Resource,
-                requestedTransfer);
+            TransitionJob(job, FreightJobState.DroppingOff);
+            int completedLegIndex = job.CurrentLegIndex;
+            InventoryReservationToken carriedReservation = job.Reservation;
+            InventoryReservationToken stagedReservation = null;
+            float moved = finalLeg
+                ? cargoInventory.TransferOwnedTo(carriedReservation, destinationInventory, requestedTransfer)
+                : cargoInventory.TransferOwnedToAndReserveDestination(
+                    carriedReservation, destinationInventory, requestedTransfer, out stagedReservation);
             if (moved <= QuantityEpsilon)
             {
-                BlockJob(job, "destination_has_no_capacity");
+                BlockJob(job, FreightFailureReason.DestinationHasNoCapacity);
                 return false;
             }
 
-            job.Quantity = Mathf.Max(0f, job.Quantity - moved);
+            if (!finalLeg)
+            {
+                if (moved + QuantityEpsilon < requestedTransfer || stagedReservation == null)
+                {
+                    BlockJob(job, FreightFailureReason.StageReservationFailed);
+                    return false;
+                }
+
+                job.SetReservation(jobMutationAuthority, stagedReservation);
+                job.SetHasPickedUp(jobMutationAuthority, false);
+                if (!job.AdvanceLeg(jobMutationAuthority))
+                {
+                    BlockJob(job, FreightFailureReason.StageReservationFailed);
+                    return false;
+                }
+
+                TransitionJob(job, FreightJobState.Assigned);
+                Log("logistics.leg_staged", "Info", job.ActiveLegExecution.ProviderContext, leg.Destination,
+                    new SimulationLogField("jobId", job.Id),
+                    new SimulationLogField("allocationId", job.Id),
+                    new SimulationLogField("completedLegIndex", completedLegIndex),
+                    new SimulationLogField("nextLegIndex", job.CurrentLegIndex),
+                    new SimulationLogField("resource", job.Resource.name),
+                    new SimulationLogField("quantity", moved),
+                    new SimulationLogField("demandId", job.Order.Id));
+                FinishExecution(job);
+                job.SetActiveLegExecution(jobMutationAuthority, null);
+                return true;
+            }
+
+            job.SetReservation(jobMutationAuthority,
+                carriedReservation.IsActive ? carriedReservation : null);
+            job.SetQuantity(jobMutationAuthority, job.Quantity - moved);
             job.Order.Committed = Mathf.Max(0f, job.Order.Committed - moved);
             job.Order.Delivered += moved;
-            Log("logistics.delivery_completed", "Info", job.ActiveLegExecution.ProviderContext, job.Destination,
+            Log("logistics.delivery_completed", "Info", job.ActiveLegExecution.ProviderContext, leg.Destination,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Id),
+                new SimulationLogField("currentLegIndex", completedLegIndex),
                 new SimulationLogField("resource", job.Resource.name),
                 new SimulationLogField("quantity", moved),
                 new SimulationLogField("demandId", job.Order.Id));
 
             if (job.Quantity > QuantityEpsilon)
             {
-                BlockJob(job, "carrier_retains_unaccepted_cargo");
+                FreightFailureReason reason = orderRemainderBeforeTransfer <= moved + QuantityEpsilon
+                    ? FreightFailureReason.OrderFulfilledCarrierRetainsExcessCargo
+                    : destinationInventory.GetFreeCapacity(job.Resource) <= QuantityEpsilon
+                        ? FreightFailureReason.DestinationHasNoCapacity
+                        : FreightFailureReason.CarrierRetainsUnacceptedCargo;
+                BlockJob(job, reason);
                 return false;
             }
 
-            job.State = FreightJobState.Completed;
+            job.SetReservation(jobMutationAuthority, null);
+            job.SetHasPickedUp(jobMutationAuthority, false);
+            TransitionJob(job, FreightJobState.Completed);
             CloseFulfilledOrders();
             FinishExecution(job);
+            job.SetActiveLegExecution(jobMutationAuthority, null);
             return true;
         }
 
-        public void CancelBeforePickup(FreightDeliveryJob job, string reason)
+        private void CancelBeforePickup(
+            FreightDeliveryJob job,
+            FreightFailureReason reason,
+            string detail = null)
         {
             if (!IsKnown(job) || job.HasPickedUp || job.IsTerminal)
                 return;
 
-            job.Source?.Inventory?.ReleaseOwned(job.Reservation);
+            job.CurrentLeg?.Origin?.Inventory?.ReleaseOwned(job.Reservation);
             if (job.Order != null)
                 job.Order.Committed = Mathf.Max(0f, job.Order.Committed - job.Quantity);
-            job.State = FreightJobState.Cancelled;
-            Log("logistics.job_cancelled", "Warning", job.ActiveLegExecution.ProviderContext, job.Destination,
-                new SimulationLogField("jobId", job.Id),
-                new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
-                new SimulationLogField("reason", reason ?? string.Empty),
-                new SimulationLogField("quantity", job.Quantity));
+            job.SetReservation(jobMutationAuthority, null);
+            TransitionJob(job, FreightJobState.Cancelled, reason, detail);
             FinishExecution(job);
+            job.SetActiveLegExecution(jobMutationAuthority, null);
         }
 
-        public void BlockJob(FreightDeliveryJob job, string reason)
+        private void BlockJob(
+            FreightDeliveryJob job,
+            FreightFailureReason reason,
+            string detail = null)
         {
             if (!IsKnown(job) || job.IsTerminal)
                 return;
-            job.RetryAtTick = reason == "order_fulfilled_carrier_retains_excess_cargo"
-                ? long.MaxValue
-                : CurrentTick + BlockedRetryTicks;
-            SetJobState(job, FreightJobState.Blocked, reason);
-        }
-
-        public void ResumeJob(FreightDeliveryJob job, FreightJobState state)
-        {
-            if (!IsKnown(job) || job.IsTerminal)
-                return;
-            job.RetryAtTick = 0L;
-            SetJobState(job, state, "retry_started");
+            job.SetRetryAtTick(jobMutationAuthority,
+                reason == FreightFailureReason.OrderFulfilledCarrierRetainsExcessCargo
+                    ? long.MaxValue
+                    : CurrentTick + BlockedRetryTicks);
+            TransitionJob(job, FreightJobState.Blocked, reason, detail);
         }
 
         private void DispatchRoutineJobs()
@@ -462,7 +714,7 @@ namespace AsteroidColony
             FreightAllocation allocation = new FreightAllocation(
                 jobId, order, candidate.Source, candidate.Quantity, routePlan);
             FreightDeliveryJob job = new FreightDeliveryJob(
-                allocation, walkingExecution, reservation);
+                allocation, walkingExecution, reservation, jobMutationAuthority);
             if (!walkingExecution.PrepareCargo(order.Resource))
             {
                 candidate.Source.Inventory.ReleaseOwned(reservation);
@@ -475,7 +727,7 @@ namespace AsteroidColony
             {
                 candidate.Source.Inventory.ReleaseOwned(reservation);
                 order.Committed = Mathf.Max(0f, order.Committed - candidate.Quantity);
-                job.State = FreightJobState.Cancelled;
+                job.SetState(jobMutationAuthority, FreightJobState.Cancelled);
                 walkingExecution.CancelBeforeAssignment();
                 return;
             }
@@ -511,7 +763,7 @@ namespace AsteroidColony
                 {
                     FreightDeliveryJob job = jobs[j];
                     if (job.Order == order && !job.HasPickedUp && !job.IsTerminal)
-                        CancelBeforePickup(job, "demand_publication_expired");
+                        CancelBeforePickup(job, FreightFailureReason.DemandPublicationExpired);
                 }
             }
         }

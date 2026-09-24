@@ -218,6 +218,40 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void OwnedTransferCanStageCargoUnderDestinationReservationAtomically()
+        {
+            inventory.Add(food, 4f);
+            Assert.That(inventory.TryReserveOwned(food, 4f, out InventoryReservationToken sourceToken), Is.True);
+            destinationObject = new GameObject("Staged Freight Inventory Test");
+            InventoryComponent destination = destinationObject.AddComponent<InventoryComponent>();
+            Assert.That(destination.SetCapacity(food, 4f), Is.True);
+
+            bool sawConservedReservedTransfer = true;
+            inventory.OnChanged += (_, resource) =>
+            {
+                if (resource == food)
+                    sawConservedReservedTransfer &= inventory.GetOnHand(food) + destination.GetOnHand(food) == 4f &&
+                        destination.GetReserved(food) == 4f && destination.GetAvailable(food) == 0f;
+            };
+            destination.OnChanged += (_, resource) =>
+            {
+                if (resource == food)
+                    sawConservedReservedTransfer &= inventory.GetOnHand(food) + destination.GetOnHand(food) == 4f &&
+                        destination.GetReserved(food) == 4f && destination.GetAvailable(food) == 0f;
+            };
+
+            Assert.That(inventory.TransferOwnedToAndReserveDestination(
+                sourceToken, destination, 4f, out InventoryReservationToken stagedToken), Is.EqualTo(4f));
+
+            Assert.That(sourceToken.IsActive, Is.False);
+            Assert.That(stagedToken.IsActive, Is.True);
+            Assert.That(stagedToken.Remaining, Is.EqualTo(4f));
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(0f));
+            Assert.That(destination.GetReserved(food), Is.EqualTo(4f));
+            Assert.That(sawConservedReservedTransfer, Is.True);
+        }
+
+        [Test]
         public void DiscreteInventoryRejectsFractionalRuntimeMutation()
         {
             LogAssert.Expect(

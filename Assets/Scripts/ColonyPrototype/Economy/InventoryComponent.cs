@@ -330,6 +330,30 @@ namespace AsteroidColony
             InventoryComponent destination,
             float amount)
         {
+            return TransferOwnedToInternal(token, destination, amount, false, out _);
+        }
+
+        /// <summary>
+        /// Moves reserved stock and creates an owned reservation for the same quantity
+        /// in the destination before either inventory publishes its change event.
+        /// </summary>
+        public float TransferOwnedToAndReserveDestination(
+            InventoryReservationToken token,
+            InventoryComponent destination,
+            float amount,
+            out InventoryReservationToken destinationReservation)
+        {
+            return TransferOwnedToInternal(token, destination, amount, true, out destinationReservation);
+        }
+
+        private float TransferOwnedToInternal(
+            InventoryReservationToken token,
+            InventoryComponent destination,
+            float amount,
+            bool reserveAtDestination,
+            out InventoryReservationToken destinationReservation)
+        {
+            destinationReservation = null;
             if (!Owns(token) || !token.IsActive || destination == null ||
                 destination == this ||
                 !TryNormalizeMutation(token.Resource, amount, out float normalized) ||
@@ -342,6 +366,8 @@ namespace AsteroidColony
             if (sourceEntry == null)
                 return 0f;
             InventoryEntry destinationEntry = destination.GetOrCreate(token.Resource);
+            if (destinationEntry == null)
+                return 0f;
             ReconcileReservations(token.Resource, sourceEntry);
             destinationEntry.Refresh();
 
@@ -352,14 +378,26 @@ namespace AsteroidColony
                         destinationEntry.capacity - destinationEntry.onHand)));
             if (token.Resource.IsDiscrete)
                 transfer = Mathf.Floor(transfer + ResourceQuantityRules.WholeNumberEpsilon);
-            if (transfer <= 0f)
+            if (transfer <= 0f ||
+                (reserveAtDestination &&
+                 transfer + ResourceQuantityRules.WholeNumberEpsilon < normalized))
+            {
                 return 0f;
+            }
 
             sourceEntry.onHand -= transfer;
             token.Reduce(transfer);
             if (token.Remaining <= ResourceQuantityRules.WholeNumberEpsilon)
                 token.Invalidate();
             destinationEntry.onHand += transfer;
+            if (reserveAtDestination)
+            {
+                destination.EnsureReservationLedgers();
+                destinationReservation = new InventoryReservationToken(
+                    destination, token.Resource, transfer);
+                destination.ownedReservations.Add(destinationReservation);
+                destination.ReconcileReservations(token.Resource, destinationEntry);
+            }
             ReconcileReservations(token.Resource, sourceEntry);
             sourceEntry.Refresh();
             destinationEntry.Refresh();

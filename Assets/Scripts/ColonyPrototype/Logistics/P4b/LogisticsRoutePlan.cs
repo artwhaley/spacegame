@@ -76,6 +76,9 @@ namespace AsteroidColony
             {
                 if (legs[index] == null)
                     throw new ArgumentException("A freight route cannot contain a missing leg.", nameof(orderedLegs));
+                if (index > 0 && legs[index - 1].Destination != legs[index].Origin)
+                    throw new ArgumentException(
+                        "Each freight leg must begin where the previous leg ends.", nameof(orderedLegs));
                 distance += legs[index].EstimatedLoadedDistance;
             }
             TotalEstimatedLoadedDistance = distance;
@@ -119,7 +122,7 @@ namespace AsteroidColony
         public LogisticsStockComponent Source { get; }
         public LogisticsStockComponent FinalDestination => Order.Requester;
         public LogisticsStockComponent Destination => FinalDestination;
-        public float Quantity { get; internal set; }
+        public float Quantity { get; }
         public LogisticsRoutePlan RoutePlan { get; }
     }
 }

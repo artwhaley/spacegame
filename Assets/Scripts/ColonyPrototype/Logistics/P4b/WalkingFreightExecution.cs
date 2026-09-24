@@ -129,8 +129,8 @@ namespace AsteroidColony
             {
                 if (lease != null && lease.HasPendingReleaseRequest)
                 {
-                    FreightLogisticsManager.Instance?.CancelBeforePickup(
-                        job, "work_release_before_pickup");
+                    FreightLogisticsManager.Instance?.RequestExecutionRelease(
+                        job, this, lease.PendingReleaseReason ?? WorkReleaseReason.OtherWorkPolicy);
                     return;
                 }
 
@@ -144,8 +144,6 @@ namespace AsteroidColony
             if (job.State == FreightJobState.Blocked && SimulationManager.Instance != null &&
                 SimulationManager.Instance.CurrentTick >= job.RetryAtTick)
             {
-                FreightLogisticsManager.Instance?.ResumeJob(
-                    job, FreightJobState.TravelingToDropoff);
                 StartDeliveryRoute();
             }
         }
@@ -155,47 +153,72 @@ namespace AsteroidColony
             if (!IsActive)
                 return WorkReleaseDisposition.ReleasedNow;
 
-            if (job != null && job.HasPickedUp && !job.IsTerminal)
-                return WorkReleaseDisposition.Deferred;
-
-            if (job != null && !job.IsTerminal)
-                FreightLogisticsManager.Instance?.CancelBeforePickup(
-                    job, "work_release_before_pickup_" + reason.ToString());
-            else
+            if (job == null || job.IsTerminal)
+            {
                 Release();
-            return WorkReleaseDisposition.ReleasedNow;
+                return WorkReleaseDisposition.ReleasedNow;
+            }
+
+            FreightLogisticsManager manager = FreightLogisticsManager.Instance;
+            return manager != null
+                ? manager.RequestExecutionRelease(job, this, reason)
+                : WorkReleaseDisposition.ReleasedNow;
         }
 
         private void StartPickupRoute()
         {
             if (job == null || FreightLogisticsManager.Instance == null)
                 return;
-            if (job.Source == null || job.Source.FreightAnchor == null)
+            Transform anchor = job.CurrentLeg != null && job.CurrentLeg.Origin != null
+                ? job.CurrentLeg.Origin.FreightAnchor : null;
+            if (anchor == null)
             {
-                FreightLogisticsManager.Instance.CancelBeforePickup(job, "pickup_anchor_missing");
+                FreightLogisticsManager.Instance.ReportExecution(
+                    job, this, FreightExecutionReport.Failed, FreightFailureReason.PickupAnchorMissing);
                 return;
             }
 
-            FreightLogisticsManager.Instance.SetJobState(job, FreightJobState.TravelingToPickup);
             string failure = "personnel_route_runner_missing";
-            if (routeRunner == null || !routeRunner.TryStartRoute(job.Source.FreightAnchor, out failure))
-                HandleRouteStartFailure(failure, "pickup_route_unavailable");
+            if (routeRunner == null)
+            {
+                HandleRouteStartFailure(FreightFailureReason.PersonnelRouteRunnerMissing, failure);
+                return;
+            }
+            if (!routeRunner.TryStartRoute(anchor, out failure))
+            {
+                HandleRouteStartFailure(FreightFailureReason.PickupRouteUnavailable, failure);
+                return;
+            }
+            FreightLogisticsManager.Instance.ReportExecution(
+                job, this, FreightExecutionReport.PickupRouteStarted);
         }
 
         private void StartDeliveryRoute()
         {
             if (job == null || FreightLogisticsManager.Instance == null)
                 return;
-            if (job.Destination == null || job.Destination.FreightAnchor == null)
+            Transform anchor = job.CurrentLeg != null && job.CurrentLeg.Destination != null
+                ? job.CurrentLeg.Destination.FreightAnchor : null;
+            if (anchor == null)
             {
-                FreightLogisticsManager.Instance.BlockJob(job, "dropoff_anchor_missing");
+                FreightLogisticsManager.Instance.ReportExecution(
+                    job, this, FreightExecutionReport.Failed, FreightFailureReason.DropoffAnchorMissing);
                 return;
             }
 
-            FreightLogisticsManager.Instance.SetJobState(job, FreightJobState.TravelingToDropoff);
             string failure = "personnel_route_runner_missing";
-            if (routeRunner == null || !routeRunner.TryStartRoute(job.Destination.FreightAnchor, out failure))
-                HandleRouteStartFailure(failure, "dropoff_route_unavailable");
+            if (routeRunner == null)
+            {
+                HandleRouteStartFailure(FreightFailureReason.PersonnelRouteRunnerMissing, failure);
+                return;
+            }
+            if (!routeRunner.TryStartRoute(anchor, out failure))
+            {
+                HandleRouteStartFailure(FreightFailureReason.DropoffRouteUnavailable, failure);
+                return;
+            }
+            FreightLogisticsManager.Instance.ReportExecution(
+                job, this, FreightExecutionReport.LoadedRouteStarted);
         }
 
         private void StartReturnToDutyRoute()
@@ -278,16 +301,20 @@ namespace AsteroidColony
 
             if (job == null || FreightLogisticsManager.Instance == null)
                 return;
+            LogisticsRouteLeg leg = job.CurrentLeg;
             if (job.State == FreightJobState.TravelingToPickup &&
-                job.Source != null && plan.FinalDestination == job.Source.FreightAnchor)
+                leg != null && leg.Origin != null && plan.FinalDestination == leg.Origin.FreightAnchor)
             {
-                if (FreightLogisticsManager.Instance.TryPickup(job))
+                if (FreightLogisticsManager.Instance.ReportExecution(
+                        job, this, FreightExecutionReport.ProviderAtSource))
                     StartDeliveryRoute();
             }
             else if (job.State == FreightJobState.TravelingToDropoff &&
-                     job.Destination != null && plan.FinalDestination == job.Destination.FreightAnchor)
+                     leg != null && leg.Destination != null &&
+                     plan.FinalDestination == leg.Destination.FreightAnchor)
             {
-                FreightLogisticsManager.Instance.TryDeliver(job);
+                FreightLogisticsManager.Instance.ReportExecution(
+                    job, this, FreightExecutionReport.LoadedLegArrived);
             }
         }
 
@@ -304,22 +331,20 @@ namespace AsteroidColony
 
             if (job == null)
                 return;
+            LogisticsRouteLeg leg = job.CurrentLeg;
             Transform expected = job.State == FreightJobState.TravelingToPickup
-                ? job.Source != null ? job.Source.FreightAnchor : null
-                : job.Destination != null ? job.Destination.FreightAnchor : null;
+                ? leg != null && leg.Origin != null ? leg.Origin.FreightAnchor : null
+                : leg != null && leg.Destination != null ? leg.Destination.FreightAnchor : null;
             if (plan.FinalDestination == expected)
-                HandleRouteStartFailure(reason, "freight_route_failed");
+                HandleRouteStartFailure(FreightFailureReason.FreightRouteFailed, reason);
         }
 
-        private void HandleRouteStartFailure(string reason, string fallbackReason)
+        private void HandleRouteStartFailure(FreightFailureReason reason, string detail)
         {
             if (job == null || FreightLogisticsManager.Instance == null)
                 return;
-            string failure = string.IsNullOrWhiteSpace(reason) ? fallbackReason : reason;
-            if (job.HasPickedUp)
-                FreightLogisticsManager.Instance.BlockJob(job, failure);
-            else
-                FreightLogisticsManager.Instance.CancelBeforePickup(job, failure);
+            FreightLogisticsManager.Instance.ReportExecution(
+                job, this, FreightExecutionReport.Failed, reason, detail);
         }
 
         private void HandleReturnRouteFailure(string reason)

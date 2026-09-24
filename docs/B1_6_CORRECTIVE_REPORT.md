@@ -50,7 +50,17 @@ Verification note: the focused EditMode tests were not executed in this turn. `d
 
 Split `FreightWorkQuote`, `WalkingFreightWorkService`, and `WalkingFreightExecution` into separate source files, preserving the existing Unity script metadata for the `WalkingFreightWorkService` component. The supply debug snapshot reads the generic provider context. Added an architecture assertion that jobs depend on the generic execution contract and identify their current route leg.
 
+## B1.6-T04 — Logistics-Owned State and Cargo Custody
+
+`FreightDeliveryJob` now exposes read-only state/custody data and accepts mutations only through manager-held authority. Public raw manager mutators were replaced with one internal semantic execution report entrypoint. It validates that the reported execution is active for this job's current leg and permits only legal report/state combinations. The walking execution reports route start, source arrival, loaded arrival, failure, and release requests; it no longer changes freight state or calls raw pickup/delivery/block/resume commands.
+
+Logistics now owns pickup, delivery, staging, order accounting, cancellation, retry, and completion. Each pickup atomically transfers its source reservation into an executor-owned cargo reservation. A completed intermediate leg transfers cargo into the next origin inventory under a new reservation, advances the leg, and marks the job `Assigned` with `IsAwaitingLegAssignment` true. No shuttle execution or next-leg provider assignment is implemented here. Failure control uses `FreightFailureReason` enums; strings remain diagnostic fields only. Route plans now require adjacent legs to meet at the same stock point.
+
+Added architecture checks for private job state mutation and removal of public raw lifecycle mutators, plus an inventory invariant test for atomic owned transfer into destination-reserved staged cargo. Physical navigation and staged-leg scene acceptance remain for Unity Play Mode.
+
+Verification note: `git diff --check` passed. The new EditMode cases and Unity compile were not executed; the test-runner limitation recorded under T02 still applies. No Play Mode run was attempted.
+
 ## Ticket Progress
 
-Completed: T00, T01, T02, T03.
-Remaining: T04–T07.
+Completed: T00, T01, T02, T03, T04.
+Remaining: T05–T07.
