@@ -68,7 +68,7 @@ namespace AsteroidColony
         public LogisticsStockComponent Destination => Allocation.FinalDestination;
         public InventoryReservationToken Reservation { get; }
         public float Quantity { get => Allocation.Quantity; internal set => Allocation.Quantity = value; }
-        public bool IsEmergencyExcursion => WalkingExecution.IsEmergency;
+        public bool IsEmergencyWork => WalkingExecution.IsEmergency;
         public FreightJobState State { get; internal set; }
         public bool HasPickedUp { get; internal set; }
         public bool IsTerminal => State == FreightJobState.Completed || State == FreightJobState.Cancelled;
@@ -241,8 +241,6 @@ namespace AsteroidColony
             order.Committed = Mathf.Max(0f, order.Committed - reduced);
             job.Quantity = moved;
             job.HasPickedUp = true;
-            job.WalkingExecution.MarkCargoLoaded();
-
             Log("logistics.pickup_completed", "Info", job.WalkingExecution.Service, job.Source,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Id),
@@ -299,7 +297,7 @@ namespace AsteroidColony
 
             job.State = FreightJobState.Completed;
             CloseFulfilledOrders();
-            FinishCarrier(job);
+            FinishExecution(job);
             return true;
         }
 
@@ -317,7 +315,7 @@ namespace AsteroidColony
                 new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
                 new SimulationLogField("reason", reason ?? string.Empty),
                 new SimulationLogField("quantity", job.Quantity));
-            FinishCarrier(job);
+            FinishExecution(job);
         }
 
         public void BlockJob(FreightDeliveryJob job, string reason)
@@ -611,7 +609,7 @@ namespace AsteroidColony
             return null;
         }
 
-        private void FinishCarrier(FreightDeliveryJob job)
+        private void FinishExecution(FreightDeliveryJob job)
         {
             if (job != null && job.WalkingExecution != null)
                 job.WalkingExecution.Complete(job);

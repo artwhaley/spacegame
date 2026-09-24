@@ -261,25 +261,27 @@ namespace AsteroidColony
             if (quantity > availableCapacity + 0.0001f)
                 return false;
 
-            WalkingFreightCarrierComponent legacyExecution = quote.IsEmergency
-                ? worker.GetComponent<WalkingFreightCarrierComponent>()
-                : null;
-            WorkExecutionLease lease = null;
             ColonistBrain brain = worker.GetComponent<ColonistBrain>();
-            if (quote.IsEmergency)
-            {
-                if (legacyExecution == null || !legacyExecution.BeginEmergencyExcursion(workplace))
-                    return false;
-            }
-            else if (brain == null || !brain.TryAcquireWorkExecution(workplace, this, out lease))
+            if (brain == null || !brain.TryAcquireWorkExecution(workplace, this,
+                    out WorkExecutionLease lease))
             {
                 return false;
+            }
+
+            ColonistActivityRunner activityRunner = worker.GetComponent<ColonistActivityRunner>();
+            if (quote.IsEmergency)
+            {
+                if (activityRunner == null || !activityRunner.IsActivityActive)
+                {
+                    lease.Release();
+                    return false;
+                }
+                activityRunner.Stop();
             }
 
             execution = new WalkingFreightExecution(
                 this,
                 worker,
-                legacyExecution,
                 lease,
                 assignment.Role,
                 capacity,
@@ -363,12 +365,10 @@ namespace AsteroidColony
             ColonistBrain brain = worker.GetComponent<ColonistBrain>();
             InventoryComponent inventory = worker.GetComponent<InventoryComponent>();
             PersonnelRouteRunner routeRunner = worker.GetComponent<PersonnelRouteRunner>();
-            WalkingFreightCarrierComponent legacyExecution =
-                worker.GetComponent<WalkingFreightCarrierComponent>();
             if (brain == null || brain.State != ColonistBrainState.Working ||
                 brain.IsCriticallyHungry || brain.ActiveWorkExecutionLease != null ||
                 inventory == null || routeRunner == null || routeRunner.IsExecuting ||
-                emergency && (legacyExecution == null || legacyExecution.HasActiveJob) ||
+                emergency && worker.GetComponent<ColonistActivityRunner>() == null ||
                 IsAlreadyAccepted(worker))
             {
                 return false;
@@ -465,7 +465,6 @@ namespace AsteroidColony
     public sealed class WalkingFreightExecution
     {
         private readonly ColonistIdentity worker;
-        private readonly WalkingFreightCarrierComponent legacyExecution;
         private readonly PersonnelRouteRunner routeRunner;
         private readonly ColonistActivityRunner activityRunner;
         private readonly WorkExecutionLease lease;
@@ -477,7 +476,6 @@ namespace AsteroidColony
         internal WalkingFreightExecution(
             WalkingFreightWorkService service,
             ColonistIdentity worker,
-            WalkingFreightCarrierComponent legacyExecution,
             WorkExecutionLease lease,
             JobRoleDefinition assignedRole,
             float capacity,
@@ -487,7 +485,6 @@ namespace AsteroidColony
         {
             Service = service;
             this.worker = worker;
-            this.legacyExecution = legacyExecution;
             routeRunner = worker != null ? worker.GetComponent<PersonnelRouteRunner>() : null;
             activityRunner = worker != null ? worker.GetComponent<ColonistActivityRunner>() : null;
             this.lease = lease;
@@ -497,7 +494,7 @@ namespace AsteroidColony
             LoadedCargoTravelCost = loadedCargoTravelCost;
             IsEmergency = emergency;
             IsActive = true;
-            if (!IsEmergency && routeRunner != null)
+            if (routeRunner != null)
             {
                 routeRunner.RouteCompleted += HandleRouteCompleted;
                 routeRunner.RouteFailed += HandleRouteFailed;
@@ -519,8 +516,7 @@ namespace AsteroidColony
 
         internal bool PrepareCargo(ResourceDefinition resource)
         {
-            if (!IsActive || IsEmergency && legacyExecution == null ||
-                CargoInventory == null || resource == null)
+            if (!IsActive || CargoInventory == null || resource == null)
                 return false;
 
             return CargoInventory.SetCapacity(resource, MaximumCapacity);
@@ -530,20 +526,9 @@ namespace AsteroidColony
         {
             if (!IsActive || assignedJob == null || job != null)
                 return false;
-            if (IsEmergency)
-            {
-                if (legacyExecution == null || !legacyExecution.Assign(assignedJob))
-                    return false;
-            }
 
             job = assignedJob;
             return true;
-        }
-
-        internal void MarkCargoLoaded()
-        {
-            if (IsActive && IsEmergency && legacyExecution != null && legacyExecution.Brain != null)
-                legacyExecution.Brain.SetWorkExcursionCargo(true);
         }
 
         internal void CancelBeforeAssignment()
@@ -551,8 +536,8 @@ namespace AsteroidColony
             if (!IsActive)
                 return;
 
-            if (IsEmergency && legacyExecution != null && legacyExecution.Brain != null)
-                legacyExecution.Brain.CompleteWorkExcursion();
+            if (IsEmergency && ShouldResumeFacilityWork())
+                ResumeFacilityWork();
             Release();
         }
 
@@ -563,13 +548,8 @@ namespace AsteroidColony
 
             if (IsEmergency)
             {
-                if (legacyExecution != null)
-                {
-                    legacyExecution.RouteRunner?.StopRoute();
-                    legacyExecution.Complete(job);
-                }
-                if (legacyExecution != null && legacyExecution.Brain != null)
-                    legacyExecution.Brain.CompleteWorkExcursion();
+                if (ShouldResumeFacilityWork())
+                    ResumeFacilityWork();
                 Release();
                 return;
             }
@@ -582,7 +562,7 @@ namespace AsteroidColony
 
         internal void SimulationTick()
         {
-            if (!IsActive || IsEmergency)
+            if (!IsActive)
                 return;
 
             if (returningToDuty)
@@ -605,6 +585,9 @@ namespace AsteroidColony
                     return;
                 }
 
+                if (IsEmergency && activityRunner != null && activityRunner.HasActiveRequest)
+                    return;
+
                 StartPickupRoute();
                 return;
             }
@@ -620,7 +603,7 @@ namespace AsteroidColony
 
         internal WorkReleaseDisposition RequestRelease(WorkReleaseReason reason)
         {
-            if (!IsActive || IsEmergency)
+            if (!IsActive)
                 return WorkReleaseDisposition.ReleasedNow;
 
             if (job != null && job.HasPickedUp && !job.IsTerminal)
@@ -699,6 +682,37 @@ namespace AsteroidColony
                 SimulationManager.Instance.CurrentGameHour);
         }
 
+        private bool ShouldResumeFacilityWork()
+        {
+            ColonistBrain brain = worker != null ? worker.GetComponent<ColonistBrain>() : null;
+            if (lease == null || lease.HasPendingReleaseRequest || brain == null ||
+                brain.IsCriticallyHungry || brain.State != ColonistBrainState.Working ||
+                Service == null || Service.Workplace == null ||
+                Service.Workplace.ExecutionMode != WorkplaceExecutionMode.FacilityActivity ||
+                WorkforceManager.Instance == null || SimulationManager.Instance == null ||
+                !WorkforceManager.Instance.TryGetCurrentDuty(
+                    worker, SimulationManager.Instance.CurrentGameHour,
+                    out WorkAssignment assignment))
+            {
+                return false;
+            }
+
+            return assignment.Workplace == Service.Workplace && assignment.Role == assignedRole;
+        }
+
+        private void ResumeFacilityWork()
+        {
+            WorkplaceComponent workplace = Service != null ? Service.Workplace : null;
+            if (activityRunner == null || workplace == null ||
+                !workplace.TryGetRoleBinding(assignedRole, out WorkplaceRoleBinding binding) ||
+                workplace.Facility == null || activityRunner.HasActiveRequest ||
+                !activityRunner.RequestActivity(workplace.Facility, binding.ActivityId))
+            {
+                Debug.LogWarning($"{(worker != null ? worker.name : "Worker")}: couldn't resume " +
+                    "the assigned workplace activity after walking freight.", worker);
+            }
+        }
+
         private void HandleRouteCompleted(PersonnelRoutePlan plan)
         {
             if (!IsActive || plan == null || plan.Person != worker)
@@ -772,7 +786,7 @@ namespace AsteroidColony
         {
             if (!IsActive)
                 return;
-            if (routeRunner != null && !IsEmergency)
+            if (routeRunner != null)
             {
                 routeRunner.RouteCompleted -= HandleRouteCompleted;
                 routeRunner.RouteFailed -= HandleRouteFailed;

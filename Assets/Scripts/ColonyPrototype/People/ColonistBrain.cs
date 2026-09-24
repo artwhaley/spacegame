@@ -42,9 +42,6 @@ namespace AsteroidColony
         private bool workStopRequested;
         private WorkAssignment mobileDutyAssignment;
         private WorkExecutionLease activeWorkExecutionLease;
-        private bool workExcursionActive;
-        private bool workExcursionHasCargo;
-        private WorkplaceComponent workExcursionWorkplace;
         private bool eatStopRequested;
         private float activeMealGameHours;
         private bool offDutyStopRequested;
@@ -68,12 +65,6 @@ namespace AsteroidColony
                 ? activeWorkExecutionLease
                 : null;
         public bool IsCriticallyHungry => stats != null && stats.IsCriticallyHungry;
-        public bool WorkExcursionReady => workExcursionActive &&
-            !workExcursionHasCargo && !activityRunner.HasActiveRequest &&
-            HasCurrentWorkObligation() && !stats.IsCriticallyHungry;
-        public bool ShouldAbortWorkExcursionBeforePickup => workExcursionActive &&
-            !workExcursionHasCargo &&
-            (stats.IsCriticallyHungry || !HasCurrentWorkObligation());
         public int SimulationTickPriority => 100;
         public OffDutyOpportunity OpportunityInProgress => opportunityInProgress;
         public OffDutyOpportunity OffDutyOpportunity => opportunityInProgress;
@@ -675,21 +666,8 @@ namespace AsteroidColony
             if (activeWorkExecutionLease != null)
                 activeWorkExecutionLease = null;
 
-            if (workExcursionActive)
-            {
-                // Once loaded, the worker owns the run through delivery even if a
-                // shift boundary or critical need occurs during the trip.
-                if (workExcursionHasCargo)
-                    return;
-                return;
-            }
-
             if (mobileDutyAssignment != null)
             {
-                WalkingFreightCarrierComponent carrier =
-                    GetComponent<WalkingFreightCarrierComponent>();
-                if (carrier != null && carrier.HasCargo)
-                    return;
                 if (stats.IsCriticallyHungry || !HasCurrentWorkObligation())
                 {
                     WorkReleaseReason reason = stats.IsCriticallyHungry
@@ -790,7 +768,7 @@ namespace AsteroidColony
             lease = null;
             if (workplace == null || owner == null || state != ColonistBrainState.Working ||
                 workStopRequested || activeWorkExecutionLease != null && activeWorkExecutionLease.IsActive ||
-                workExcursionActive || stats.IsCriticallyHungry || !HasCurrentWorkObligation() ||
+                stats.IsCriticallyHungry || !HasCurrentWorkObligation() ||
                 WorkforceManager.Instance == null || identity == null ||
                 !WorkforceManager.Instance.TryGetCurrentDuty(
                     identity, SimulationManager.Instance.CurrentGameHour, out WorkAssignment assignment) ||
@@ -802,53 +780,6 @@ namespace AsteroidColony
             lease = new WorkExecutionLease(identity, workplace, owner);
             activeWorkExecutionLease = lease;
             return true;
-        }
-
-        public bool CanBeginWorkExcursion(WorkplaceComponent workplace)
-        {
-            if (workplace == null || state != ColonistBrainState.Working ||
-                workTargetInProgress == null || workExcursionActive ||
-                stats.IsCriticallyHungry || !HasCurrentWorkObligation() ||
-                WorkforceManager.Instance == null || identity == null ||
-                !WorkforceManager.Instance.TryGetAssignment(identity, out WorkAssignment assignment) ||
-                assignment.Workplace != workplace ||
-                workplace.ExecutionMode != WorkplaceExecutionMode.FacilityActivity ||
-                activityRunner == null || !activityRunner.IsActivityActive)
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        public bool TryBeginWorkExcursion(WorkplaceComponent workplace)
-        {
-            if (!CanBeginWorkExcursion(workplace))
-                return false;
-
-            workExcursionActive = true;
-            workExcursionHasCargo = false;
-            workExcursionWorkplace = workplace;
-            activityRunner.Stop();
-            RecordDecision("colonist.decision.work", "authorized_work_excursion", workplace);
-            return true;
-        }
-
-        public void SetWorkExcursionCargo(bool hasCargo)
-        {
-            if (workExcursionActive)
-                workExcursionHasCargo = hasCargo;
-        }
-
-        public void CompleteWorkExcursion()
-        {
-            if (!workExcursionActive)
-                return;
-
-            workExcursionActive = false;
-            workExcursionHasCargo = false;
-            workExcursionWorkplace = null;
-            FinishWorkLifecycle();
         }
 
         private void RequestWorkStop(WorkReleaseReason reason)

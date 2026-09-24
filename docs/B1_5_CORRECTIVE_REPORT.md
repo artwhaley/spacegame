@@ -28,6 +28,7 @@ Added compact API-boundary checks for allocation/route worker ownership, Brain f
 | B1.5-T02 | Complete | Added a generic owner/lease/release contract and narrow deferred-release owner tests. |
 | B1.5-T03 | Complete | Logistics now quotes and accepts workplace services; service-owned worker discovery and route cost calculation replace manager carrier enumeration. The service execution still delegates to legacy runner plumbing until T04/T05. |
 | B1.5-T04 | Complete | Routine Porter jobs now acquire an Airlock service lease and execute pickup, delivery, and return-to-duty routes through PersonnelRouting. Emergency execution remains on the temporary legacy path until T05. |
+| B1.5-T05 | Complete | Emergency Cafeteria pickup now uses the same workplace lease and service route execution; Brain freight/cargo state and its carrier lookup are removed. |
 
 No Unity compile, Test Runner, or Play Mode run has been performed. The user performs the human Unity acceptance run.
 
@@ -63,3 +64,11 @@ No Unity compile, Test Runner, or Play Mode run has been performed. The user per
 - A shift-end or critical-need release before pickup cancels the job, releases its source reservation, and releases the lease. After pickup, the service defers release until delivery; it skips the optional return route when the Brain has requested release.
 - Worker identity remains inside the quote/service execution. The provider records which assigned worker it selected so the work log retains attribution without making worker selection a Logistics concern.
 - Identity-swap acceptance (Bob assigned Porter, Dana Farmer) remains a human fixture/Play Mode check. No prefab change was made for T04. No Unity compile, Test Runner, or Play Mode run has been performed.
+
+## B1.5-T05 — Cafeteria emergency service and Brain cleanup
+
+- Emergency quote acceptance now acquires a generic lease from the Cafeteria service, stops the active ordinary facility activity, waits for that activity request to exit, and uses the service execution for PersonnelRouting, pickup, delivery, and retry.
+- After delivery or a pre-pickup cancellation, the service resumes the assigned facility activity only while that shift is still active and the Brain has not requested release. A release request before pickup cancels and releases the source reservation; after pickup it remains deferred through delivery.
+- Removed all work-excursion fields, properties, and methods from `ColonistBrain`, including the mobile-duty `WalkingFreightCarrierComponent.HasCargo` check. Routine and emergency work now share the generic lease behavior.
+- Removed the old carrier's Brain excursion methods and made its obsolete runner reject emergency jobs; the service no longer references either legacy colonist freight type. T06 will remove their scripts and prefab composition.
+- Added a reflection boundary check for the removed Brain cargo field. Interchangeability, activity resume, and physical cargo custody remain human acceptance checks; no Unity compile, Test Runner, or Play Mode run has been performed.

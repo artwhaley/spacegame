@@ -1,5 +1,6 @@
 using AsteroidColony;
 using NUnit.Framework;
+using System.Reflection;
 
 namespace AsteroidColony.Tests
 {
@@ -42,6 +43,8 @@ namespace AsteroidColony.Tests
             Assert.That(brainType.GetMethod("TryBeginWorkExcursion"), Is.Null);
             Assert.That(brainType.GetMethod("SetWorkExcursionCargo"), Is.Null);
             Assert.That(brainType.GetMethod("CompleteWorkExcursion"), Is.Null);
+            Assert.That(brainType.GetField("workExcursionHasCargo",
+                BindingFlags.Instance | BindingFlags.NonPublic), Is.Null);
         }
 
         [Test]

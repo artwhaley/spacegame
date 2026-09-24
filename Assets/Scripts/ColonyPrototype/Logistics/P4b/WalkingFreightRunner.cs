@@ -66,15 +66,10 @@ namespace AsteroidColony
             FreightLogisticsManager manager = FreightLogisticsManager.Instance;
             if (job.State == FreightJobState.Assigned)
             {
-                if (job.IsEmergencyExcursion)
+                if (job.IsEmergencyWork)
                 {
-                    if (carrier.Brain == null || carrier.Brain.ShouldAbortWorkExcursionBeforePickup)
-                    {
-                        manager.CancelBeforePickup(job, "work_excursion_no_longer_authorized");
-                        return;
-                    }
-                    if (!carrier.Brain.WorkExcursionReady)
-                        return;
+                    manager.CancelBeforePickup(job, "emergency_work_is_owned_by_workplace_service");
+                    return;
                 }
                 else if (!IsRoutineDutyStillValid())
                 {

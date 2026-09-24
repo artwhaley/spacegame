@@ -277,7 +277,7 @@ namespace AsteroidColony
                                 ? job.WalkingExecution.Service.name : string.Empty);
                         Add(row, "source", job.Source != null ? job.Source.name : string.Empty);
                         Add(row, "destination", job.Destination != null ? job.Destination.name : string.Empty);
-                        Add(row, "emergency", job.IsEmergencyExcursion.ToString());
+                        Add(row, "emergency", job.IsEmergencyWork.ToString());
                         Write(row);
                     }
                 }

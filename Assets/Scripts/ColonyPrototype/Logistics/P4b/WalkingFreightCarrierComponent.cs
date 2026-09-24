@@ -76,32 +76,6 @@ namespace AsteroidColony
                    brain.State == ColonistBrainState.Working;
         }
 
-        public bool CanAcceptEmergencyJob(WorkplaceComponent workplace)
-        {
-            if (HasActiveJob || !isActiveAndEnabled || workplace == null ||
-                brain == null || runner == null || WorkforceManager.Instance == null ||
-                SimulationManager.Instance == null || identity == null ||
-                !WorkforceManager.Instance.TryGetAssignment(identity, out WorkAssignment assignment) ||
-                assignment.Workplace != workplace)
-            {
-                return false;
-            }
-
-            return WorkforceManager.Instance.HasEnoughActiveWorkers(
-                workplace,
-                assignment.Role,
-                1,
-                0f,
-                SimulationManager.Instance.CurrentGameHour) &&
-                   brain.CanBeginWorkExcursion(workplace);
-        }
-
-        public bool BeginEmergencyExcursion(WorkplaceComponent workplace)
-        {
-            return CanAcceptEmergencyJob(workplace) &&
-                   brain.TryBeginWorkExcursion(workplace);
-        }
-
         public bool Assign(FreightDeliveryJob job)
         {
             ResolveComponents();
@@ -121,10 +95,10 @@ namespace AsteroidColony
             if (job == null || currentJob != job)
                 return;
 
-            bool wasEmergencyExcursion = job.IsEmergencyExcursion;
+            bool wasEmergencyWork = job.IsEmergencyWork;
             currentJob = null;
             runner?.Clear(job);
-            if (!wasEmergencyExcursion && brain != null && brain.State == ColonistBrainState.Working &&
+            if (!wasEmergencyWork && brain != null && brain.State == ColonistBrainState.Working &&
                 WorkforceManager.Instance != null && SimulationManager.Instance != null &&
                 WorkforceManager.Instance.TryGetCurrentDuty(
                     identity, SimulationManager.Instance.CurrentGameHour, out WorkAssignment assignment) &&
