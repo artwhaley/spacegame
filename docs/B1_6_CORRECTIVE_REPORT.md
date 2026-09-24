@@ -36,7 +36,15 @@ Source audit completed at the starting revision. Existing EditMode coverage incl
 
 Added `ActivityApproachCorrelationTests` to cover intermediate motor arrivals, stale route outcomes, matching whole-route completion, and matching failure. The test uses a fake route and deliberately has no baked NavMesh; physical entry remains a Unity Play Mode check.
 
+## B1.6-T02 — Inventory Reservation Authority
+
+`InventoryEntry.reserved` and its cached availability are now nonserialized. `InventoryComponent` derives the aggregate from the nonserialized legacy reservation ledger and owned reservation tokens on enable and before reservation-sensitive reads or writes. After stock is removed beneath reservations, the legacy aggregate is reconciled first and owned tokens are trimmed newest-first, preserving deterministic ownership for earlier allocations. Inactive tokens are removed from the live ledger.
+
+Added focused inventory tests for mixed legacy/owned double-allocation prevention, aggregate derivation from owners, stale reservation removal on reinitialization, and deterministic trimming after stock removal. These protect the inventory ownership invariant and the prior stale-reservation failure mode; they do not test scene composition or physical behavior.
+
+Verification note: the focused EditMode tests were not executed in this turn. `dotnet test ColonyPrototype.Tests.csproj --no-restore --filter FullyQualifiedName~InventoryComponentTests` could not start because the sandbox denied access to `C:\Users\artwh\AppData\Local\Microsoft SDKs`. Unity Editor processes are already running, so I did not launch a second editor in batch mode. Manual Play Mode acceptance remains with the user.
+
 ## Ticket Progress
 
-Completed: T00, T01.
-Remaining: T02–T07.
+Completed: T00, T01, T02.
+Remaining: T03–T07.

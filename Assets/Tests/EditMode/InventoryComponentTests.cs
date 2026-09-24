@@ -150,6 +150,74 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void LegacyAndOwnedReservationsCannotAllocateTheSameStockTwice()
+        {
+            inventory.Add(food, 5f);
+
+            Assert.That(inventory.TryReserveOwned(food, 4f, out InventoryReservationToken owned), Is.True);
+            Assert.That(inventory.Reserve(food, 2f), Is.False);
+            Assert.That(inventory.TryReserveOwned(food, 2f, out _), Is.False);
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(4f));
+            Assert.That(inventory.GetAvailable(food), Is.EqualTo(1f));
+            Assert.That(owned.IsActive, Is.True);
+        }
+
+        [Test]
+        public void LegacyAndOwnedReservationsReconcileFromTheirOwners()
+        {
+            inventory.Add(food, 6f);
+            Assert.That(inventory.Reserve(food, 2f), Is.True);
+            Assert.That(inventory.TryReserveOwned(food, 3f, out InventoryReservationToken owned), Is.True);
+
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(5f));
+            inventory.ReleaseReservation(food, 2f);
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(3f));
+            Assert.That(owned.IsActive, Is.True);
+            Assert.That(inventory.ReleaseOwned(owned), Is.EqualTo(3f));
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void ReservationAggregateIsTransientAndReloadCannotCreateOrphanReservations()
+        {
+            inventory.Add(food, 5f);
+            Assert.That(inventory.Reserve(food, 3f), Is.True);
+            InventoryEntry entry = inventory.GetEntry(food);
+            entry.reserved = 3f;
+
+            Assert.That(typeof(InventoryEntry).GetField("reserved").IsNotSerialized, Is.True);
+            FieldInfo ownedField = typeof(InventoryComponent).GetField(
+                "ownedReservations", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo legacyField = typeof(InventoryComponent).GetField(
+                "legacyReservations", BindingFlags.Instance | BindingFlags.NonPublic);
+            ownedField.SetValue(inventory, null);
+            legacyField.SetValue(inventory, null);
+
+            typeof(InventoryComponent).GetMethod(
+                "OnEnable", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(inventory, null);
+
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(0f));
+            Assert.That(inventory.GetAvailable(food), Is.EqualTo(5f));
+        }
+
+        [Test]
+        public void RemovingStockTrimsNewestOwnedReservationFirst()
+        {
+            inventory.Add(food, 6f);
+            Assert.That(inventory.TryReserveOwned(food, 2f, out InventoryReservationToken oldest), Is.True);
+            Assert.That(inventory.TryReserveOwned(food, 2f, out InventoryReservationToken newest), Is.True);
+
+            Assert.That(inventory.Remove(food, 3f), Is.EqualTo(3f));
+
+            Assert.That(oldest.IsActive, Is.True);
+            Assert.That(oldest.Remaining, Is.EqualTo(2f));
+            Assert.That(newest.IsActive, Is.True);
+            Assert.That(newest.Remaining, Is.EqualTo(1f));
+            Assert.That(inventory.GetOnHand(food), Is.EqualTo(3f));
+            Assert.That(inventory.GetReserved(food), Is.EqualTo(3f));
+        }
+
+        [Test]
         public void DiscreteInventoryRejectsFractionalRuntimeMutation()
         {
             LogAssert.Expect(

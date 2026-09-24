@@ -9,10 +9,10 @@ namespace AsteroidColony
     {
         public ResourceDefinition resource;
         public float onHand;
-        public float reserved;
+        [NonSerialized] public float reserved;
         public float capacity;
 
-        [SerializeField] private float available;
+        [NonSerialized] private float available;
 
         /// <summary>On Hand minus Reserved. Maintained by InventoryComponent.</summary>
         public float Available => available;
@@ -59,9 +59,9 @@ namespace AsteroidColony
     {
         private static readonly List<InventoryComponent> knownInventories = new List<InventoryComponent>();
         [SerializeField] private List<InventoryEntry> entries = new List<InventoryEntry>();
-        [NonSerialized] private readonly List<InventoryReservationToken> ownedReservations =
+        [NonSerialized] private List<InventoryReservationToken> ownedReservations =
             new List<InventoryReservationToken>();
-        [NonSerialized] private readonly Dictionary<ResourceDefinition, float> legacyReservations =
+        [NonSerialized] private Dictionary<ResourceDefinition, float> legacyReservations =
             new Dictionary<ResourceDefinition, float>();
 
         public IReadOnlyList<InventoryEntry> Entries => entries;
@@ -70,6 +70,8 @@ namespace AsteroidColony
 
         private void OnEnable()
         {
+            EnsureReservationLedgers();
+            ReconcileAllReservations();
             if (!knownInventories.Contains(this))
                 knownInventories.Add(this);
         }
@@ -101,9 +103,7 @@ namespace AsteroidColony
                 return false;
 
             entry.capacity = normalized;
-            if (entry.reserved > entry.onHand)
-                entry.reserved = entry.onHand;
-            ReconcileOwnedReservations(resource, entry);
+            ReconcileReservations(resource, entry);
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
             return true;
@@ -126,7 +126,7 @@ namespace AsteroidColony
         {
             InventoryEntry entry = GetEntry(resource);
             if (entry != null)
-                entry.Refresh();
+                ReconcileReservations(resource, entry);
             return entry != null ? entry.onHand : 0f;
         }
 
@@ -135,7 +135,7 @@ namespace AsteroidColony
             InventoryEntry entry = GetEntry(resource);
             if (entry == null)
                 return 0f;
-            entry.Refresh();
+            ReconcileReservations(resource, entry);
             return entry.Available;
         }
 
@@ -143,7 +143,7 @@ namespace AsteroidColony
         {
             InventoryEntry entry = GetEntry(resource);
             if (entry != null)
-                entry.Refresh();
+                ReconcileReservations(resource, entry);
             return entry != null ? entry.reserved : 0f;
         }
 
@@ -202,14 +202,12 @@ namespace AsteroidColony
             InventoryEntry entry = GetEntry(resource);
             if (entry == null || entry.onHand <= 0f)
                 return 0f;
-            entry.Refresh();
+            ReconcileReservations(resource, entry);
             float removed = Mathf.Min(normalized, entry.onHand);
             if (resource.IsDiscrete)
                 removed = Mathf.Floor(removed + ResourceQuantityRules.WholeNumberEpsilon);
             entry.onHand -= removed;
-            if (entry.reserved > entry.onHand)
-                entry.reserved = entry.onHand;
-            ReconcileOwnedReservations(resource, entry);
+            ReconcileReservations(resource, entry);
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
             return removed;
@@ -225,12 +223,11 @@ namespace AsteroidColony
             InventoryEntry entry = GetOrCreate(resource);
             if (entry == null)
                 return false;
-            entry.Refresh();
+            ReconcileReservations(resource, entry);
             if (entry.Available < normalized)
                 return false;
-            entry.reserved += normalized;
             AddLegacyReservation(resource, normalized);
-            entry.Refresh();
+            ReconcileReservations(resource, entry);
             OnChanged?.Invoke(this, resource);
             return true;
         }
@@ -246,8 +243,8 @@ namespace AsteroidColony
             entry.Refresh();
             float legacyAmount = GetLegacyReservation(resource);
             float released = Mathf.Min(normalized, legacyAmount);
-            entry.reserved = Mathf.Max(0f, entry.reserved - released);
             SetLegacyReservation(resource, legacyAmount - released);
+            ReconcileReservations(resource, entry);
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
         }
@@ -260,16 +257,16 @@ namespace AsteroidColony
             InventoryEntry entry = GetEntry(resource);
             if (entry == null)
                 return 0f;
-            entry.Refresh();
+            ReconcileReservations(resource, entry);
             float withdrawable = Mathf.Min(
                 GetLegacyReservation(resource),
-                Mathf.Min(entry.reserved, entry.onHand));
+                entry.onHand);
             float withdrawn = Mathf.Min(normalized, withdrawable);
             if (resource.IsDiscrete)
                 withdrawn = Mathf.Floor(withdrawn + ResourceQuantityRules.WholeNumberEpsilon);
-            entry.reserved -= withdrawn;
             SetLegacyReservation(resource, GetLegacyReservation(resource) - withdrawn);
             entry.onHand -= withdrawn;
+            ReconcileReservations(resource, entry);
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
             return withdrawn;
@@ -288,13 +285,14 @@ namespace AsteroidColony
             InventoryEntry entry = GetOrCreate(resource);
             if (entry == null)
                 return false;
-            entry.Refresh();
+            ReconcileReservations(resource, entry);
             if (entry.Available < normalized)
                 return false;
 
             token = new InventoryReservationToken(this, resource, normalized);
+            EnsureReservationLedgers();
             ownedReservations.Add(token);
-            entry.reserved += normalized;
+            ReconcileReservations(resource, entry);
             entry.Refresh();
             OnChanged?.Invoke(this, resource);
             return true;
@@ -307,19 +305,17 @@ namespace AsteroidColony
                 return 0f;
 
             InventoryEntry entry = GetEntry(token.Resource);
-            float released = Mathf.Min(
-                token.Remaining,
-                entry != null ? entry.reserved : 0f);
             if (entry == null)
             {
                 token.Invalidate();
                 return 0f;
             }
 
-            entry.reserved = Mathf.Max(0f, entry.reserved - released);
+            float released = token.Remaining;
             token.Reduce(released);
             if (token.Remaining <= ResourceQuantityRules.WholeNumberEpsilon)
                 token.Invalidate();
+            ReconcileReservations(token.Resource, entry);
             entry.Refresh();
             OnChanged?.Invoke(this, token.Resource);
             return released;
@@ -346,26 +342,25 @@ namespace AsteroidColony
             if (sourceEntry == null)
                 return 0f;
             InventoryEntry destinationEntry = destination.GetOrCreate(token.Resource);
-            sourceEntry.Refresh();
+            ReconcileReservations(token.Resource, sourceEntry);
             destinationEntry.Refresh();
 
             float transfer = Mathf.Min(
                 normalized,
                 Mathf.Min(token.Remaining,
-                    Mathf.Min(sourceEntry.reserved,
-                        Mathf.Min(sourceEntry.onHand,
-                            destinationEntry.capacity - destinationEntry.onHand))));
+                    Mathf.Min(sourceEntry.onHand,
+                        destinationEntry.capacity - destinationEntry.onHand)));
             if (token.Resource.IsDiscrete)
                 transfer = Mathf.Floor(transfer + ResourceQuantityRules.WholeNumberEpsilon);
             if (transfer <= 0f)
                 return 0f;
 
             sourceEntry.onHand -= transfer;
-            sourceEntry.reserved -= transfer;
             token.Reduce(transfer);
             if (token.Remaining <= ResourceQuantityRules.WholeNumberEpsilon)
                 token.Invalidate();
             destinationEntry.onHand += transfer;
+            ReconcileReservations(token.Resource, sourceEntry);
             sourceEntry.Refresh();
             destinationEntry.Refresh();
 
@@ -413,7 +408,16 @@ namespace AsteroidColony
 
         private bool Owns(InventoryReservationToken token)
         {
+            EnsureReservationLedgers();
             return token != null && token.Owner == this && ownedReservations.Contains(token);
+        }
+
+        private void EnsureReservationLedgers()
+        {
+            if (ownedReservations == null)
+                ownedReservations = new List<InventoryReservationToken>();
+            if (legacyReservations == null)
+                legacyReservations = new Dictionary<ResourceDefinition, float>();
         }
 
         private void AddLegacyReservation(ResourceDefinition resource, float amount)
@@ -423,6 +427,7 @@ namespace AsteroidColony
 
         private float GetLegacyReservation(ResourceDefinition resource)
         {
+            EnsureReservationLedgers();
             return resource != null && legacyReservations.TryGetValue(resource, out float amount)
                 ? amount
                 : 0f;
@@ -430,6 +435,7 @@ namespace AsteroidColony
 
         private void SetLegacyReservation(ResourceDefinition resource, float amount)
         {
+            EnsureReservationLedgers();
             if (resource == null)
                 return;
             if (amount <= ResourceQuantityRules.WholeNumberEpsilon)
@@ -438,11 +444,20 @@ namespace AsteroidColony
                 legacyReservations[resource] = amount;
         }
 
-        private void ReconcileOwnedReservations(ResourceDefinition resource, InventoryEntry entry)
+        private void ReconcileReservations(ResourceDefinition resource, InventoryEntry entry)
         {
-            float legacy = Mathf.Min(entry.reserved, GetLegacyReservation(resource));
+            if (entry == null || resource == null)
+                return;
+
+            EnsureReservationLedgers();
+            entry.Refresh();
+
+            // The legacy API has one aggregate owner. Keep it first, then preserve
+            // owned tokens in creation order and trim newer tokens when stock is short.
+            float stockLimit = entry.onHand;
+            float legacy = Mathf.Min(stockLimit, GetLegacyReservation(resource));
             SetLegacyReservation(resource, legacy);
-            float ownedLimit = Mathf.Max(0f, entry.reserved - legacy);
+            float ownedLimit = Mathf.Max(0f, stockLimit - legacy);
             float ownedTotal = 0f;
             for (int i = 0; i < ownedReservations.Count; i++)
             {
@@ -463,13 +478,49 @@ namespace AsteroidColony
                 if (token.Remaining <= ResourceQuantityRules.WholeNumberEpsilon)
                     token.Invalidate();
             }
+
+            for (int i = ownedReservations.Count - 1; i >= 0; i--)
+                if (ownedReservations[i] == null || !ownedReservations[i].IsActive)
+                    ownedReservations.RemoveAt(i);
+
+            ownedTotal = 0f;
+            for (int i = 0; i < ownedReservations.Count; i++)
+            {
+                InventoryReservationToken token = ownedReservations[i];
+                if (token.Resource == resource)
+                    ownedTotal += token.Remaining;
+            }
+            entry.reserved = legacy + ownedTotal;
+            entry.Refresh();
+        }
+
+        private void ReconcileAllReservations()
+        {
+            EnsureReservationLedgers();
+            if (entries == null)
+                return;
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                InventoryEntry entry = entries[i];
+                if (entry != null && entry.resource != null)
+                    ReconcileReservations(entry.resource, entry);
+                else if (entry != null)
+                {
+                    entry.reserved = 0f;
+                    entry.Refresh();
+                }
+            }
         }
 
         private void OnValidate()
         {
             for (int i = 0; i < entries.Count; i++)
                 if (entries[i] != null)
+                {
+                    entries[i].reserved = 0f;
                     entries[i].Refresh();
+                }
         }
 
         private static bool TryNormalizeMutation(ResourceDefinition resource, float amount, out float normalized)
