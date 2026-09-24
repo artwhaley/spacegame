@@ -330,7 +330,16 @@ namespace AsteroidColony
                     bid.Requester,
                     opportunity.Provider.Facility,
                     new SimulationLogField("validTick", currentTick + 1L),
-                    new SimulationLogField("activityId", opportunity.Target.ActivityId));
+                    new SimulationLogField("activityId", opportunity.Target.ActivityId),
+                    new SimulationLogField("sourceTick", bid.Identity.SourceSimulationTick),
+                    new SimulationLogField("drive", bid.DesiredDrive.ToString()),
+                    new SimulationLogField("preferenceRank", bid.Identity.BrainPreferenceRank),
+                    new SimulationLogField(
+                        "maximumSafeDurationGameHours",
+                        bid.MaximumSafeDurationGameHours),
+                    new SimulationLogField(
+                        "plannedDurationGameHours",
+                        opportunity.PlannedDurationGameHours));
             }
         }
 
