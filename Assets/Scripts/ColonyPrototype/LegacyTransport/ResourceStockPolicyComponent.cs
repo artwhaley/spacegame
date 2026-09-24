@@ -48,7 +48,7 @@ namespace AsteroidColony
         private LogisticsManager registeredManager;
 
         public IReadOnlyList<ResourceStockPolicyEntry> Entries => entries;
-        public int SimulationTickPriority => 300;
+        public int SimulationTickPriority => SimulationTickPriorities.LogisticsStockPublication;
 
         private void Awake()
         {

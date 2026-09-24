@@ -68,7 +68,38 @@ Walking freight now reports whole-personnel-route outcomes through the route run
 
 Added EditMode coverage for shared key formatting, priority ordering, report identity shape, route-token correlation, and generic ID naming. `git diff --check` passes. The existing focused test attempt still cannot reach compilation because the sandbox blocks the .NET SDK resolver's per-user SDK lookup; no Unity Play Mode run was attempted.
 
+## B1.6-T06 — Visible Legacy Transport Boundary
+
+Moved the ten pre-P4b transport scripts and their `.meta` sidecars under `Assets/Scripts/ColonyPrototype/LegacyTransport/`. Their GUIDs are unchanged, and their assembly and namespace remain unchanged. `StaffingManager` and `ShipCrewDutyComponent` retain their existing passenger-transport compatibility references because they also own staffing and pilot-duty behavior; those files were not moved or rewritten.
+
+Added `docs/LEGACY_TRANSPORT_BOUNDARY.md`, marked `TransportContract` as a legacy glossary term, and defined the modern B1.6 freight/work terms. A shared editor guard now rejects active `LogisticsManager`, `ContractManager`, and `TransportExecutorComponent` authorities in B1 and P4b fixtures; a future B2 fixture validator is directed to call the same guard. Added source-boundary and fixture-guard tests. No assembly or namespace surgery was introduced.
+
+Verification note: the old/new `.meta` GUIDs match for all ten moved scripts, and `git diff --check` passes. Automated tests and Unity compilation remain unexecuted because of the SDK/editor limitation above. The guard does not rewrite or disable legacy scenes; it reports active legacy authorities when validating modern fixtures.
+
+## B1.6-T07 — B1.6 Regression and B2 Readiness Gate
+
+Added a structural freight test for `WalkingCarrier → ShuttleFreight → WalkingCarrier`: the route and allocation hold all three legs, `CurrentLegIndex` advances, and the job can await a new generic executor at the non-walking leg. The enum entry is only a route-shape marker; no Shuttle executor or dispatch was added. Added a manager-report test proving stale route-token and execution-ID callbacks are ignored while a matching callback cancels the pre-pickup allocation and releases its reservation. Existing activity-correlation and inventory tests cover their respective gates. Determinism tests cover stable key formatting, quantity-first ranking remains covered by the existing test, priority numbers/order, and generic ID formatting.
+
+The automated gate is authored but has not yet been executed. A later elevated `dotnet test` invocation exited 0 but produced no test-run output; inspection confirmed Unity's generated `ColonyPrototype.Tests.csproj` predates and omits the new B1.6 source and test files. That command is not evidence that the new code compiled or the tests ran. I did not edit the generated project or launch a second Unity editor. Therefore this report does not claim B1.6 acceptance has passed.
+
+### Unity acceptance left for the project owner
+
+1. Bob walks to the Farm and performs normal work choreography.
+2. Routine Porter freight runs Airlock → Farm pickup → Cafeteria delivery → Airlock return, with exact Food conservation.
+3. Emergency Cafeteria freight is delivered by an eligible current worker and normal work resumes where appropriate.
+4. Before-pickup release removes reservation and releases the worker; after-pickup release stays deferred until safe delivery.
+5. Food, Sleep, Work, and OffDuty activity entry still begins at the requested destination.
+6. The authored B1 allocation remains one loaded WalkingCarrier leg Farm → Cafeteria; empty worker positioning is not a freight leg.
+
+### Deferred debt (recorded, not expanded in B1.6)
+
+Brain lifecycle extraction; WorkforceManager/Brain dependency direction; walking worker-selection scale; orders × services × supplies × assignments complexity; push/pull stock discovery; generic registry abstraction; save/load for in-flight reservations or work; full legacy namespace/assembly isolation and deletion; provider ETA; Shuttle scheduling; proactive depot provisioning/output pressure.
+
+### Locked pilot release rule
+
+A Pilot's duty release stays deferred until that Shuttle is physically docked at its own home Shuttle Base. A safe remote dock does not satisfy the release condition.
+
 ## Ticket Progress
 
-Completed: T00, T01, T02, T03, T04, T05.
-Remaining: T06–T07.
+Implemented: T00, T01, T02, T03, T04, T05, T06, T07.
+Acceptance evidence pending: focused automated gate execution and the Unity Play Mode checks listed above.

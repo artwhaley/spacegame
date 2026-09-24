@@ -13,6 +13,11 @@ backticks.
 - **Habitation** — `HabitationComponent`, which currently exposes capacity and a
   restfulness multiplier.
 - **Inventory** — `InventoryComponent`, the quantity authority.
+- **Freight order** — `FreightOrder`, an open request for a resource and quantity at a requester.
+- **Freight allocation** — `FreightAllocation`, committed cargo quantity assigned to a source and complete route.
+- **Logistics route leg** — `LogisticsRouteLeg`, one loaded-cargo movement segment between stock locations.
+- **Walking freight service** — `WalkingFreightWorkService`, a workplace-owned provider that quotes and accepts walking work for one freight leg.
+- **Work execution lease** — `WorkExecutionLease`, the generic hold/deferred-release token for work already committed to an owner.
 - **Population consumption** — `PopulationResourceConsumer`, aggregate consumption
   from a habitation inventory with shortage state.
 - **Interactable facility** — `InteractableFacility` in
@@ -71,7 +76,7 @@ as historical terminology unless the term appears in the current-code section ab
 
 **Content** — ScriptableObject data under `Assets/GameData`: resources, recipes, classes, skills, roles, shifts, effects, buildings, flight profiles, scenarios.
 
-**Contract** (`TransportContract`) — a committed transport obligation (freight or passenger) owned by `ContractManager`. Created only after a vehicle wins arbitration.
+**LEGACY TRANSPORT TERM — `TransportContract`** — the pre-P4b committed freight/passenger obligation owned by `ContractManager`. New B2 work extends `FreightOrder`, `FreightAllocation`, and `LogisticsRoutePlan` instead.
 
 **Corridor** (`TransitLinkComponent`) — an authored/built walkable link between two anchors with a traversal time. Disabled = closed = blocker.
 
@@ -117,7 +122,7 @@ as historical terminology unless the term appears in the current-code section ab
 
 **Socket** — a named transform on a prefab used by other systems (`ModuleSockets`).
 
-**Stock policy** (`ResourceStockPolicyComponent`) — per-resource import/export rules on an inventory (thresholds, targets, priority, retain). Identifies resources, never sources.
+**LEGACY stock policy** (`ResourceStockPolicyComponent`) — the pre-P4b per-resource import/export registration used by `LogisticsManager`. Modern P4b stock publication uses `LogisticsStockComponent`.
 
 **Target** (`StaffingTarget`) — desired headcount per role per shift; what the allocator fills.
 

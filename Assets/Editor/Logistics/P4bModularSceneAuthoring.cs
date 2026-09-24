@@ -315,6 +315,7 @@ namespace AsteroidColony.Editor
         private static int Validate(Scene scene)
         {
             int errors = 0;
+            errors += LegacyTransportSceneGuard.Validate(scene, "P4b modular fixture");
             GameObject farm = FindModule(scene, "Assets/Prefabs/Farm.prefab");
             GameObject cafeteria = FindModule(scene, "Assets/Prefabs/Cafeteria.prefab");
             GameObject airlock = FindModule(scene, AirlockPath);

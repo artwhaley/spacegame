@@ -19,7 +19,7 @@ namespace AsteroidColony
         public IReadOnlyList<TransportVehicleComponent> TransportVehicles => transportVehicles;
         public IReadOnlyList<FreightDemand> Demands => demands;
         public IReadOnlyList<FreightSupply> Supplies => supplies;
-        public int SimulationTickPriority => 300;
+        public int SimulationTickPriority => SimulationTickPriorities.LegacyTransportDispatch;
 
         private bool startupReported;
         private string lastWaitReason;

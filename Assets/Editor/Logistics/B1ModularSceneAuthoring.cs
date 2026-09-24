@@ -199,6 +199,7 @@ namespace AsteroidColony.Editor
         private static int Validate(Scene scene)
         {
             int errors = 0;
+            errors += LegacyTransportSceneGuard.Validate(scene, "B1 modular fixture");
             if (CountSceneComponents<PersonnelRoutingManager>(scene) != 1 ||
                 CountSceneComponents<PedestrianRouteProvider>(scene) != 1 ||
                 CountSceneComponents<FreightLogisticsManager>(scene) != 1)
