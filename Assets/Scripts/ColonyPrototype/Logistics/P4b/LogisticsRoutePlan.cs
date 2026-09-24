@@ -4,10 +4,11 @@ using UnityEngine;
 
 namespace AsteroidColony
 {
-    /// <summary>Physical cargo modes available to Logistics. B1 implements local walking only.</summary>
+    /// <summary>Loaded cargo movement kinds. Only walking has an executor in B1.6.</summary>
     public enum LogisticsRouteLegType
     {
-        WalkingCarrier
+        WalkingCarrier,
+        ShuttleFreight
     }
 
     /// <summary>Pure lexicographic ranking for two already route-valid allocations.</summary>
