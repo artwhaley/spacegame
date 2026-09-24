@@ -34,6 +34,25 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void FreightLogisticsManagerApiDoesNotBindAColonistWorker()
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static |
+                                       BindingFlags.Public | BindingFlags.NonPublic |
+                                       BindingFlags.DeclaredOnly;
+            var managerType = typeof(FreightLogisticsManager);
+            foreach (FieldInfo field in managerType.GetFields(flags))
+                Assert.That(ContainsColonistBinding(field.FieldType), Is.False, field.Name);
+
+            foreach (MethodInfo method in managerType.GetMethods(flags))
+            {
+                Assert.That(ContainsColonistBinding(method.ReturnType), Is.False, method.Name);
+                foreach (ParameterInfo parameter in method.GetParameters())
+                    Assert.That(ContainsColonistBinding(parameter.ParameterType), Is.False,
+                        method.Name + "(" + parameter.Name + ")");
+            }
+        }
+
+        [Test]
         public void ColonistBrainDoesNotExposeFreightExcursionPolicy()
         {
             var brainType = typeof(ColonistBrain);
@@ -55,6 +74,19 @@ namespace AsteroidColony.Tests
                 "AsteroidColony.WalkingFreightCarrierComponent"), Is.Null);
             Assert.That(runtimeAssembly.GetType(
                 "AsteroidColony.WalkingFreightRunner"), Is.Null);
+        }
+
+        private static bool ContainsColonistBinding(Type type)
+        {
+            if (type == typeof(ColonistIdentity) || type.Name.Contains("WalkingFreightCarrier"))
+                return true;
+            if (type.IsArray)
+                return ContainsColonistBinding(type.GetElementType());
+            if (type.IsGenericType)
+                foreach (Type argument in type.GetGenericArguments())
+                    if (ContainsColonistBinding(argument))
+                        return true;
+            return false;
         }
     }
 }

@@ -30,6 +30,7 @@ Added compact API-boundary checks for allocation/route worker ownership, Brain f
 | B1.5-T04 | Complete | Routine Porter jobs now acquire an Airlock service lease and execute pickup, delivery, and return-to-duty routes through PersonnelRouting. Emergency execution remains on the temporary legacy path until T05. |
 | B1.5-T05 | Complete | Emergency Cafeteria pickup now uses the same workplace lease and service route execution; Brain freight/cargo state and its carrier lookup are removed. |
 | B1.5-T06 | Complete | Removed both legacy freight components from the common colonist prefab and codebase; fixture validation now requires generic inventory/routing components and workplace services. Dana's schedule is preserved or taken from an explicit 08:00–16:00 fixture default. |
+| B1.5-T07 | Prepared — human acceptance pending | Architecture guards and the full Play Mode acceptance checklist are ready. Only the user-run Unity acceptance can mark B1.5 PASS. |
 
 No Unity compile, Test Runner, or Play Mode run has been performed. The user performs the human Unity acceptance run.
 
@@ -80,3 +81,29 @@ No Unity compile, Test Runner, or Play Mode run has been performed. The user per
 - P4b authoring no longer creates or reverts freight components on colonists. B1/P4b validation now requires only the shared generic `InventoryComponent` and `PersonnelRouteRunner`; P4b validation also checks Airlock/Cafeteria service configuration.
 - Removed Dana's schedule dependency on Alice. Fixture authoring preserves Dana's configured shift when present; otherwise it uses explicit 08:00–16:00 Porter hours.
 - Source checks show no runtime freight path or authoring validator references the deleted component types. The shared prefab keeps Inventory and PersonnelRouteRunner. No Charlie/Pilot behavior was changed. Unity authoring and Play Mode checks remain for the user; no Unity compile or Test Runner was run.
+
+## B1.5-T07 — Corrective acceptance gate
+
+### Source and architecture checks
+
+- `FreightAllocation` and `LogisticsRoutePlan` expose no worker/Carrier property; the public boundary tests cover both.
+- Freight dispatch and diagnostics enumerate workplace services, not carrier components. `FreightLogisticsManager` has no colonist type in its fields, method signatures, or candidate API.
+- `ColonistBrain` has no work-excursion field/API or freight carrier lookup. The legacy carrier and runner runtime types and their prefab components have been removed.
+- Freight service movement calls `PersonnelRouteRunner`; static source search finds no direct NavMesh API in the manager or service.
+- Pilot home-dock release remains documented for B2 only. No Shuttle, Pilot executor, Charlie behavior, or other B2 transport was added.
+
+### Human Play Mode acceptance — pending
+
+- [ ] Run P4b Configure Modular Fixture, then Validate Modular Fixture. Confirm no configuration/validation errors.
+- [ ] Bob's normal work still routes through PersonnelRouting to the Farm and runs the existing Farm choreography.
+- [ ] Alice's ordinary Cafeteria activity runs before an emergency occurs.
+- [ ] Dana reports to the Airlock Porter duty anchor; the Airlock service assigns routine work; Dana routes to Farm, picks up Food, routes to Cafeteria, delivers it, and returns to Airlock. Confirm physical cargo in Inventory while in transit.
+- [ ] Let Cafeteria Food reach the emergency threshold while the routine Porter cannot satisfy demand in time. Confirm the Cafeteria service selects its active worker, normal activity exits, the worker picks up and delivers Food, and ordinary activity resumes when the shift remains active.
+- [ ] Swap Bob to Porter and Dana to Farmer. Confirm Bob performs the routine delivery without prefab or code changes; restore the canonical assignment.
+- [ ] Assign a different colonist to Cafeteria Worker. Trigger emergency Food and confirm that assigned active worker performs it; restore the canonical assignment.
+- [ ] Request release before pickup. Confirm job cancellation, source-reservation release, and worker release.
+- [ ] Request release after pickup. Confirm release is deferred through delivery and the worker is released afterward.
+- [ ] Check Farm, worker, and Cafeteria inventories during the run for conserved physical Food: no duplicates or loss.
+- [ ] Confirm each local freight allocation still has one loaded `WalkingCarrier` cargo leg; no Shuttle behavior is involved.
+
+No Unity compile, Edit Mode Test Runner, or Play Mode test has been run. This follows the project testing instruction: the user presses Play and reports the observed result. B1.5 remains pending the checklist above; the ticket stack is not marked PASS until those observations arrive.
