@@ -447,7 +447,7 @@ namespace AsteroidColony
                 case ShuttleVoyagePhase.FlipForBraking:
                     if (brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f)
                     {
-                        SetPhase(ShuttleVoyagePhase.CruiseCoasting);
+                        CompleteBrakingConstraint();
                         return;
                     }
                     Vector3 reverseDirection = -flightState.velocity.normalized;
@@ -459,7 +459,7 @@ namespace AsteroidColony
                 case ShuttleVoyagePhase.CruiseBraking:
                     if (brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f)
                     {
-                        SetPhase(ShuttleVoyagePhase.CruiseCoasting);
+                        CompleteBrakingConstraint();
                         return;
                     }
                     Vector3 brakeDirection = -flightState.velocity.normalized;
@@ -516,7 +516,7 @@ namespace AsteroidColony
                         DockingPoseUtility.GetMatingProbeRotation(destination.DockingNode.rotation));
                     angularAcceleration = AngularToward(finalRootRotation, dt);
                     linearAcceleration = RcsToProbeTarget(destination.DockingNode.position,
-                        profile.finalDockMaxSpeed, dt);
+                        GetFinalDockingSpeedLimit(destination.DockingNode.position), dt);
                     break;
             }
 
@@ -565,7 +565,7 @@ namespace AsteroidColony
 
                 case ShuttleVoyagePhase.FlipForBraking:
                     if (brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f)
-                        SetPhase(ShuttleVoyagePhase.CruiseCoasting);
+                        CompleteBrakingConstraint();
                     else if (Speed > (brakingConstraintWaypointIndex >= 0
                             ? brakingConstraintSpeed : profile.approachMaxSpeed) &&
                         Vector3.Angle(flightState.rotation * Vector3.forward, -flightState.velocity) <=
@@ -575,7 +575,7 @@ namespace AsteroidColony
 
                 case ShuttleVoyagePhase.CruiseBraking:
                     if (brakingConstraintWaypointIndex >= 0 && Speed <= brakingConstraintSpeed + 0.001f)
-                        SetPhase(ShuttleVoyagePhase.CruiseCoasting);
+                        CompleteBrakingConstraint();
                     else if (brakingConstraintWaypointIndex < 0 && Speed <= profile.approachMaxSpeed + 0.001f)
                         SetPhase(ShuttleVoyagePhase.Approach);
                     break;
@@ -623,7 +623,19 @@ namespace AsteroidColony
         {
             float distance = DistanceToNextLowSpeedWaypoint();
             return Speed <= profile.approachMaxSpeed &&
-                distance <= Mathf.Max(profile.brakingSafetyMargin, profile.approachMaxSpeed * 2f);
+                (distance <= Mathf.Max(profile.brakingSafetyMargin, profile.approachMaxSpeed * 2f) ||
+                 HasPassedFinalApproachPlane());
+        }
+
+        private void CompleteBrakingConstraint()
+        {
+            bool finalApproachConstraint = route != null &&
+                brakingConstraintWaypointIndex == route.Count - 1 &&
+                brakingConstraintWaypointIndex >= 0 &&
+                route[brakingConstraintWaypointIndex].kind == FlightWaypointKind.Approach;
+            SetPhase(finalApproachConstraint
+                ? ShuttleVoyagePhase.Approach
+                : ShuttleVoyagePhase.CruiseCoasting);
         }
 
         private bool ShouldFlipForBraking()
@@ -679,6 +691,12 @@ namespace AsteroidColony
                 FlightWaypoint waypoint = route[i];
                 traversed += Vector3.Distance(cursor, waypoint.worldPosition);
                 cursor = waypoint.worldPosition;
+                // Euclidean distance grows again after the shuttle passes the destination.
+                // Treat the missed endpoint as an immediate braking constraint so it cannot
+                // coast away while waiting for the distance based braking window to return.
+                if (i == route.Count - 1 && waypoint.requiresLowArrivalSpeed &&
+                    HasPassedFinalApproachPlane())
+                    traversed = 0f;
                 float limit = waypoint.requiresLowArrivalSpeed
                     ? waypoint.requiredArrivalSpeed
                     : waypoint.maxPassSpeed > 0f ? Mathf.Min(profile.maxCruiseSpeed, waypoint.maxPassSpeed)
@@ -709,6 +727,21 @@ namespace AsteroidColony
                     return distance;
             }
             return float.PositiveInfinity;
+        }
+
+        private bool HasPassedFinalApproachPlane()
+        {
+            if (route == null || route.Count < 2)
+                return false;
+            int finalIndex = route.Count - 1;
+            FlightWaypoint finalWaypoint = route[finalIndex];
+            if (finalWaypoint == null || finalWaypoint.kind != FlightWaypointKind.Approach)
+                return false;
+
+            Vector3 inbound = finalWaypoint.worldPosition - route[finalIndex - 1].worldPosition;
+            if (inbound.sqrMagnitude <= 0.0001f)
+                return false;
+            return Vector3.Dot(ProbePosition() - finalWaypoint.worldPosition, inbound.normalized) > 0f;
         }
 
         private bool AdvanceCruiseWaypoints()
@@ -804,6 +837,14 @@ namespace AsteroidColony
             if (command.started)
                 QueueRcsPulse(command.acceleration, Vector3.zero);
             return command.acceleration;
+        }
+
+        private float GetFinalDockingSpeedLimit(Vector3 dockingPosition)
+        {
+            float distance = Vector3.Distance(ProbePosition(), dockingPosition);
+            return distance > profile.finalDockingCommitDistance
+                ? profile.approachMaxSpeed
+                : profile.finalDockMaxSpeed;
         }
 
         private Vector3 AngularToward(Quaternion targetRotation, float dt)
@@ -1024,7 +1065,9 @@ namespace AsteroidColony
                 !PositiveFinite(profile.maxAngularSpeed) || !PositiveFinite(profile.integrationSubstepSeconds) ||
                 !NonNegativeFinite(profile.positionTolerance) || !NonNegativeFinite(profile.velocityTolerance) ||
                 !NonNegativeFinite(profile.angleTolerance) || !NonNegativeFinite(profile.captureAngularSpeedTolerance) ||
-                !NonNegativeFinite(profile.brakingSafetyMargin) || !ShuttleFlightIntegrator.IsFinite(profile.mainBurnAlignmentDegrees))
+                !NonNegativeFinite(profile.brakingSafetyMargin) ||
+                !NonNegativeFinite(profile.finalDockingCommitDistance) ||
+                !ShuttleFlightIntegrator.IsFinite(profile.mainBurnAlignmentDegrees))
             {
                 reason = "Shuttle flight profile contains invalid or inconsistent tuning values";
                 return false;

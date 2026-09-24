@@ -13,6 +13,10 @@ namespace AsteroidColony
         [Min(0.01f)] public float approachMaxSpeed = 3f;
         [Min(0.01f)] public float finalDockMaxSpeed = 0.5f;
 
+        [Header("Final docking")]
+        [Tooltip("Distance from the docking node where the Shuttle must reach finalDockMaxSpeed. It begins slowing before this boundary.")]
+        [Min(0f)] public float finalDockingCommitDistance = 5f;
+
         [Header("Rotation")]
         [Min(0.01f)] public float angularAcceleration = 90f;
         [Min(0.01f)] public float maxAngularSpeed = 90f;
@@ -44,6 +48,7 @@ namespace AsteroidColony
             maxCruiseSpeed = Positive(maxCruiseSpeed, 25f);
             approachMaxSpeed = Positive(approachMaxSpeed, 3f);
             finalDockMaxSpeed = Positive(finalDockMaxSpeed, 0.5f);
+            finalDockingCommitDistance = NonNegative(finalDockingCommitDistance, 5f);
             angularAcceleration = Positive(angularAcceleration, 90f);
             maxAngularSpeed = Positive(maxAngularSpeed, 90f);
             mainBurnAlignmentDegrees = Mathf.Clamp(Finite(mainBurnAlignmentDegrees, 8f), 0f, 180f);

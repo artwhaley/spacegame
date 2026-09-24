@@ -75,28 +75,21 @@ namespace AsteroidColony
                 return Settled();
 
             Vector3 toward = distance > 0.000001f ? error / distance : Vector3.zero;
-            float alongSpeed = Vector3.Dot(velocity, toward);
-            Vector3 lateralVelocity = velocity - toward * alongSpeed;
-            float brakeDistance = Mathf.Max(0f, alongSpeed) * Mathf.Max(0f, alongSpeed) /
-                (2f * acceleration);
             float brakePulses = Mathf.Ceil(speed / Mathf.Max(0.001f,
                 acceleration * profile.rcsLinearPulseSeconds));
             float coastAllowance = speed * profile.rcsMinimumCoastSeconds * Mathf.Max(0f, brakePulses - 1f);
-            bool shouldBrake = speed > velocityDeadband &&
-                (distance <= positionDeadband || alongSpeed < -velocityDeadband ||
-                 lateralVelocity.magnitude > Mathf.Max(velocityDeadband, Mathf.Abs(alongSpeed) * 0.5f) ||
-                 brakeDistance + coastAllowance >= Mathf.Max(0f, distance - positionDeadband));
-
-            if (shouldBrake)
-                return Advance(-velocity.normalized * Mathf.Min(acceleration, speed / dt),
-                    ShuttleRcsActivity.Braking, profile.rcsLinearPulseSeconds,
-                    profile.rcsMinimumCoastSeconds, dt);
-            if (alongSpeed >= speedLimit - velocityDeadband)
+            float usableDistance = Mathf.Max(0f, distance - positionDeadband - coastAllowance);
+            float stoppingLimitedSpeed = Mathf.Sqrt(2f * acceleration * usableDistance);
+            float desiredSpeed = Mathf.Min(speedLimit, stoppingLimitedSpeed);
+            Vector3 desiredVelocity = toward * desiredSpeed;
+            Vector3 velocityError = desiredVelocity - velocity;
+            if (velocityError.sqrMagnitude <= velocityDeadband * velocityDeadband)
                 return Coast(dt, profile.rcsMinimumCoastSeconds);
+            Vector3 requestedAcceleration = Vector3.ClampMagnitude(velocityError / dt, acceleration);
 
-            float launchAcceleration = Mathf.Min(acceleration,
-                Mathf.Max(0f, speedLimit - alongSpeed) / dt);
-            return Advance(toward * launchAcceleration, ShuttleRcsActivity.Accelerating,
+            bool braking = Vector3.Dot(requestedAcceleration, velocity) < 0f;
+            return Advance(requestedAcceleration,
+                braking ? ShuttleRcsActivity.Braking : ShuttleRcsActivity.Accelerating,
                 profile.rcsLinearPulseSeconds, profile.rcsMinimumCoastSeconds, dt);
         }
 
