@@ -411,23 +411,42 @@ namespace AsteroidColony.Editor
                 errors++;
             }
 
-            if (!HasCommonColonistRoutingComposition(FindColonists(scene)))
-            {
-                Debug.LogError("Every colonist needs the shared InventoryComponent and PersonnelRouteRunner composition.");
-                errors++;
-            }
+            errors += ValidateCommonColonistRoutingComposition(FindColonists(scene));
             return errors;
         }
 
-        private static bool HasCommonColonistRoutingComposition(ColonistIdentity[] colonists)
+        private static int ValidateCommonColonistRoutingComposition(ColonistIdentity[] colonists)
         {
             if (colonists == null || colonists.Length == 0)
-                return false;
+            {
+                Debug.LogError("The modular scene has no colonists to validate.");
+                return 1;
+            }
+
+            int errors = 0;
             for (int i = 0; i < colonists.Length; i++)
-                if (colonists[i] == null || colonists[i].GetComponent<InventoryComponent>() == null ||
-                    colonists[i].GetComponent<PersonnelRouteRunner>() == null)
-                    return false;
-            return true;
+            {
+                ColonistIdentity colonist = colonists[i];
+                if (colonist == null)
+                {
+                    Debug.LogError("A null colonist identity was found in the modular scene.");
+                    errors++;
+                    continue;
+                }
+
+                bool missingInventory = colonist.GetComponent<InventoryComponent>() == null;
+                bool missingRouteRunner = colonist.GetComponent<PersonnelRouteRunner>() == null;
+                if (!missingInventory && !missingRouteRunner)
+                    continue;
+
+                string missing = missingInventory && missingRouteRunner
+                    ? "InventoryComponent and PersonnelRouteRunner"
+                    : missingInventory ? "InventoryComponent" : "PersonnelRouteRunner";
+                Debug.LogError(colonist.DisplayName + " is missing the shared colonist composition: " + missing + ".",
+                    colonist);
+                errors++;
+            }
+            return errors;
         }
 
         private static T EnsureComponent<T>(GameObject gameObject) where T : Component
@@ -442,13 +461,12 @@ namespace AsteroidColony.Editor
             if (colonists.Length == 0)
                 throw new InvalidOperationException("The modular scene has no colonists to configure.");
 
-            // Remove prior routing/inventory scene overrides before keeping the
-            // shared generic components on the common colonist prefab.
+            // Remove stale deleted-script remnants from scene instances. Do not
+            // revert Inventory/PersonnelRouteRunner here: these are authored on
+            // the nested common prefab and reverting them through a scene instance
+            // can remove the inherited component the validator checks.
             for (int i = 0; i < colonists.Length; i++)
-            {
-                RevertAddedComponent<PersonnelRouteRunner>(colonists[i].gameObject);
-                RevertAddedComponent<InventoryComponent>(colonists[i].gameObject);
-            }
+                RemoveMissingScriptsRecursively(colonists[i].gameObject);
 
             GameObject prefab = PrefabUtility.LoadPrefabContents(ColonistPrefabPath);
             if (prefab == null)
@@ -456,8 +474,16 @@ namespace AsteroidColony.Editor
 
             try
             {
-                EnsurePrefabComponent<InventoryComponent>(prefab);
-                EnsurePrefabComponent<PersonnelRouteRunner>(prefab);
+                RemoveMissingScriptsRecursively(prefab);
+                ColonistIdentity prefabIdentity = prefab.GetComponentInChildren<ColonistIdentity>(true);
+                if (prefabIdentity == null)
+                    throw new InvalidOperationException(
+                        "The common colonist prefab has no ColonistIdentity component.");
+
+                // The validator checks these components on the identity object.
+                // Author them on that same object even if the visual prefab has a wrapper root.
+                EnsurePrefabComponent<InventoryComponent>(prefabIdentity.gameObject);
+                EnsurePrefabComponent<PersonnelRouteRunner>(prefabIdentity.gameObject);
                 if (PrefabUtility.SaveAsPrefabAsset(prefab, ColonistPrefabPath) == null)
                     throw new InvalidOperationException("Could not save common colonist inventory/routing composition.");
             }
@@ -465,13 +491,23 @@ namespace AsteroidColony.Editor
             {
                 PrefabUtility.UnloadPrefabContents(prefab);
             }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.ImportAsset(ColonistPrefabPath, ImportAssetOptions.ForceUpdate);
         }
 
-        private static void RevertAddedComponent<T>(GameObject gameObject) where T : Component
+        private static void RemoveMissingScriptsRecursively(GameObject root)
         {
-            T component = gameObject.GetComponent<T>();
-            if (component != null && PrefabUtility.IsAddedComponentOverride(component))
-                PrefabUtility.RevertAddedComponent(component, InteractionMode.AutomatedAction);
+            if (root == null)
+                return;
+
+            Transform[] hierarchy = root.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < hierarchy.Length; i++)
+            {
+                GameObject gameObject = hierarchy[i].gameObject;
+                if (GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(gameObject) > 0)
+                    GameObjectUtility.RemoveMonoBehavioursWithMissingScript(gameObject);
+            }
         }
 
         private static T EnsurePrefabComponent<T>(GameObject gameObject) where T : Component

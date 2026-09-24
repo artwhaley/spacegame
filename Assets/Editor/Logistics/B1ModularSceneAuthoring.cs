@@ -98,9 +98,6 @@ namespace AsteroidColony.Editor
 
             EnsurePersonnelRoutingInfrastructure(scene);
             EnsureUniqueSceneComponent<FreightLogisticsManager>(scene, "FreightLogisticsManager");
-            ColonistIdentity[] colonists = FindColonists(scene);
-            for (int i = 0; i < colonists.Length; i++)
-                EnsureComponent<PersonnelRouteRunner>(colonists[i].gameObject);
 
             ColonistIdentity charlie = RequireColonist(scene, "Charlie");
             WorkforceManager workforce = RequireUniqueSceneComponent<WorkforceManager>(scene);

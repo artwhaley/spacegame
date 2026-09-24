@@ -1,6 +1,7 @@
+using System;
+using System.Reflection;
 using AsteroidColony;
 using NUnit.Framework;
-using System.Reflection;
 
 namespace AsteroidColony.Tests
 {
