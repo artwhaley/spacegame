@@ -144,3 +144,22 @@ Changes:
 - Food, Sleep, OffDuty, activity approaches, and work excursions already use ActivityRunner, so they now use the central seam when the scene supplies a route runner.
 
 Verification: Source review and `git diff --check` only. No compile, automated test, or Unity run was performed. Manual NavMesh and activity parity remain pending in Unity.
+
+### B1-T03
+
+Commit: pending
+
+Files:
+
+- `Assets/Scripts/ColonyPrototype/Logistics/P4b/LogisticsRoutePlan.cs`
+- `Assets/Scripts/ColonyPrototype/Logistics/P4b/FreightLogisticsManager.cs`
+- `Assets/Tests/EditMode/FreightCandidateRankingTests.cs`
+
+Changes:
+
+- Added Logistics-owned `FreightAllocation`, `LogisticsRoutePlan`, and `WalkingCarrier` route legs. An accepted job retains the demand identity, selected source, carrier, useful quantity, and two estimated local walking legs.
+- Removed NavMesh types and path calculation from `FreightLogisticsManager`; it now requests the carrier-to-source and hypothetical source-to-destination estimates from `PersonnelRoutingManager`.
+- Candidate ordering now prefers larger useful allocations, then shorter combined route distance, then a stable scene/hierarchy identity. The existing useful quantity cap and reserve-on-accept lifecycle remain in place.
+- Added one pure owner test for quantity-first, distance-second, stable-key ranking. The test is not run in this execution.
+
+Verification: Source review, direct dependency search, and `git diff --check` only. No compile, automated test, or Unity run was performed. Physical freight traversal and inventory custody remain pending in Play Mode.

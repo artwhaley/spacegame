@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Colony.Interactions;
 using UnityEngine;
-using UnityEngine.AI;
 
 namespace AsteroidColony
 {
@@ -47,28 +46,26 @@ namespace AsteroidColony
     public sealed class FreightDeliveryJob
     {
         internal FreightDeliveryJob(string id, FreightOrder order,
-            LogisticsStockComponent source,
-            WalkingFreightCarrierComponent carrier, InventoryReservationToken reservation,
-            float quantity, bool emergency)
+            LogisticsStockComponent source, WalkingFreightCarrierComponent carrier,
+            InventoryReservationToken reservation, float quantity, bool emergency,
+            LogisticsRoutePlan routePlan)
         {
-            Id = id;
-            Order = order;
-            Source = source;
-            Carrier = carrier;
+            Allocation = new FreightAllocation(id, order, source, carrier, quantity, routePlan);
             Reservation = reservation;
-            Quantity = quantity;
             IsEmergencyExcursion = emergency;
             State = FreightJobState.Assigned;
         }
 
-        public string Id { get; }
-        public FreightOrder Order { get; }
-        public ResourceDefinition Resource => Order != null ? Order.Resource : null;
-        public LogisticsStockComponent Source { get; }
-        public LogisticsStockComponent Destination => Order != null ? Order.Requester : null;
-        public WalkingFreightCarrierComponent Carrier { get; }
+        public FreightAllocation Allocation { get; }
+        public LogisticsRoutePlan RoutePlan => Allocation.RoutePlan;
+        public string Id => Allocation.Id;
+        public FreightOrder Order => Allocation.Order;
+        public ResourceDefinition Resource => Allocation.Resource;
+        public LogisticsStockComponent Source => Allocation.Source;
+        public LogisticsStockComponent Destination => Allocation.Destination;
+        public WalkingFreightCarrierComponent Carrier => Allocation.Carrier;
         public InventoryReservationToken Reservation { get; }
-        public float Quantity { get; internal set; }
+        public float Quantity { get => Allocation.Quantity; internal set => Allocation.Quantity = value; }
         public bool IsEmergencyExcursion { get; }
         public FreightJobState State { get; internal set; }
         public bool HasPickedUp { get; internal set; }
@@ -413,14 +410,19 @@ namespace AsteroidColony
                     if (quantity + QuantityEpsilon < GetMinimumPickup(order))
                         continue;
 
-                    if (!TryGetFullTripDistance(carrier.transform.position,
-                            source.FreightAnchor.position,
-                            order.Requester.FreightAnchor.position,
-                            out float distance))
+                    PersonnelRoutingManager personnelRouting = PersonnelRoutingManager.Instance;
+                    if (personnelRouting == null || carrier.Identity == null ||
+                        source.FreightAnchor == null || order.Requester.FreightAnchor == null ||
+                        !personnelRouting.TryEstimate(carrier.Identity, source.FreightAnchor,
+                            out PersonnelRouteEstimate pickupEstimate) ||
+                        !personnelRouting.TryEstimateFrom(carrier.Identity, source.FreightAnchor.position,
+                            order.Requester.FreightAnchor, out PersonnelRouteEstimate deliveryEstimate))
                         continue;
 
-                    Candidate candidate = new Candidate(carrier, source, quantity, distance,
-                        carrier.name + "/" + source.GetStableKey() + "/" + order.Id);
+                    Candidate candidate = new Candidate(carrier, source, quantity,
+                        pickupEstimate, deliveryEstimate,
+                        PersonnelRouteIdentity.GetStableKey(carrier.Identity) + "/" +
+                        source.GetStableKey() + "/" + order.Id);
                     if (best == null || Candidate.Compare(candidate, best) < 0)
                         best = candidate;
                 }
@@ -447,10 +449,23 @@ namespace AsteroidColony
                 return;
             }
 
+            string jobId = "freight-job-" + (++nextJobId).ToString("D6");
+            Transform sourceAnchor = candidate.Source.FreightAnchor;
+            Transform destinationAnchor = order.Requester.FreightAnchor;
+            LogisticsRoutePlan routePlan = new LogisticsRoutePlan(order, candidate.Carrier,
+                new[]
+                {
+                    new LogisticsRouteLeg(LogisticsRouteLegType.WalkingCarrier,
+                        candidate.PickupEstimate.StartPosition, sourceAnchor,
+                        candidate.PickupEstimate.Distance),
+                    new LogisticsRouteLeg(LogisticsRouteLegType.WalkingCarrier,
+                        candidate.DeliveryEstimate.StartPosition, destinationAnchor,
+                        candidate.DeliveryEstimate.Distance)
+                });
             FreightDeliveryJob job = new FreightDeliveryJob(
-                "freight-job-" + (++nextJobId).ToString("D6"), order,
+                jobId, order,
                 candidate.Source, candidate.Carrier,
-                reservation, candidate.Quantity, emergency);
+                reservation, candidate.Quantity, emergency, routePlan);
             if (candidate.Carrier.CargoInventory == null ||
                 !candidate.Carrier.CargoInventory.SetCapacity(
                     order.Resource, candidate.Carrier.MaximumCargoQuantity))
@@ -480,7 +495,7 @@ namespace AsteroidColony
                 new SimulationLogField("quantity", candidate.Quantity),
                 new SimulationLogField("source", candidate.Source.name),
                 new SimulationLogField("distance", candidate.Distance),
-                new SimulationLogField("score", candidate.Score),
+                new SimulationLogField("routeLegs", job.RoutePlan.Legs.Count),
                 new SimulationLogField("emergency", emergency));
         }
 
@@ -604,37 +619,6 @@ namespace AsteroidColony
             return null;
         }
 
-        private bool TryGetFullTripDistance(
-            Vector3 current,
-            Vector3 source,
-            Vector3 destination,
-            out float distance)
-        {
-            distance = 0f;
-            if (!TryGetPathDistance(current, source, out float first) ||
-                !TryGetPathDistance(source, destination, out float second))
-                return false;
-            distance = first + second;
-            return !float.IsNaN(distance) && !float.IsInfinity(distance);
-        }
-
-        private static bool TryGetPathDistance(Vector3 from, Vector3 to, out float distance)
-        {
-            NavMeshPath path = new NavMeshPath();
-            if (!NavMesh.CalculatePath(from, to, NavMesh.AllAreas, path) ||
-                path.status != NavMeshPathStatus.PathComplete || path.corners == null ||
-                path.corners.Length == 0)
-            {
-                distance = 0f;
-                return false;
-            }
-
-            distance = 0f;
-            for (int i = 1; i < path.corners.Length; i++)
-                distance += Vector3.Distance(path.corners[i - 1], path.corners[i]);
-            return true;
-        }
-
         private void FinishCarrier(FreightDeliveryJob job)
         {
             if (job.Carrier != null)
@@ -662,31 +646,32 @@ namespace AsteroidColony
         private sealed class Candidate
         {
             public Candidate(WalkingFreightCarrierComponent carrier,
-                LogisticsStockComponent source, float quantity, float distance, string stableKey)
+                LogisticsStockComponent source, float quantity,
+                PersonnelRouteEstimate pickupEstimate,
+                PersonnelRouteEstimate deliveryEstimate, string stableKey)
             {
                 Carrier = carrier;
                 Source = source;
                 Quantity = quantity;
-                Distance = distance;
+                PickupEstimate = pickupEstimate;
+                DeliveryEstimate = deliveryEstimate;
+                Distance = pickupEstimate.Distance + deliveryEstimate.Distance;
                 StableKey = stableKey;
-                Score = quantity / Mathf.Max(0.1f, distance);
             }
 
             public WalkingFreightCarrierComponent Carrier { get; }
             public LogisticsStockComponent Source { get; }
             public float Quantity { get; }
+            public PersonnelRouteEstimate PickupEstimate { get; }
+            public PersonnelRouteEstimate DeliveryEstimate { get; }
             public float Distance { get; }
             public string StableKey { get; }
-            public float Score { get; }
 
             public static int Compare(Candidate left, Candidate right)
             {
-                int score = right.Score.CompareTo(left.Score);
-                if (score != 0) return score;
-                int distance = left.Distance.CompareTo(right.Distance);
-                return distance != 0
-                    ? distance
-                    : string.CompareOrdinal(left.StableKey, right.StableKey);
+                return FreightCandidateRanking.Compare(
+                    left.Quantity, left.Distance, left.StableKey,
+                    right.Quantity, right.Distance, right.StableKey);
             }
         }
     }
