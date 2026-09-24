@@ -196,15 +196,6 @@ namespace AsteroidColony
             }
 
             bidsThisRound.Add(bid);
-            SimulationLogManager.RecordEvent(
-                "offduty.bid_submitted",
-                "OffDuty",
-                "Info",
-                bid.Requester,
-                null,
-                new SimulationLogField("sourceTick", bid.Identity.SourceSimulationTick),
-                new SimulationLogField("drive", bid.DesiredDrive.ToString()),
-                new SimulationLogField("preferenceRank", bid.Identity.BrainPreferenceRank));
         }
 
         public bool TryGetOffer(ColonistIdentity requester, long simulationTick, out OffDutyOffer offer)
