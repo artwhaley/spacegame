@@ -480,7 +480,7 @@ namespace AsteroidColony.Editor
                 bool openedHere = !scene.IsValid() || !scene.isLoaded;
                 if (openedHere)
                     scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Additive);
-                else if (EditorSceneManager.IsSceneDirty(scene))
+                else if (scene.isDirty)
                 {
                     Debug.LogWarning("Skipped routing setup for already-dirty scene " + path +
                         " to preserve its unsaved edits. Run the scene routing menu after saving those edits.");
