@@ -41,6 +41,7 @@ namespace AsteroidColony
         private bool wakeRequested;
         private bool workStopRequested;
         private WorkAssignment mobileDutyAssignment;
+        private WorkExecutionLease activeWorkExecutionLease;
         private bool workExcursionActive;
         private bool workExcursionHasCargo;
         private WorkplaceComponent workExcursionWorkplace;
@@ -62,6 +63,10 @@ namespace AsteroidColony
         private ColonistFreeTimePlan latestFreeTimePlan;
 
         public ColonistBrainState State => state;
+        public WorkExecutionLease ActiveWorkExecutionLease =>
+            activeWorkExecutionLease != null && activeWorkExecutionLease.IsActive
+                ? activeWorkExecutionLease
+                : null;
         public bool IsCriticallyHungry => stats != null && stats.IsCriticallyHungry;
         public bool WorkExcursionReady => workExcursionActive &&
             !workExcursionHasCargo && !activityRunner.HasActiveRequest &&
@@ -600,7 +605,9 @@ namespace AsteroidColony
             {
                 if (stats.IsCriticallyHungry || !HasCurrentWorkObligation())
                 {
-                    RequestWorkStop();
+                    RequestWorkStop(stats.IsCriticallyHungry
+                        ? WorkReleaseReason.CriticalNeed
+                        : WorkReleaseReason.EndOfShift);
                     FinishWorkLifecycle();
                     return;
                 }
@@ -619,7 +626,7 @@ namespace AsteroidColony
 
             if (stats.IsCriticallyHungry)
             {
-                RequestWorkStop();
+                RequestWorkStop(WorkReleaseReason.CriticalNeed);
                 if (!activityRunner.HasActiveRequest)
                     FinishWorkLifecycle();
                 return;
@@ -628,7 +635,9 @@ namespace AsteroidColony
             if (workTargetInProgress == null || !workTargetInProgress.IsConfigured ||
                 !HasCurrentWorkObligation())
             {
-                RequestWorkStop();
+                RequestWorkStop(!HasCurrentWorkObligation()
+                    ? WorkReleaseReason.EndOfShift
+                    : WorkReleaseReason.OtherWorkPolicy);
                 if (!activityRunner.HasActiveRequest)
                     FinishWorkLifecycle();
                 return;
@@ -650,6 +659,22 @@ namespace AsteroidColony
 
         private void TickWorking()
         {
+            WorkExecutionLease lease = ActiveWorkExecutionLease;
+            if (lease != null)
+            {
+                if (stats.IsCriticallyHungry)
+                    RequestWorkStop(WorkReleaseReason.CriticalNeed);
+                else if (!HasCurrentWorkObligation())
+                    RequestWorkStop(WorkReleaseReason.EndOfShift);
+
+                // The workplace owns concrete execution until its lease is released.
+                // Stopped facility choreography is not evidence that the worker is idle.
+                return;
+            }
+
+            if (activeWorkExecutionLease != null)
+                activeWorkExecutionLease = null;
+
             if (workExcursionActive)
             {
                 // Once loaded, the worker owns the run through delivery even if a
@@ -667,6 +692,9 @@ namespace AsteroidColony
                     return;
                 if (stats.IsCriticallyHungry || !HasCurrentWorkObligation())
                 {
+                    WorkReleaseReason reason = stats.IsCriticallyHungry
+                        ? WorkReleaseReason.CriticalNeed
+                        : WorkReleaseReason.EndOfShift;
                     RecordDecision(
                         stats.IsCriticallyHungry
                             ? "colonist.decision.interrupted"
@@ -674,6 +702,7 @@ namespace AsteroidColony
                         stats.IsCriticallyHungry
                             ? "work_interrupted_for_critical_hunger"
                             : "work_ended");
+                    RequestWorkStop(reason);
                     FinishWorkLifecycle();
                 }
                 return;
@@ -681,14 +710,19 @@ namespace AsteroidColony
 
             if (workTargetInProgress == null || !workTargetInProgress.IsConfigured)
             {
-                RequestWorkStop();
+                RequestWorkStop(WorkReleaseReason.OtherWorkPolicy);
             }
-            else if (!workStopRequested &&
-                     (stats.IsCriticallyHungry ||
-                      !HasCurrentWorkObligation() ||
-                      !IsCurrentWorkActivity()))
+            else if (!workStopRequested && stats.IsCriticallyHungry)
             {
-                RequestWorkStop();
+                RequestWorkStop(WorkReleaseReason.CriticalNeed);
+            }
+            else if (!workStopRequested && !HasCurrentWorkObligation())
+            {
+                RequestWorkStop(WorkReleaseReason.EndOfShift);
+            }
+            else if (!workStopRequested && !IsCurrentWorkActivity())
+            {
+                RequestWorkStop(WorkReleaseReason.OtherWorkPolicy);
             }
 
             if (workStopRequested)
@@ -748,6 +782,28 @@ namespace AsteroidColony
             return true;
         }
 
+        public bool TryAcquireWorkExecution(
+            WorkplaceComponent workplace,
+            IWorkExecutionOwner owner,
+            out WorkExecutionLease lease)
+        {
+            lease = null;
+            if (workplace == null || owner == null || state != ColonistBrainState.Working ||
+                workStopRequested || activeWorkExecutionLease != null && activeWorkExecutionLease.IsActive ||
+                workExcursionActive || stats.IsCriticallyHungry || !HasCurrentWorkObligation() ||
+                WorkforceManager.Instance == null || identity == null ||
+                !WorkforceManager.Instance.TryGetCurrentDuty(
+                    identity, SimulationManager.Instance.CurrentGameHour, out WorkAssignment assignment) ||
+                assignment.Workplace != workplace)
+            {
+                return false;
+            }
+
+            lease = new WorkExecutionLease(identity, workplace, owner);
+            activeWorkExecutionLease = lease;
+            return true;
+        }
+
         public bool CanBeginWorkExcursion(WorkplaceComponent workplace)
         {
             if (workplace == null || state != ColonistBrainState.Working ||
@@ -795,30 +851,44 @@ namespace AsteroidColony
             FinishWorkLifecycle();
         }
 
-        private void RequestWorkStop()
+        private void RequestWorkStop(WorkReleaseReason reason)
         {
-            if (workStopRequested)
+            bool firstRequest = !workStopRequested;
+            if (firstRequest)
+            {
+                workStopRequested = true;
+                RecordDecision(
+                    reason == WorkReleaseReason.CriticalNeed
+                        ? "colonist.decision.interrupted"
+                        : "colonist.decision.reconsidered",
+                    reason == WorkReleaseReason.CriticalNeed
+                        ? "work_interrupted_for_critical_hunger"
+                        : reason == WorkReleaseReason.EndOfShift
+                            ? "work_ended"
+                            : "work_execution_stopped");
+                if (reason == WorkReleaseReason.CriticalNeed)
+                {
+                    SimulationLogManager.RecordEvent(
+                        "work.left_for_critical_need",
+                        "Work",
+                        "Warning",
+                        LogSubject,
+                        workTargetInProgress != null ? workTargetInProgress.Facility : null,
+                        new SimulationLogField("reason", "work_interrupted_for_critical_hunger"),
+                        new SimulationLogField("hunger", stats.Hunger));
+                }
+            }
+
+            WorkExecutionLease lease = ActiveWorkExecutionLease;
+            if (lease != null)
+            {
+                lease.RequestRelease(reason);
+                return;
+            }
+
+            if (!firstRequest)
                 return;
 
-            workStopRequested = true;
-            RecordDecision(
-                stats.IsCriticallyHungry
-                    ? "colonist.decision.interrupted"
-                    : "colonist.decision.reconsidered",
-                stats.IsCriticallyHungry
-                    ? "work_interrupted_for_critical_hunger"
-                    : "work_ended");
-            if (stats.IsCriticallyHungry)
-            {
-                SimulationLogManager.RecordEvent(
-                    "work.left_for_critical_need",
-                    "Work",
-                    "Warning",
-                    LogSubject,
-                    workTargetInProgress != null ? workTargetInProgress.Facility : null,
-                    new SimulationLogField("reason", "work_interrupted_for_critical_hunger"),
-                    new SimulationLogField("hunger", stats.Hunger));
-            }
             if (activityRunner.HasActiveRequest)
                 activityRunner.Stop();
             GetComponent<PersonnelRouteRunner>()?.StopRoute();
@@ -836,6 +906,10 @@ namespace AsteroidColony
 
         private void FinishWorkLifecycle()
         {
+            if (ActiveWorkExecutionLease != null)
+                return;
+
+            activeWorkExecutionLease = null;
             workTargetInProgress = null;
             mobileDutyAssignment = null;
             workStopRequested = false;

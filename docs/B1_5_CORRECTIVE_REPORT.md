@@ -25,6 +25,7 @@ Added compact API-boundary checks for allocation/route worker ownership, Brain f
 |---|---|---|
 | B1.5-T00 | Complete | Baseline documented; architecture boundary tests added before the refactor. |
 | B1.5-T01 | Complete | Allocation and cargo-route data no longer contain a worker; the current walking binding and empty positioning estimate live in a separate execution record. |
+| B1.5-T02 | Complete | Added a generic owner/lease/release contract and narrow deferred-release owner tests. |
 
 No Unity compile, Test Runner, or Play Mode run has been performed. The user performs the human Unity acceptance run.
 
@@ -36,3 +37,11 @@ No Unity compile, Test Runner, or Play Mode run has been performed. The user per
 - The source → destination estimate is the loaded distance on the single route leg. Job diagnostics now distinguish loaded cargo distance from worker positioning distance.
 - The existing `FreightCandidateRankingTests` still covers quantity-first, distance-second, and stable tie-break ranking. The T00 public boundary checks now match the route/allocation API. Neither suite was run.
 - Source inspection confirms no remaining `job.Carrier`, `FreightAllocation.Carrier`, `LogisticsRoutePlan.Carrier`, or `TotalEstimatedDistance` reference in P4b Logistics. These are source checks, not a Unity acceptance claim.
+
+## B1.5-T02 — Generic work-execution ownership
+
+- Added `IWorkExecutionOwner`, `WorkExecutionLease`, `WorkReleaseReason`, and `WorkReleaseDisposition`. The lease records only the worker, workplace, owner, and generic release request; it does not encode cargo or vehicle state.
+- `ColonistBrain` can grant a lease only while Working, on an active assignment to that workplace, without a pending stop or another active lease. While a lease is active, `TickWorking` remains Working and does not treat stopped facility choreography as the end of work.
+- Shift-end and critical-need stops now request generic owner release. A `Deferred` reply leaves the lease active; the Brain does not stop the service's route or finish the work lifecycle until the owner releases the lease.
+- Added two owner-level tests for immediate and deferred lease release. These test the durable generic release contract; they were not run. Brain/scene interactions remain Unity human acceptance.
+- **B2 locked rule:** Pilot work must defer release until its assigned Shuttle is physically docked at that Shuttle's home Shuttle Base. This sprint adds only the generic release seam and records the rule; no Shuttle, Pilot executor, or Charlie behavior was added or changed here.
