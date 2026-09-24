@@ -181,10 +181,17 @@ namespace AsteroidColony
                 state == FreightJobState.Blocked ? "Warning" : "Info",
                 job.Carrier, job.Destination,
                 new SimulationLogField("jobId", job.Id),
+                new SimulationLogField("allocationId", job.Allocation.Id),
                 new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
                 new SimulationLogField("state", state),
                 new SimulationLogField("reason", reason ?? string.Empty),
-                new SimulationLogField("quantity", job.Quantity));
+                new SimulationLogField("quantity", job.Quantity),
+                new SimulationLogField("routeDistance", job.RoutePlan.TotalEstimatedDistance),
+                new SimulationLogField("freightLeg", state == FreightJobState.TravelingToPickup ||
+                    state == FreightJobState.PickingUp ? "pickup" :
+                    state == FreightJobState.TravelingToDropoff || state == FreightJobState.DroppingOff
+                        ? "delivery" : "none"),
+                new SimulationLogField("reservationActive", job.Reservation != null && job.Reservation.IsActive));
         }
 
         public bool TryPickup(FreightDeliveryJob job)
@@ -623,7 +630,7 @@ namespace AsteroidColony
         {
             if (job.Carrier != null)
             {
-                job.Carrier.Motor?.Stop();
+                job.Carrier.RouteRunner?.StopRoute();
                 job.Carrier.Complete(job);
                 if (job.IsEmergencyExcursion && job.Carrier.Brain != null)
                     job.Carrier.Brain.CompleteWorkExcursion();

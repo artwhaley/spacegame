@@ -4,11 +4,11 @@ using UnityEngine;
 namespace AsteroidColony
 {
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(ColonistMotor), typeof(ColonistActivityRunner))]
+    [RequireComponent(typeof(ColonistMotor), typeof(ColonistActivityRunner), typeof(PersonnelRouteRunner))]
     [AddComponentMenu("Colony/Logistics/Walking Freight Runner")]
     public sealed class WalkingFreightRunner : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
-        private ColonistMotor motor;
+        private PersonnelRouteRunner routeRunner;
         private WalkingFreightCarrierComponent carrier;
         private FreightDeliveryJob job;
 
@@ -17,35 +17,35 @@ namespace AsteroidColony
 
         private void Awake()
         {
-            motor = GetComponent<ColonistMotor>();
+            routeRunner = GetComponent<PersonnelRouteRunner>();
             carrier = GetComponent<WalkingFreightCarrierComponent>();
         }
 
         private void OnEnable()
         {
             SimulationManager.RegisterTickable(this);
-            if (motor == null)
-                motor = GetComponent<ColonistMotor>();
-            if (motor != null)
+            if (routeRunner == null)
+                routeRunner = GetComponent<PersonnelRouteRunner>();
+            if (routeRunner != null)
             {
-                motor.Arrived += HandleArrived;
-                motor.MoveFailed += HandleMoveFailed;
+                routeRunner.RouteCompleted += HandleRouteCompleted;
+                routeRunner.RouteFailed += HandleRouteFailed;
             }
         }
 
         private void OnDisable()
         {
             SimulationManager.UnregisterTickable(this);
-            if (motor != null)
+            if (routeRunner != null)
             {
-                motor.Arrived -= HandleArrived;
-                motor.MoveFailed -= HandleMoveFailed;
+                routeRunner.RouteCompleted -= HandleRouteCompleted;
+                routeRunner.RouteFailed -= HandleRouteFailed;
             }
         }
 
         public bool Begin(FreightDeliveryJob assignedJob)
         {
-            if (assignedJob == null || job != null || motor == null ||
+            if (assignedJob == null || job != null || routeRunner == null ||
                 FreightLogisticsManager.Instance == null)
                 return false;
             job = assignedJob;
@@ -118,8 +118,10 @@ namespace AsteroidColony
             }
 
             FreightLogisticsManager.Instance.SetJobState(job, FreightJobState.TravelingToPickup);
-            if (!motor.MoveTo(job.Source.FreightAnchor) && job != null && !job.IsTerminal)
-                HandleMoveFailed("pickup_route_unavailable");
+            string reason = "personnel_route_runner_missing";
+            if (routeRunner == null ||
+                !routeRunner.TryStartRoute(job.Source.FreightAnchor, out reason))
+                HandleRouteStartFailure(job, reason, "pickup_route_unavailable");
         }
 
         private void StartDeliveryRoute()
@@ -131,8 +133,10 @@ namespace AsteroidColony
             }
 
             FreightLogisticsManager.Instance.SetJobState(job, FreightJobState.TravelingToDropoff);
-            if (!motor.MoveTo(job.Destination.FreightAnchor) && job != null && !job.IsTerminal)
-                HandleMoveFailed("dropoff_route_unavailable");
+            string reason = "personnel_route_runner_missing";
+            if (routeRunner == null ||
+                !routeRunner.TryStartRoute(job.Destination.FreightAnchor, out reason))
+                HandleRouteStartFailure(job, reason, "dropoff_route_unavailable");
         }
 
         private void RetryDeliveryRoute()
@@ -143,32 +147,53 @@ namespace AsteroidColony
             StartDeliveryRoute();
         }
 
-        private void HandleArrived()
+        private void HandleRouteCompleted(PersonnelRoutePlan plan)
         {
-            if (job == null || FreightLogisticsManager.Instance == null)
+            if (job == null || plan == null || plan.Person != carrier.Identity ||
+                FreightLogisticsManager.Instance == null)
                 return;
 
             FreightLogisticsManager manager = FreightLogisticsManager.Instance;
             if (job.State == FreightJobState.TravelingToPickup)
             {
+                if (plan.FinalDestination != job.Source.FreightAnchor)
+                    return;
                 if (manager.TryPickup(job))
                     StartDeliveryRoute();
             }
             else if (job.State == FreightJobState.TravelingToDropoff)
             {
+                if (plan.FinalDestination != job.Destination.FreightAnchor)
+                    return;
                 manager.TryDeliver(job);
             }
         }
 
-        private void HandleMoveFailed(string reason)
+        private void HandleRouteFailed(PersonnelRoutePlan plan, string reason)
         {
-            if (job == null || FreightLogisticsManager.Instance == null)
+            if (job == null || plan == null || plan.Person != carrier.Identity ||
+                FreightLogisticsManager.Instance == null)
                 return;
 
+            Transform expected = job.State == FreightJobState.TravelingToPickup
+                ? (job.Source != null ? job.Source.FreightAnchor : null)
+                : (job.Destination != null ? job.Destination.FreightAnchor : null);
+            if (plan.FinalDestination != expected)
+                return;
+
+            HandleRouteStartFailure(job, reason, "freight_route_failed");
+        }
+
+        private void HandleRouteStartFailure(FreightDeliveryJob failedJob,
+            string reason, string fallbackReason)
+        {
+            if (failedJob == null || job != failedJob || FreightLogisticsManager.Instance == null)
+                return;
+            string failure = string.IsNullOrWhiteSpace(reason) ? fallbackReason : reason;
             if (job.HasPickedUp)
-                FreightLogisticsManager.Instance.BlockJob(job, reason);
+                FreightLogisticsManager.Instance.BlockJob(job, failure);
             else
-                FreightLogisticsManager.Instance.CancelBeforePickup(job, reason);
+                FreightLogisticsManager.Instance.CancelBeforePickup(job, failure);
         }
     }
 }

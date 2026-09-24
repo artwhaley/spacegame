@@ -18,7 +18,7 @@ namespace AsteroidColony
         [SerializeField] private WorkplaceComponent emergencyWorkplace;
         [SerializeField] private ColonistIdentity identity;
         [SerializeField] private ColonistBrain brain;
-        [SerializeField] private ColonistMotor motor;
+        [SerializeField] private PersonnelRouteRunner routeRunner;
         [SerializeField] private ColonistActivityRunner activityRunner;
         [SerializeField] private InventoryComponent cargoInventory;
         [SerializeField] private WalkingFreightRunner runner;
@@ -26,7 +26,7 @@ namespace AsteroidColony
 
         public ColonistIdentity Identity => identity;
         public ColonistBrain Brain => brain;
-        public ColonistMotor Motor => motor;
+        public PersonnelRouteRunner RouteRunner => routeRunner;
         public ColonistActivityRunner ActivityRunner => activityRunner;
         public InventoryComponent CargoInventory => cargoInventory;
         public WalkingFreightRunner Runner => runner;
@@ -126,7 +126,11 @@ namespace AsteroidColony
                 assignment.Workplace.ExecutionMode == WorkplaceExecutionMode.MobileDuty &&
                 assignment.Workplace.DutyAnchor != null)
             {
-                motor?.MoveTo(assignment.Workplace.DutyAnchor);
+                string reason = "personnel_route_runner_missing";
+                if (routeRunner == null ||
+                    !routeRunner.TryStartRoute(assignment.Workplace.DutyAnchor, out reason))
+                    Debug.LogWarning($"{name}: could not return to duty anchor through Personnel Routing: " +
+                        (string.IsNullOrWhiteSpace(reason) ? "personnel_route_runner_missing" : reason), this);
             }
         }
 
@@ -156,8 +160,8 @@ namespace AsteroidColony
                 identity = GetComponent<ColonistIdentity>();
             if (brain == null)
                 brain = GetComponent<ColonistBrain>();
-            if (motor == null)
-                motor = GetComponent<ColonistMotor>();
+            if (routeRunner == null)
+                routeRunner = GetComponent<PersonnelRouteRunner>();
             if (activityRunner == null)
                 activityRunner = GetComponent<ColonistActivityRunner>();
             if (cargoInventory == null)

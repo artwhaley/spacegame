@@ -127,7 +127,7 @@ Design decisions:
 
 ### B1-T02
 
-Commit: pending
+Commit: `f4cb5bd1` (`B1-T02 execute colonist travel through personnel routing`)
 
 Files:
 
@@ -147,7 +147,7 @@ Verification: Source review and `git diff --check` only. No compile, automated t
 
 ### B1-T03
 
-Commit: pending
+Commit: `69d66899` (`B1-T03 centralize freight route allocation planning`)
 
 Files:
 
@@ -163,3 +163,22 @@ Changes:
 - Added one pure owner test for quantity-first, distance-second, stable-key ranking. The test is not run in this execution.
 
 Verification: Source review, direct dependency search, and `git diff --check` only. No compile, automated test, or Unity run was performed. Physical freight traversal and inventory custody remain pending in Play Mode.
+
+### B1-T04
+
+Commit: pending
+
+Files:
+
+- `Assets/Scripts/ColonyPrototype/Logistics/P4b/WalkingFreightRunner.cs`
+- `Assets/Scripts/ColonyPrototype/Logistics/P4b/WalkingFreightCarrierComponent.cs`
+- `Assets/Scripts/ColonyPrototype/Logistics/P4b/FreightLogisticsManager.cs`
+
+Changes:
+
+- Pickup, delivery, and Porter return-to-duty travel now start through `PersonnelRouteRunner`; the freight runner listens to route completion/failure rather than motor arrival/failure.
+- Before-pickup route failure still cancels the job and releases its source reservation. After-pickup failure still blocks the job and leaves cargo on the carrier for retry.
+- Freight state logs now include allocation ID, route distance, active freight leg, and reservation state.
+- Source review confirms no direct `ColonistMotor.MoveTo` or NavMesh API remains in the P4b manager/runner/carrier.
+
+Verification: Source review and `git diff --check` only. No compile, automated test, or Unity run was performed. Dana/Alice physical movement and inventory custody remain pending in Play Mode.
