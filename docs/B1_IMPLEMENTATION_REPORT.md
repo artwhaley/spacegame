@@ -1,6 +1,8 @@
 # P05 Sprint B1 Implementation Report
 
-Starting HEAD: `b13b43e5d24a7d46a5e1d9cd5106520ad3f18109` (`main`)
+Execution resume HEAD: `cb9ad11f7d74520237133d597448c5eb815fe310` (`main`)
+
+B1 work began at `b13b43e5d24a7d46a5e1d9cd5106520ad3f18109`; T00 and T01 were already committed when this execution resumed. The checkout contained partial, uncommitted T02 work at resume.
 
 Packet baseline: `2d8523c3f40edaeaa57d5d57296f951d851ce209`
 
@@ -77,7 +79,7 @@ B1 must use `FreightLogisticsManager` and canonical `WorkforceManager`; it must 
 4. **Freight custody is critical.** Pre-pickup failure may release a reservation; post-pickup failure must preserve cargo and block rather than cancel or duplicate inventory.
 5. **Scene lifecycle order is not guaranteed.** Managers and per-colonist route runners need explicit runtime resolution while still detecting duplicate authorities in validation.
 6. **Current tests are sparse for P4b.** The project testing policy favors stable owner-level tests; physical NavMesh traversal and scene wiring remain human acceptance concerns.
-7. **Full generated-solution build state.** `dotnet build space.slnx --no-restore` currently fails before compilation for five unrelated/generated projects whose `Temp/obj/*/project.assets.json` files are absent. The targeted `ColonyPrototype.Runtime` and `ColonyPrototype.Tests` projects compile successfully; subsequent ticket checks will use those focused projects unless Unity refreshes all generated assets.
+7. **Human acceptance boundary.** NavMesh movement, facility choreography, scene wiring, and freight custody remain Play Mode checks. This resumed execution follows the project's exploration testing guidance and the user's prior instruction to leave gameplay testing to their Play Mode run.
 
 ## Ticket Results
 
@@ -87,7 +89,7 @@ Commit: `6f55f8e9` (`B1-T00 document current routing ownership`)
 
 Files: `docs/B1_IMPLEMENTATION_REPORT.md`
 
-Tests: No new test (characterization only). `dotnet build ColonyPrototype.Runtime.csproj --no-restore` and `dotnet build ColonyPrototype.Tests.csproj --no-restore` passed. The full no-restore solution limitation is recorded above.
+Tests: No new test (characterization only). Historical targeted build results from the prior agent are not re-run in this execution. No Unity or gameplay tests were run.
 
 Findings:
 
@@ -99,7 +101,7 @@ Findings:
 
 ### B1-T01
 
-Commit: B1-T01 personnel routing seam (this commit)
+Commit: `cb9ad11f` (`B1-T01 add central personnel route planning`)
 
 Files:
 
@@ -112,8 +114,8 @@ Files:
 Tests:
 
 - Added 7 focused EditMode owner tests covering one-Walk-leg success, NoRoute, useful distance, hypothetical start, policy independence, deterministic repeated plans, and no B1 Shuttle leg.
-- `ColonyPrototype.Runtime` and `ColonyPrototype.Tests` compiled successfully with the new sources explicitly included while the already-open Unity Editor refreshes its generated project files.
-- Unity Test Runner execution was not started because this checkout is currently open in the Unity Editor; launching a second Editor against the same project would violate the project safety policy. No test is claimed as executed yet.
+- The prior agent reported targeted project compilation; it was not repeated after the partial T02 edits.
+- Unity Test Runner was not started. No test is claimed as executed in this resumed work.
 
 Design decisions:
 
@@ -122,3 +124,23 @@ Design decisions:
 - `PedestrianRouteProvider` is the only new personnel NavMesh estimator. It samples the person's area mask, calculates a complete path, and returns a transient estimate; it does not retain `NavMeshPath` in gameplay route state.
 - Hypothetical-start estimates are exposed for Logistics' future `carrier → source` and `source → destination` questions without coupling Logistics to Unity NavMesh.
 - The B1 enum contains only `Walk`; another transport kind can be introduced when B2 implements it. No Shuttle request or behavior exists in this ticket.
+
+### B1-T02
+
+Commit: pending
+
+Files:
+
+- `Assets/Scripts/ColonyPrototype/People/Routing/PersonnelRouteRunner.cs`
+- `Assets/Scripts/ColonyPrototype/People/ColonistBrain.cs`
+- `Packages/com.asteroidcolony.interactions/Runtime/IActivityApproachRouter.cs`
+- `Packages/com.asteroidcolony.interactions/Runtime/ColonistActivityRunner.cs`
+
+Changes:
+
+- Added a per-colonist route executor with route status, current leg, estimated distance, failure reason, and completion/failure events. It executes Walk through `ColonistMotor` and does not choose activities or policy.
+- Connected ActivityRunner's ordinary activity and sequence approach movement through the package-neutral approach-router interface. Missing central routing now reports a route failure instead of falling back to a direct motor route.
+- MobileDuty work now routes to its duty anchor and enters `Working` only after the route runner reports arrival. Critical need or shift-end cancellation stops an in-flight route.
+- Food, Sleep, OffDuty, activity approaches, and work excursions already use ActivityRunner, so they now use the central seam when the scene supplies a route runner.
+
+Verification: Source review and `git diff --check` only. No compile, automated test, or Unity run was performed. Manual NavMesh and activity parity remain pending in Unity.

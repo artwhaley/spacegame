@@ -13,6 +13,7 @@ namespace AsteroidColony
     {
         public const string MissingPersonReason = "person_missing";
         public const string MissingDestinationReason = "destination_missing";
+        public const string MissingRoutingManagerReason = "personnel_routing_manager_missing";
         public const string MissingProviderReason = "pedestrian_provider_missing";
         public const string NoRouteReason = "no_pedestrian_route";
 

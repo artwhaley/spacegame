@@ -596,6 +596,27 @@ namespace AsteroidColony
 
         private void TickWorkSeeking()
         {
+            if (mobileDutyAssignment != null)
+            {
+                if (stats.IsCriticallyHungry || !HasCurrentWorkObligation())
+                {
+                    RequestWorkStop();
+                    FinishWorkLifecycle();
+                    return;
+                }
+
+                PersonnelRouteRunner routeRunner = GetComponent<PersonnelRouteRunner>();
+                if (routeRunner == null || routeRunner.State == PersonnelRouteExecutionState.Failed ||
+                    routeRunner.State == PersonnelRouteExecutionState.Cancelled)
+                {
+                    FinishWorkLifecycle();
+                    return;
+                }
+                if (routeRunner.State == PersonnelRouteExecutionState.Completed)
+                    state = ColonistBrainState.Working;
+                return;
+            }
+
             if (stats.IsCriticallyHungry)
             {
                 RequestWorkStop();
@@ -691,13 +712,22 @@ namespace AsteroidColony
                     out WorkAssignment assignment) &&
                 assignment.Workplace.ExecutionMode == WorkplaceExecutionMode.MobileDuty)
             {
+                PersonnelRouteRunner routeRunner = GetComponent<PersonnelRouteRunner>();
+                string routeFailure = "personnel_route_runner_missing";
+                if (routeRunner == null || assignment.Workplace.DutyAnchor == null ||
+                    !routeRunner.TryStartRoute(assignment.Workplace.DutyAnchor, out routeFailure))
+                {
+                    RecordDecision("colonist.decision.blocked",
+                        "mobile_duty_route_unavailable",
+                        assignment.Workplace,
+                        new SimulationLogField("routeFailure", routeFailure));
+                    return false;
+                }
+
                 mobileDutyAssignment = assignment;
                 workStopRequested = false;
-                state = ColonistBrainState.Working;
-                ColonistMotor mobileDutyMotor = GetComponent<ColonistMotor>();
-                if (mobileDutyMotor != null && assignment.Workplace.DutyAnchor != null)
-                    mobileDutyMotor.MoveTo(assignment.Workplace.DutyAnchor);
-                RecordDecision("colonist.decision.work", "mobile_duty_started",
+                state = ColonistBrainState.WorkSeeking;
+                RecordDecision("colonist.decision.work", "mobile_duty_route_started",
                     assignment.Workplace);
                 return true;
             }
@@ -791,6 +821,7 @@ namespace AsteroidColony
             }
             if (activityRunner.HasActiveRequest)
                 activityRunner.Stop();
+            GetComponent<PersonnelRouteRunner>()?.StopRoute();
         }
 
         private bool IsCurrentWorkActivity()

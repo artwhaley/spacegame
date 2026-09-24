@@ -53,6 +53,7 @@ namespace Colony.Interactions
     {
         [SerializeField] private ColonistMotor motor;
 
+        private IActivityApproachRouter approachRouter;
         private InteractableFacility currentFacility;
         private FacilityActivityBinding currentBinding;
         private FacilityReservationToken reservation;
@@ -101,6 +102,7 @@ namespace Colony.Interactions
                 : null;
         public bool HasPendingRequest => pendingFacility != null && !string.IsNullOrEmpty(pendingActivityId);
         public bool HasActiveSequence => activeSequence != null;
+        public IActivityApproachRouter ApproachRouter => approachRouter;
         public bool ActiveActivityLocked => activeActivityLocked && IsActivityActive;
 
         // A committed, timed interaction can refuse ordinary stop/replacement requests.
@@ -171,6 +173,16 @@ namespace Colony.Interactions
 
             CancelSequenceIntent();
             ReleaseReservation();
+        }
+
+        public void SetApproachRouter(IActivityApproachRouter router)
+        {
+            if (ReferenceEquals(approachRouter, router))
+                return;
+
+            if (approachRouter != null && Phase == ActivityPhase.Navigating)
+                approachRouter.StopRoute();
+            approachRouter = router;
         }
 
         public bool RequestActivity(InteractableFacility facility, string activityId)
@@ -364,6 +376,7 @@ namespace Colony.Interactions
                 return;
             }
 
+            approachRouter?.StopRoute();
             if (motor != null)
             {
                 motor.Stop();
@@ -420,20 +433,14 @@ namespace Colony.Interactions
                 $"Sequence {activeSequence.SequenceId}: cycle {cycleDescription}, " +
                 $"starting {binding.ActivityId} " +
                 $"(holding {reservation.ReservationGroup}).");
-
-            if (motor == null)
-            {
-                Fail("The actor could not start navigation for the activity sequence.");
-                return;
-            }
-
-            if (!motor.MoveTo(binding.ApproachAnchor))
+            if (!TryStartApproachNavigation(
+                    binding.ApproachAnchor,
+                    out string failureReason))
             {
                 if (Phase != ActivityPhase.Failed)
                 {
-                    Fail("The actor could not start sequence navigation to the activity approach.");
+                    Fail("The actor could not start sequence navigation to the activity approach: " + failureReason);
                 }
-
                 return;
             }
 
@@ -568,6 +575,28 @@ namespace Colony.Interactions
 
             Phase = ActivityPhase.Failed;
             StatusChanged?.Invoke($"Failed: {error}");
+        }
+
+        private bool TryStartApproachNavigation(
+            Transform destination,
+            out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (destination == null)
+            {
+                failureReason = "activity approach anchor missing";
+                return false;
+            }
+
+            if (approachRouter != null &&
+                approachRouter.TryStartRoute(destination, out failureReason))
+                return true;
+
+            if (string.IsNullOrWhiteSpace(failureReason))
+                failureReason = approachRouter == null
+                    ? "personnel_route_runner_missing"
+                    : "personnel_route_unavailable";
+            return false;
         }
 
         private void HandleArrived()
@@ -1080,6 +1109,7 @@ namespace Colony.Interactions
                 animationDriver.StopPlayback(true);
             }
 
+            approachRouter?.StopRoute();
             if (motor != null)
             {
                 // Failing mid-activity leaves the NavMeshAgent detached and the root
@@ -1186,16 +1216,13 @@ namespace Colony.Interactions
                 binding,
                 string.Empty);
 
-            if (motor == null)
-            {
-                return Fail("The actor could not start navigation to the activity approach.");
-            }
-
-            if (!motor.MoveTo(binding.ApproachAnchor))
+            if (!TryStartApproachNavigation(
+                    binding.ApproachAnchor,
+                    out string failureReason))
             {
                 return Phase == ActivityPhase.Failed
                     ? false
-                    : Fail("The actor could not start navigation to the activity approach.");
+                    : Fail("The actor could not start navigation to the activity approach: " + failureReason);
             }
 
             Phase = ActivityPhase.Navigating;
@@ -1222,6 +1249,7 @@ namespace Colony.Interactions
         private void CancelBeforeEntryForReplacement()
         {
             CancelSequenceIntent();
+            approachRouter?.StopRoute();
 
             if (motor != null)
             {
