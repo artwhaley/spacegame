@@ -242,8 +242,13 @@ namespace AsteroidColony.Editor
 
             ColonistIdentity[] colonists = FindColonists(scene);
             for (int i = 0; i < colonists.Length; i++)
-                if (colonists[i].GetComponent<PersonnelRouteRunner>() == null)
-                { Debug.LogError(colonists[i].DisplayName + " is missing PersonnelRouteRunner.", colonists[i]); errors++; }
+            {
+                WalkingFreightCarrierComponent carrier = colonists[i].GetComponent<WalkingFreightCarrierComponent>();
+                if (colonists[i].GetComponent<PersonnelRouteRunner>() == null || carrier == null ||
+                    carrier.GetComponent<WalkingFreightRunner>() == null ||
+                    carrier.CargoInventory != colonists[i].GetComponent<InventoryComponent>())
+                { Debug.LogError(colonists[i].DisplayName + " is missing the shared colonist routing/freight composition.", colonists[i]); errors++; }
+            }
 
             ColonistIdentity charlie = FindColonist(scene, "Charlie");
             WorkforceManager workforce = FindUniqueSceneComponent<WorkforceManager>(scene);

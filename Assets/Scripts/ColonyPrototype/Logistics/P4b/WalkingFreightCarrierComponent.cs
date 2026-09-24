@@ -4,6 +4,11 @@ using System.Collections.Generic;
 
 namespace AsteroidColony
 {
+    /// <summary>
+    /// Shared physical cargo-handling capability for every colonist. Eligibility
+    /// comes from FreightLogisticsManager and the colonist's current assignment,
+    /// never from a person-specific emergency/carrier flag.
+    /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(ColonistIdentity), typeof(ColonistMotor), typeof(ColonistActivityRunner))]
     [RequireComponent(typeof(InventoryComponent))]
@@ -14,8 +19,6 @@ namespace AsteroidColony
         private static readonly List<WalkingFreightCarrierComponent> active =
             new List<WalkingFreightCarrierComponent>();
         [SerializeField, Min(0.01f)] private float maximumCargoQuantity = 10f;
-        [SerializeField] private bool emergencyOnly;
-        [SerializeField] private WorkplaceComponent emergencyWorkplace;
         [SerializeField] private ColonistIdentity identity;
         [SerializeField] private ColonistBrain brain;
         [SerializeField] private PersonnelRouteRunner routeRunner;
@@ -32,7 +35,6 @@ namespace AsteroidColony
         public WalkingFreightRunner Runner => runner;
         public FreightDeliveryJob CurrentJob => currentJob;
         public float MaximumCargoQuantity => maximumCargoQuantity;
-        public bool EmergencyOnly => emergencyOnly;
         public bool HasActiveJob => currentJob != null && !currentJob.IsTerminal;
         public bool HasCargo => cargoInventory != null && currentJob != null &&
             cargoInventory.GetOnHand(currentJob.Resource) > 0f;
@@ -57,10 +59,10 @@ namespace AsteroidColony
             active.Clear();
         }
 
-        public bool CanAcceptRoutineJob(out WorkAssignment assignment)
+        public bool CanAcceptRoutineJob(JobRoleDefinition carrierRole, out WorkAssignment assignment)
         {
             assignment = null;
-            if (emergencyOnly || HasActiveJob || !isActiveAndEnabled ||
+            if (carrierRole == null || HasActiveJob || !isActiveAndEnabled ||
                 identity == null || brain == null || runner == null ||
                 WorkforceManager.Instance == null || SimulationManager.Instance == null ||
                 !WorkforceManager.Instance.TryGetCurrentDuty(
@@ -69,23 +71,25 @@ namespace AsteroidColony
                 return false;
             }
 
-            return assignment.Workplace.ExecutionMode == WorkplaceExecutionMode.MobileDuty &&
+            return assignment.Role == carrierRole &&
+                   assignment.Workplace.ExecutionMode == WorkplaceExecutionMode.MobileDuty &&
                    brain.State == ColonistBrainState.Working;
         }
 
         public bool CanAcceptEmergencyJob(WorkplaceComponent workplace)
         {
-            if (!emergencyOnly || HasActiveJob || !isActiveAndEnabled ||
-                workplace == null || workplace != emergencyWorkplace ||
+            if (HasActiveJob || !isActiveAndEnabled || workplace == null ||
                 brain == null || runner == null || WorkforceManager.Instance == null ||
-                SimulationManager.Instance == null)
+                SimulationManager.Instance == null || identity == null ||
+                !WorkforceManager.Instance.TryGetAssignment(identity, out WorkAssignment assignment) ||
+                assignment.Workplace != workplace)
             {
                 return false;
             }
 
             return WorkforceManager.Instance.HasEnoughActiveWorkers(
                 workplace,
-                GetAssignedRole(workplace),
+                assignment.Role,
                 1,
                 0f,
                 SimulationManager.Instance.CurrentGameHour) &&
@@ -117,9 +121,10 @@ namespace AsteroidColony
             if (job == null || currentJob != job)
                 return;
 
+            bool wasEmergencyExcursion = job.IsEmergencyExcursion;
             currentJob = null;
             runner?.Clear(job);
-            if (!emergencyOnly && brain != null && brain.State == ColonistBrainState.Working &&
+            if (!wasEmergencyExcursion && brain != null && brain.State == ColonistBrainState.Working &&
                 WorkforceManager.Instance != null && SimulationManager.Instance != null &&
                 WorkforceManager.Instance.TryGetCurrentDuty(
                     identity, SimulationManager.Instance.CurrentGameHour, out WorkAssignment assignment) &&
@@ -134,24 +139,10 @@ namespace AsteroidColony
             }
         }
 
-        public void Configure(float capacity, bool isEmergencyOnly,
-            WorkplaceComponent authorizedWorkplace = null)
+        public void ConfigureCapacity(float capacity)
         {
             ResolveComponents();
             maximumCargoQuantity = Mathf.Max(0.01f, capacity);
-            emergencyOnly = isEmergencyOnly;
-            emergencyWorkplace = authorizedWorkplace;
-        }
-
-        private JobRoleDefinition GetAssignedRole(WorkplaceComponent workplace)
-        {
-            if (WorkforceManager.Instance == null ||
-                !WorkforceManager.Instance.TryGetAssignment(identity, out WorkAssignment assignment) ||
-                assignment.Workplace != workplace)
-            {
-                return null;
-            }
-            return assignment.Role;
         }
 
         private void ResolveComponents()

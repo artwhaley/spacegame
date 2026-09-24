@@ -84,6 +84,8 @@ namespace AsteroidColony
         private static long nextOrderId;
         private static long nextJobId;
 
+        [SerializeField] private JobRoleDefinition routineCarrierRole;
+
         [NonSerialized] private readonly List<FreightOrder> orders = new List<FreightOrder>();
         [NonSerialized] private readonly List<FreightDeliveryJob> jobs = new List<FreightDeliveryJob>();
 
@@ -91,6 +93,13 @@ namespace AsteroidColony
         public IReadOnlyList<FreightOrder> Orders => orders;
         public IReadOnlyList<FreightDeliveryJob> Jobs => jobs;
         public int SimulationTickPriority => 310;
+
+        public JobRoleDefinition RoutineCarrierRole => routineCarrierRole;
+
+        public void ConfigureRoutineCarrierRole(JobRoleDefinition role)
+        {
+            routineCarrierRole = role;
+        }
 
         private void Awake()
         {
@@ -393,10 +402,7 @@ namespace AsteroidColony
                 WalkingFreightCarrierComponent carrier = carriers[c];
                 if (carrier == null || (emergencyOnly
                         ? !carrier.CanAcceptEmergencyJob(order.Requester.GetComponent<WorkplaceComponent>())
-                        : !carrier.CanAcceptRoutineJob(out _)))
-                    continue;
-
-                if (emergencyOnly != carrier.EmergencyOnly)
+                        : !carrier.CanAcceptRoutineJob(routineCarrierRole, out _)))
                     continue;
 
                 float cargoCapacity = Mathf.Max(0f,

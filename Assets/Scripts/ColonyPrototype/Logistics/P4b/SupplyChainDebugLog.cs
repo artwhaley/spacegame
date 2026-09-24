@@ -290,7 +290,11 @@ namespace AsteroidColony
                     row.eventKey = "supply.snapshot.carrier";
                     Add(row, "hasActiveJob", carrier.HasActiveJob.ToString());
                     Add(row, "brainState", carrier.Brain != null ? carrier.Brain.State.ToString() : string.Empty);
-                    Add(row, "emergencyOnly", carrier.EmergencyOnly.ToString());
+                    Add(row, "routineEligibleByDuty", carrier.CanAcceptRoutineJob(
+                        FreightLogisticsManager.Instance != null
+                            ? FreightLogisticsManager.Instance.RoutineCarrierRole
+                            : null,
+                        out _).ToString());
                     Add(row, "cargoCapacity", F(carrier.MaximumCargoQuantity));
                     Add(row, "jobId", carrier.CurrentJob != null ? carrier.CurrentJob.Id : string.Empty);
                     Add(row, "jobState", carrier.CurrentJob != null ? carrier.CurrentJob.State.ToString() : string.Empty);

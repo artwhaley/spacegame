@@ -16,6 +16,7 @@ namespace AsteroidColony.Editor
     {
         private const string ScenePath = "Assets/bobandfriends_modular.unity";
         private const string AirlockPath = "Assets/Prefabs/Airlock.prefab";
+        private const string ColonistPrefabPath = "Assets/Prefabs/Colonists/Colonist_Synty_Male_01.prefab";
         private const string PorterRolePath = "Assets/GameData/Jobs/Porter.asset";
         private const string FoodPath = "Assets/GameData/Resources/Food.asset";
         private const string FarmRecipePath = "Assets/GameData/Recipes/SimpleFarmFood.asset";
@@ -52,7 +53,7 @@ namespace AsteroidColony.Editor
             if (!EditorSceneManager.SaveScene(scene))
                 throw new InvalidOperationException("Could not save " + ScenePath + ".");
             AssetDatabase.SaveAssets();
-            Debug.Log("P4b modular logistics fixture authored. Run the P4b validation and Play Mode acceptance.");
+            Debug.Log("P4b modular fixture authored with shared colonist routing/freight composition. Run validation and Play Mode acceptance.");
         }
 
         [MenuItem("Colony/Logistics/P4b/Validate Modular Fixture")]
@@ -83,6 +84,10 @@ namespace AsteroidColony.Editor
             ResourceDefinition food = AssetDatabase.LoadAssetAtPath<ResourceDefinition>(FoodPath);
             if (food == null)
                 throw new InvalidOperationException("Could not load Food resource at " + FoodPath + ".");
+
+            EnsureSharedColonistComposition(scene);
+            EnsurePersonnelRoutingInfrastructure(scene);
+            EnsureOtherColonistScenesHaveRouting(scene);
 
             InventoryComponent farmInventory = EnsureComponent<InventoryComponent>(farm);
             InventoryComponent cafeteriaInventory = EnsureComponent<InventoryComponent>(cafeteria);
@@ -171,25 +176,9 @@ namespace AsteroidColony.Editor
                 throw new InvalidOperationException("Could not assign Dana to Porter duty: " + assignmentResult + ".");
             EditorUtility.SetDirty(workforce);
 
-            WalkingFreightCarrierComponent danaCarrier = EnsureComponent<WalkingFreightCarrierComponent>(dana.gameObject);
-            danaCarrier.Configure(10f, false);
-            RequireCapacity(danaCarrier.CargoInventory, food, 10f);
-            EditorUtility.SetDirty(danaCarrier);
-
-            WorkplaceComponent cafeteriaWorkplace = RequireComponent<WorkplaceComponent>(cafeteria);
-            WalkingFreightCarrierComponent aliceCarrier = EnsureComponent<WalkingFreightCarrierComponent>(alice.gameObject);
-            aliceCarrier.Configure(5f, true, cafeteriaWorkplace);
-            RequireCapacity(aliceCarrier.CargoInventory, food, 5f);
-            EditorUtility.SetDirty(aliceCarrier);
-
-            FreightLogisticsManager freightManager = FindSceneComponent<FreightLogisticsManager>(scene);
-            if (freightManager == null)
-            {
-                GameObject managerObject = new GameObject("FreightLogisticsManager");
-                SceneManager.MoveGameObjectToScene(managerObject, scene);
-                Undo.RegisterCreatedObjectUndo(managerObject, "Create P4b freight authority");
-                freightManager = managerObject.AddComponent<FreightLogisticsManager>();
-            }
+            FreightLogisticsManager freightManager = RequireOrCreateUnique<FreightLogisticsManager>(scene, "FreightLogisticsManager");
+            freightManager.ConfigureRoutineCarrierRole(porterRole);
+            EditorUtility.SetDirty(freightManager);
             EnsureComponent<SupplyChainDebugLog>(freightManager.gameObject);
 
             InventoryComponent legacyStore = FindNamedInventory(scene, "Station Food Store (Inert)");
@@ -381,23 +370,34 @@ namespace AsteroidColony.Editor
             }
 
             WorkplaceComponent porterWorkplace = airlock.GetComponent<WorkplaceComponent>();
+            JobRoleDefinition porterRole = AssetDatabase.LoadAssetAtPath<JobRoleDefinition>(PorterRolePath);
+            FreightLogisticsManager freightManager = FindSceneComponent<FreightLogisticsManager>(scene);
+            PersonnelRoutingManager routingManager = FindSceneComponent<PersonnelRoutingManager>(scene);
             if (porterWorkplace == null || porterWorkplace.ExecutionMode != WorkplaceExecutionMode.MobileDuty ||
                 porterWorkplace.DutyAnchor == null ||
-                FindSceneComponent<FreightLogisticsManager>(scene) == null ||
+                freightManager == null || freightManager.RoutineCarrierRole != porterRole ||
+                GetSceneComponents<FreightLogisticsManager>(scene).Length != 1 ||
+                routingManager == null || GetSceneComponents<PersonnelRoutingManager>(scene).Length != 1 ||
+                routingManager.GetComponent<PedestrianRouteProvider>() == null ||
+                GetSceneComponents<PedestrianRouteProvider>(scene).Length != 1 ||
                 FindSceneComponent<SupplyChainDebugLog>(scene) == null)
             {
-                Debug.LogError("Airlock mobile Porter workplace or FreightLogisticsManager is missing.");
+                Debug.LogError("Airlock Porter workplace, configured FreightLogisticsManager, or unique Personnel Routing infrastructure is missing.");
                 errors++;
             }
 
-            ColonistIdentity alice = FindColonist(scene, AliceName);
-            ColonistIdentity dana = FindColonist(scene, DanaName);
-            if (alice == null || dana == null ||
-                alice.GetComponent<WalkingFreightCarrierComponent>() == null ||
-                dana.GetComponent<WalkingFreightCarrierComponent>() == null)
+            ColonistIdentity[] colonists = FindColonists(scene);
+            for (int i = 0; i < colonists.Length; i++)
             {
-                Debug.LogError("Alice/Dana walking carrier configuration is missing.");
-                errors++;
+                WalkingFreightCarrierComponent carrier = colonists[i].GetComponent<WalkingFreightCarrierComponent>();
+                if (carrier == null || carrier.GetComponent<WalkingFreightRunner>() == null ||
+                    carrier.GetComponent<PersonnelRouteRunner>() == null ||
+                    carrier.CargoInventory != colonists[i].GetComponent<InventoryComponent>() ||
+                    !Mathf.Approximately(carrier.MaximumCargoQuantity, 10f))
+                {
+                    Debug.LogError(colonists[i].DisplayName + " is missing the common colonist cargo/route composition.", colonists[i]);
+                    errors++;
+                }
             }
             return errors;
         }
@@ -406,6 +406,131 @@ namespace AsteroidColony.Editor
         {
             T component = gameObject.GetComponent<T>();
             return component != null ? component : Undo.AddComponent<T>(gameObject);
+        }
+
+        private static void EnsureSharedColonistComposition(Scene scene)
+        {
+            ColonistIdentity[] colonists = FindColonists(scene);
+            if (colonists.Length == 0)
+                throw new InvalidOperationException("The modular scene has no colonists to configure.");
+
+            // Earlier P4b authoring added carrier, runner, and cargo components to
+            // Alice/Dana as scene-only overrides. Remove those overrides before
+            // adding the shared capability to the common colonist prefab.
+            for (int i = 0; i < colonists.Length; i++)
+            {
+                RevertAddedComponent<WalkingFreightCarrierComponent>(colonists[i].gameObject);
+                RevertAddedComponent<WalkingFreightRunner>(colonists[i].gameObject);
+                RevertAddedComponent<PersonnelRouteRunner>(colonists[i].gameObject);
+                RevertAddedComponent<InventoryComponent>(colonists[i].gameObject);
+            }
+
+            GameObject prefab = PrefabUtility.LoadPrefabContents(ColonistPrefabPath);
+            if (prefab == null)
+                throw new InvalidOperationException("Could not load common colonist prefab: " + ColonistPrefabPath);
+
+            try
+            {
+                EnsurePrefabComponent<InventoryComponent>(prefab);
+                EnsurePrefabComponent<PersonnelRouteRunner>(prefab);
+                EnsurePrefabComponent<WalkingFreightRunner>(prefab);
+                WalkingFreightCarrierComponent carrier = EnsurePrefabComponent<WalkingFreightCarrierComponent>(prefab);
+                carrier.ConfigureCapacity(10f);
+                if (PrefabUtility.SaveAsPrefabAsset(prefab, ColonistPrefabPath) == null)
+                    throw new InvalidOperationException("Could not save common colonist routing/freight composition.");
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefab);
+            }
+        }
+
+        private static void RevertAddedComponent<T>(GameObject gameObject) where T : Component
+        {
+            T component = gameObject.GetComponent<T>();
+            if (component != null && PrefabUtility.IsAddedComponentOverride(component))
+                PrefabUtility.RevertAddedComponent(component, InteractionMode.AutomatedAction);
+        }
+
+        private static T EnsurePrefabComponent<T>(GameObject gameObject) where T : Component
+        {
+            T component = gameObject.GetComponent<T>();
+            return component != null ? component : gameObject.AddComponent<T>();
+        }
+
+        private static void EnsurePersonnelRoutingInfrastructure(Scene scene)
+        {
+            PersonnelRoutingManager manager = RequireOrCreateUnique<PersonnelRoutingManager>(scene, "PersonnelRoutingManager");
+            PedestrianRouteProvider provider = RequireOrCreateUnique<PedestrianRouteProvider>(
+                scene, "PedestrianRouteProvider", manager.gameObject);
+            manager.ConfigureProvider(provider);
+            EditorUtility.SetDirty(manager);
+        }
+
+        private static void EnsureOtherColonistScenesHaveRouting(Scene configuredScene)
+        {
+            string[] scenePaths = { "Assets/Bob.unity", "Assets/bobandfriends.unity" };
+            for (int i = 0; i < scenePaths.Length; i++)
+            {
+                string path = scenePaths[i];
+                if (path == configuredScene.path)
+                    continue;
+
+                Scene scene = SceneManager.GetSceneByPath(path);
+                bool openedHere = !scene.IsValid() || !scene.isLoaded;
+                if (openedHere)
+                    scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Additive);
+                else if (EditorSceneManager.IsSceneDirty(scene))
+                {
+                    Debug.LogWarning("Skipped routing setup for already-dirty scene " + path +
+                        " to preserve its unsaved edits. Run the scene routing menu after saving those edits.");
+                    continue;
+                }
+
+                try
+                {
+                    if (FindColonists(scene).Length == 0)
+                        continue;
+                    EnsurePersonnelRoutingInfrastructure(scene);
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    if (!EditorSceneManager.SaveScene(scene))
+                        throw new InvalidOperationException("Could not save routing setup to " + path + ".");
+                }
+                finally
+                {
+                    if (openedHere)
+                        EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+
+        private static T RequireOrCreateUnique<T>(Scene scene, string objectName, GameObject host = null)
+            where T : Component
+        {
+            T[] all = GetSceneComponents<T>(scene);
+            if (all.Length > 1)
+                throw new InvalidOperationException("Scene has duplicate " + typeof(T).Name + " components.");
+            if (all.Length == 1)
+                return all[0];
+
+            GameObject owner = host;
+            if (owner == null)
+            {
+                owner = new GameObject(objectName);
+                SceneManager.MoveGameObjectToScene(owner, scene);
+                Undo.RegisterCreatedObjectUndo(owner, "Create P4b " + objectName);
+            }
+            return Undo.AddComponent<T>(owner);
+        }
+
+        private static T[] GetSceneComponents<T>(Scene scene) where T : Component
+        {
+            List<T> result = new List<T>();
+            T[] all = Resources.FindObjectsOfTypeAll<T>();
+            for (int i = 0; i < all.Length; i++)
+                if (all[i] != null && !EditorUtility.IsPersistent(all[i]) && all[i].gameObject.scene == scene)
+                    result.Add(all[i]);
+            return result.ToArray();
         }
 
         private static void RequireCapacity(
@@ -497,6 +622,16 @@ namespace AsteroidColony.Editor
                 result = all[i];
             }
             return result;
+        }
+
+        private static ColonistIdentity[] FindColonists(Scene scene)
+        {
+            List<ColonistIdentity> result = new List<ColonistIdentity>();
+            ColonistIdentity[] all = Resources.FindObjectsOfTypeAll<ColonistIdentity>();
+            for (int i = 0; i < all.Length; i++)
+                if (all[i] != null && !EditorUtility.IsPersistent(all[i]) && all[i].gameObject.scene == scene)
+                    result.Add(all[i]);
+            return result.ToArray();
         }
 
         private static T RequireSceneComponent<T>(Scene scene) where T : Component

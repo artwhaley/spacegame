@@ -215,7 +215,8 @@ Files:
 Changes:
 
 - Added `Colony/Logistics/B1/Configure Modular Fixture` and `Colony/Logistics/B1/Validate Modular Fixture` for `Assets/bobandfriends_modular.unity`.
-- Configuration calls the existing P4b authoring first, then creates/reuses the Shuttle Base, ensures one PersonnelRoutingManager with one PedestrianRouteProvider, retains the single FreightLogisticsManager, adds one PersonnelRouteRunner per scene colonist, and assigns Charlie to Pilot.
+- Configuration calls the existing P4b authoring first, then creates/reuses the Shuttle Base, ensures one PersonnelRoutingManager with one PedestrianRouteProvider, retains the single FreightLogisticsManager, and assigns Charlie to Pilot. Shared colonist prefab composition supplies one PersonnelRouteRunner to every colonist.
+- The P4b configuration now puts Inventory, PersonnelRouteRunner, WalkingFreightRunner, and WalkingFreightCarrierComponent on the shared colonist prefab. It reverts Alice/Dana's former scene-only component additions, sets one common cargo capacity, configures routine freight eligibility through the FreightLogisticsManager's Porter role, and adds central routing infrastructure to the colonist scenes.
 - Configuration is repeatable: it reuses the role, prefab instance, managers, and components; rejects duplicate managers/modules; and does not move or transfer existing stock.
 - Validation covers routing/freight manager cardinality, colonist route runners, Charlie Pilot/no Command assignment, Shuttle Base docking/workplace/Depot wiring, the separate Farm/Cafeteria inventories, Airlock Depot policy, and Dana's Porter assignment.
 
