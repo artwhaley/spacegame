@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Colony.Interactions;
 using UnityEngine;
 
@@ -48,6 +49,8 @@ namespace AsteroidColony
         private readonly object mutationAuthority;
         private float quantity;
         private InventoryReservationToken reservation;
+        private string activePersonnelRouteId;
+        private string activePersonnelRouteStableId;
 
         internal FreightDeliveryJob(FreightAllocation allocation,
             IFreightLegExecution activeLegExecution,
@@ -80,7 +83,6 @@ namespace AsteroidColony
             !IsTerminal && State == FreightJobState.Assigned && ActiveLegExecution == null;
         public InventoryComponent CargoInventory => ActiveLegExecution != null
             ? ActiveLegExecution.CargoInventory : null;
-        public string Id => Allocation.Id;
         public FreightOrder Order => Allocation.Order;
         public ResourceDefinition Resource => Allocation.Resource;
         public LogisticsStockComponent Source => Allocation.Source;
@@ -92,6 +94,8 @@ namespace AsteroidColony
         public bool HasPickedUp { get; private set; }
         public bool IsTerminal => State == FreightJobState.Completed || State == FreightJobState.Cancelled;
         public long RetryAtTick { get; private set; }
+        public string ActivePersonnelRouteId => activePersonnelRouteId ?? string.Empty;
+        public string ActivePersonnelRouteStableId => activePersonnelRouteStableId ?? string.Empty;
 
         internal void SetState(object authority, FreightJobState state)
         {
@@ -121,6 +125,16 @@ namespace AsteroidColony
         {
             VerifyAuthority(authority);
             ActiveLegExecution = execution;
+        }
+
+        internal void SetActivePersonnelRoute(
+            object authority,
+            string routeId,
+            string routeStableId)
+        {
+            VerifyAuthority(authority);
+            activePersonnelRouteId = routeId;
+            activePersonnelRouteStableId = routeStableId;
         }
 
         internal void SetRetryAtTick(object authority, long retryAtTick)
@@ -154,7 +168,8 @@ namespace AsteroidColony
         private const long PublicationGraceTicks = 3;
         private const long BlockedRetryTicks = 5;
         private static long nextOrderId;
-        private static long nextJobId;
+        private static long nextAllocationId;
+        private static long nextExecutionId;
         private readonly object jobMutationAuthority = new object();
 
         [NonSerialized] private readonly List<FreightOrder> orders = new List<FreightOrder>();
@@ -163,7 +178,7 @@ namespace AsteroidColony
         public static FreightLogisticsManager Instance { get; private set; }
         public IReadOnlyList<FreightOrder> Orders => orders;
         public IReadOnlyList<FreightDeliveryJob> Jobs => jobs;
-        public int SimulationTickPriority => 310;
+        public int SimulationTickPriority => SimulationTickPriorities.LogisticsDispatch;
 
         private void Awake()
         {
@@ -181,7 +196,8 @@ namespace AsteroidColony
         {
             Instance = null;
             nextOrderId = 0L;
-            nextJobId = 0L;
+            nextAllocationId = 0L;
+            nextExecutionId = 0L;
         }
 
         private void OnEnable() => SimulationManager.RegisterTickable(this);
@@ -223,7 +239,7 @@ namespace AsteroidColony
                     continue;
 
                 FreightOrder order = new FreightOrder(
-                    "food-order-" + (++nextOrderId).ToString("D6"),
+                    "freight-order-" + (++nextOrderId).ToString("D6", CultureInfo.InvariantCulture),
                     stock,
                     policy.resource,
                     requested,
@@ -248,29 +264,33 @@ namespace AsteroidColony
         internal bool ReportExecution(
             FreightDeliveryJob job,
             IFreightLegExecution execution,
+            FreightExecutionCorrelation correlation,
             FreightExecutionReport report,
             FreightFailureReason failureReason = FreightFailureReason.None,
             string detail = null)
         {
-            if (!IsCurrentExecution(job, execution))
+            if (!IsCurrentExecution(job, execution, correlation) || correlation.HasPartialPersonnelRoute)
                 return false;
 
             switch (report)
             {
                 case FreightExecutionReport.PickupRouteStarted:
-                    if (job.State != FreightJobState.Assigned || job.HasPickedUp)
+                    if (job.State != FreightJobState.Assigned || job.HasPickedUp ||
+                        !TryBeginPersonnelRoute(job, correlation))
                         return false;
                     TransitionJob(job, FreightJobState.TravelingToPickup);
                     return true;
 
                 case FreightExecutionReport.ProviderAtSource:
-                    if (job.State != FreightJobState.TravelingToPickup || job.HasPickedUp)
+                    if (job.State != FreightJobState.TravelingToPickup || job.HasPickedUp ||
+                        !MatchesAndClearPersonnelRoute(job, correlation))
                         return false;
                     return PickupAtCurrentLeg(job);
 
                 case FreightExecutionReport.LoadedRouteStarted:
                     if (!job.HasPickedUp ||
-                        (job.State != FreightJobState.PickingUp && job.State != FreightJobState.Blocked))
+                        (job.State != FreightJobState.PickingUp && job.State != FreightJobState.Blocked) ||
+                        !TryBeginPersonnelRoute(job, correlation))
                     {
                         return false;
                     }
@@ -279,13 +299,17 @@ namespace AsteroidColony
                     return true;
 
                 case FreightExecutionReport.LoadedLegArrived:
-                    if (!job.HasPickedUp || job.State != FreightJobState.TravelingToDropoff)
+                    if (!job.HasPickedUp || job.State != FreightJobState.TravelingToDropoff ||
+                        !MatchesAndClearPersonnelRoute(job, correlation))
                         return false;
                     return CompleteCurrentLeg(job);
 
                 case FreightExecutionReport.Failed:
                     if (failureReason == FreightFailureReason.None)
                         return false;
+                    if (!MatchesFailureRoute(job, correlation))
+                        return false;
+                    ClearPersonnelRoute(job);
                     if (job.HasPickedUp)
                         BlockJob(job, failureReason, detail);
                     else
@@ -300,9 +324,11 @@ namespace AsteroidColony
         internal WorkReleaseDisposition RequestExecutionRelease(
             FreightDeliveryJob job,
             IFreightLegExecution execution,
+            FreightExecutionCorrelation correlation,
             WorkReleaseReason reason)
         {
-            if (!IsCurrentExecution(job, execution))
+            if (!IsCurrentExecution(job, execution, correlation) || correlation.HasPartialPersonnelRoute ||
+                !MatchesCurrentPersonnelRoute(job, correlation))
                 return WorkReleaseDisposition.ReleasedNow;
             if (job.HasPickedUp)
                 return WorkReleaseDisposition.Deferred;
@@ -313,11 +339,68 @@ namespace AsteroidColony
 
         private bool IsCurrentExecution(
             FreightDeliveryJob job,
-            IFreightLegExecution execution)
+            IFreightLegExecution execution,
+            FreightExecutionCorrelation correlation)
         {
             return IsKnown(job) && execution != null && execution.IsActive &&
+                   !string.IsNullOrWhiteSpace(correlation.AllocationId) &&
+                   !string.IsNullOrWhiteSpace(correlation.ExecutionId) &&
                    ReferenceEquals(job.ActiveLegExecution, execution) &&
-                   job.CurrentLegIndex == execution.LegIndex && !job.IsTerminal;
+                   job.CurrentLegIndex == execution.LegIndex && !job.IsTerminal &&
+                   string.Equals(job.Allocation.Id, correlation.AllocationId, StringComparison.Ordinal) &&
+                   correlation.LegIndex == job.CurrentLegIndex &&
+                   string.Equals(execution.ExecutionId, correlation.ExecutionId, StringComparison.Ordinal);
+        }
+
+        private bool TryBeginPersonnelRoute(
+            FreightDeliveryJob job,
+            FreightExecutionCorrelation correlation)
+        {
+            if (!correlation.HasPersonnelRoute || !string.IsNullOrEmpty(job.ActivePersonnelRouteId))
+                return false;
+            job.SetActivePersonnelRoute(jobMutationAuthority,
+                correlation.PersonnelRouteId, correlation.PersonnelRouteStableId);
+            return true;
+        }
+
+        private bool MatchesCurrentPersonnelRoute(
+            FreightDeliveryJob job,
+            FreightExecutionCorrelation correlation)
+        {
+            if (string.IsNullOrEmpty(job.ActivePersonnelRouteId))
+                return !correlation.HasPersonnelRoute;
+            return correlation.HasPersonnelRoute &&
+                   string.Equals(job.ActivePersonnelRouteId, correlation.PersonnelRouteId, StringComparison.Ordinal) &&
+                   string.Equals(job.ActivePersonnelRouteStableId,
+                       correlation.PersonnelRouteStableId, StringComparison.Ordinal);
+        }
+
+        private bool MatchesAndClearPersonnelRoute(
+            FreightDeliveryJob job,
+            FreightExecutionCorrelation correlation)
+        {
+            if (!correlation.HasPersonnelRoute ||
+                !string.Equals(job.ActivePersonnelRouteId, correlation.PersonnelRouteId, StringComparison.Ordinal) ||
+                !string.Equals(job.ActivePersonnelRouteStableId,
+                    correlation.PersonnelRouteStableId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            ClearPersonnelRoute(job);
+            return true;
+        }
+
+        private bool MatchesFailureRoute(
+            FreightDeliveryJob job,
+            FreightExecutionCorrelation correlation)
+        {
+            return MatchesCurrentPersonnelRoute(job, correlation);
+        }
+
+        private void ClearPersonnelRoute(FreightDeliveryJob job)
+        {
+            job.SetActivePersonnelRoute(jobMutationAuthority, null, null);
         }
 
         private void TransitionJob(
@@ -337,8 +420,11 @@ namespace AsteroidColony
             Log(eventKey,
                 state == FreightJobState.Blocked || state == FreightJobState.Cancelled ? "Warning" : "Info",
                 execution != null ? execution.ProviderContext : null, job.CurrentLeg?.Destination,
-                new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Allocation.Id),
+                new SimulationLogField("legIndex", job.CurrentLegIndex),
+                new SimulationLogField("executionId", execution != null ? execution.ExecutionId : string.Empty),
+                new SimulationLogField("personnelRouteId", job.ActivePersonnelRouteId),
+                new SimulationLogField("personnelRouteStableId", job.ActivePersonnelRouteStableId),
                 new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
                 new SimulationLogField("state", state),
                 new SimulationLogField("reason", FailureCode(reason)),
@@ -436,8 +522,10 @@ namespace AsteroidColony
             job.SetReservation(jobMutationAuthority, cargoReservation);
             job.SetHasPickedUp(jobMutationAuthority, true);
             Log("logistics.pickup_completed", "Info", job.ActiveLegExecution.ProviderContext, leg.Origin,
-                new SimulationLogField("jobId", job.Id),
-                new SimulationLogField("allocationId", job.Id),
+                new SimulationLogField("allocationId", job.Allocation.Id),
+                new SimulationLogField("legIndex", job.CurrentLegIndex),
+                new SimulationLogField("executionId", job.ActiveLegExecution != null
+                    ? job.ActiveLegExecution.ExecutionId : string.Empty),
                 new SimulationLogField("resource", job.Resource.name),
                 new SimulationLogField("quantity", moved),
                 new SimulationLogField("currentLegIndex", job.CurrentLegIndex),
@@ -521,8 +609,10 @@ namespace AsteroidColony
 
                 TransitionJob(job, FreightJobState.Assigned);
                 Log("logistics.leg_staged", "Info", job.ActiveLegExecution.ProviderContext, leg.Destination,
-                    new SimulationLogField("jobId", job.Id),
-                    new SimulationLogField("allocationId", job.Id),
+                    new SimulationLogField("allocationId", job.Allocation.Id),
+                    new SimulationLogField("legIndex", completedLegIndex),
+                    new SimulationLogField("executionId", job.ActiveLegExecution != null
+                        ? job.ActiveLegExecution.ExecutionId : string.Empty),
                     new SimulationLogField("completedLegIndex", completedLegIndex),
                     new SimulationLogField("nextLegIndex", job.CurrentLegIndex),
                     new SimulationLogField("resource", job.Resource.name),
@@ -539,8 +629,10 @@ namespace AsteroidColony
             job.Order.Committed = Mathf.Max(0f, job.Order.Committed - moved);
             job.Order.Delivered += moved;
             Log("logistics.delivery_completed", "Info", job.ActiveLegExecution.ProviderContext, leg.Destination,
-                new SimulationLogField("jobId", job.Id),
-                new SimulationLogField("allocationId", job.Id),
+                new SimulationLogField("allocationId", job.Allocation.Id),
+                new SimulationLogField("legIndex", completedLegIndex),
+                new SimulationLogField("executionId", job.ActiveLegExecution != null
+                    ? job.ActiveLegExecution.ExecutionId : string.Empty),
                 new SimulationLogField("currentLegIndex", completedLegIndex),
                 new SimulationLogField("resource", job.Resource.name),
                 new SimulationLogField("quantity", moved),
@@ -578,6 +670,7 @@ namespace AsteroidColony
             if (job.Order != null)
                 job.Order.Committed = Mathf.Max(0f, job.Order.Committed - job.Quantity);
             job.SetReservation(jobMutationAuthority, null);
+            ClearPersonnelRoute(job);
             TransitionJob(job, FreightJobState.Cancelled, reason, detail);
             FinishExecution(job);
             job.SetActiveLegExecution(jobMutationAuthority, null);
@@ -694,14 +787,17 @@ namespace AsteroidColony
                 return;
             }
 
-            if (!candidate.Service.TryAcceptQuote(candidate.Quote, candidate.Quantity,
+            string executionId = "freight-execution-" +
+                (++nextExecutionId).ToString("D6", CultureInfo.InvariantCulture);
+            if (!candidate.Service.TryAcceptQuote(candidate.Quote, candidate.Quantity, executionId,
                     out WalkingFreightExecution walkingExecution))
             {
                 candidate.Source.Inventory.ReleaseOwned(reservation);
                 return;
             }
 
-            string jobId = "freight-job-" + (++nextJobId).ToString("D6");
+            string allocationId = "freight-allocation-" +
+                (++nextAllocationId).ToString("D6", CultureInfo.InvariantCulture);
             Transform sourceAnchor = candidate.Source.FreightAnchor;
             Transform destinationAnchor = order.Requester.FreightAnchor;
             LogisticsRoutePlan routePlan = new LogisticsRoutePlan(order,
@@ -712,7 +808,7 @@ namespace AsteroidColony
                         candidate.Quote.LoadedCargoTravelCost)
                 });
             FreightAllocation allocation = new FreightAllocation(
-                jobId, order, candidate.Source, candidate.Quantity, routePlan);
+                allocationId, order, candidate.Source, candidate.Quantity, routePlan);
             FreightDeliveryJob job = new FreightDeliveryJob(
                 allocation, walkingExecution, reservation, jobMutationAuthority);
             if (!walkingExecution.PrepareCargo(order.Resource))
@@ -733,8 +829,9 @@ namespace AsteroidColony
             }
 
             Log("logistics.job_assigned", "Info", candidate.Service, order.Requester,
-                new SimulationLogField("jobId", job.Id),
-                new SimulationLogField("allocationId", job.Id),
+                new SimulationLogField("allocationId", job.Allocation.Id),
+                new SimulationLogField("legIndex", job.CurrentLegIndex),
+                new SimulationLogField("executionId", walkingExecution.ExecutionId),
                 new SimulationLogField("demandId", order.Id),
                 new SimulationLogField("resource", order.Resource.name),
                 new SimulationLogField("quantity", candidate.Quantity),

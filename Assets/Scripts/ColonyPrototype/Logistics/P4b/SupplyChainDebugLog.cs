@@ -266,7 +266,7 @@ namespace AsteroidColony
                         FreightDeliveryJob job = freight.Jobs[i];
                         if (job == null)
                             continue;
-                        TraceRow row = NewSnapshotRow(gameHour, reason, job.Id);
+                        TraceRow row = NewSnapshotRow(gameHour, reason, job.Allocation.Id);
                         row.eventKey = "supply.snapshot.job";
                         Add(row, "state", job.State.ToString());
                         Add(row, "resource", job.Resource != null ? job.Resource.name : string.Empty);

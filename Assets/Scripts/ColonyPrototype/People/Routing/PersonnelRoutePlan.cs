@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Text;
 using UnityEngine;
 
@@ -146,31 +145,7 @@ namespace AsteroidColony
     {
         public static string GetStableKey(UnityEngine.Object target)
         {
-            if (target == null)
-                return string.Empty;
-
-            Transform current = target is Transform transform
-                ? transform
-                : target is Component component
-                    ? component.transform
-                    : null;
-            if (current == null)
-                return target.name;
-
-            StringBuilder key = new StringBuilder();
-            string scenePath = current.gameObject.scene.path;
-            key.Append(string.IsNullOrEmpty(scenePath)
-                ? current.gameObject.scene.name
-                : scenePath);
-
-            string hierarchy = string.Empty;
-            for (Transform cursor = current; cursor != null; cursor = cursor.parent)
-            {
-                hierarchy = cursor.name + "[" +
-                    cursor.GetSiblingIndex().ToString(CultureInfo.InvariantCulture) + "]/" +
-                    hierarchy;
-            }
-            return key.Append('/').Append(hierarchy).ToString();
+            return SceneStableIdentity.GetKey(target);
         }
     }
 }

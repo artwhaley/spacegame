@@ -60,7 +60,15 @@ Added architecture checks for private job state mutation and removal of public r
 
 Verification note: `git diff --check` passed. The new EditMode cases and Unity compile were not executed; the test-runner limitation recorded under T02 still applies. No Play Mode run was attempted.
 
+## B1.6-T05 — Correlation Identity and Deterministic Infrastructure
+
+Walking freight now reports whole-personnel-route outcomes through the route runner's correlation events. It records both the plan `StableId` and runtime route token and ignores callbacks whose token does not match. Each leg execution has its own runtime `ExecutionId`; Logistics validates allocation ID, current leg index, execution ID, and active route identity before applying a report. `FreightDeliveryJob` no longer exposes an alias job ID equal to the allocation ID, and freight logs use allocation, leg, execution, and route identifiers without duplicating `jobId`.
+
+`PersonnelRouteIdentity`, `LogisticsStockComponent`, and `WalkingFreightWorkService` now share `SceneStableIdentity`, which preserves the existing scene/hierarchy key shape and formats sibling indices invariantly. Named logistics priorities preserve 300/310/320 order. Demand and allocation IDs use generic prefixes with invariant padded counters.
+
+Added EditMode coverage for shared key formatting, priority ordering, report identity shape, route-token correlation, and generic ID naming. `git diff --check` passes. The existing focused test attempt still cannot reach compilation because the sandbox blocks the .NET SDK resolver's per-user SDK lookup; no Unity Play Mode run was attempted.
+
 ## Ticket Progress
 
-Completed: T00, T01, T02, T03, T04.
-Remaining: T05–T07.
+Completed: T00, T01, T02, T03, T04, T05.
+Remaining: T06–T07.

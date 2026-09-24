@@ -16,10 +16,17 @@ namespace AsteroidColony
         private FreightDeliveryJob job;
         private bool returningToDuty;
         private long retryAtTick;
+        private string activeRouteId = string.Empty;
+        private string activeRouteStableId = string.Empty;
+        private bool routeStartInProgress;
+        private string pendingRouteCompletedId;
+        private string pendingRouteFailedId;
+        private string pendingRouteFailedReason;
 
         internal WalkingFreightExecution(
             WalkingFreightWorkService service,
             ColonistIdentity worker,
+            string executionId,
             WorkExecutionLease lease,
             JobRoleDefinition assignedRole,
             float capacity,
@@ -28,6 +35,7 @@ namespace AsteroidColony
             bool emergency)
         {
             Service = service;
+            ExecutionId = executionId;
             this.worker = worker;
             routeRunner = worker != null ? worker.GetComponent<PersonnelRouteRunner>() : null;
             activityRunner = worker != null ? worker.GetComponent<ColonistActivityRunner>() : null;
@@ -40,12 +48,13 @@ namespace AsteroidColony
             IsActive = true;
             if (routeRunner != null)
             {
-                routeRunner.RouteCompleted += HandleRouteCompleted;
-                routeRunner.RouteFailed += HandleRouteFailed;
+                routeRunner.ApproachRouteCompleted += HandleApproachRouteCompleted;
+                routeRunner.ApproachRouteFailed += HandleApproachRouteFailed;
             }
         }
 
         public WalkingFreightWorkService Service { get; }
+        public string ExecutionId { get; }
         public int LegIndex { get; private set; }
         public UnityEngine.Object ProviderContext => Service;
         public InventoryComponent CargoInventory => worker != null
@@ -130,7 +139,8 @@ namespace AsteroidColony
                 if (lease != null && lease.HasPendingReleaseRequest)
                 {
                     FreightLogisticsManager.Instance?.RequestExecutionRelease(
-                        job, this, lease.PendingReleaseReason ?? WorkReleaseReason.OtherWorkPolicy);
+                        job, this, CreateCorrelation(),
+                        lease.PendingReleaseReason ?? WorkReleaseReason.OtherWorkPolicy);
                     return;
                 }
 
@@ -161,7 +171,7 @@ namespace AsteroidColony
 
             FreightLogisticsManager manager = FreightLogisticsManager.Instance;
             return manager != null
-                ? manager.RequestExecutionRelease(job, this, reason)
+                ? manager.RequestExecutionRelease(job, this, CreateCorrelation(), reason)
                 : WorkReleaseDisposition.ReleasedNow;
         }
 
@@ -174,23 +184,14 @@ namespace AsteroidColony
             if (anchor == null)
             {
                 FreightLogisticsManager.Instance.ReportExecution(
-                    job, this, FreightExecutionReport.Failed, FreightFailureReason.PickupAnchorMissing);
+                    job, this, CreateCorrelation(), FreightExecutionReport.Failed,
+                    FreightFailureReason.PickupAnchorMissing);
                 return;
             }
 
-            string failure = "personnel_route_runner_missing";
-            if (routeRunner == null)
-            {
-                HandleRouteStartFailure(FreightFailureReason.PersonnelRouteRunnerMissing, failure);
-                return;
-            }
-            if (!routeRunner.TryStartRoute(anchor, out failure))
-            {
-                HandleRouteStartFailure(FreightFailureReason.PickupRouteUnavailable, failure);
-                return;
-            }
-            FreightLogisticsManager.Instance.ReportExecution(
-                job, this, FreightExecutionReport.PickupRouteStarted);
+            StartTrackedRoute(anchor, FreightExecutionReport.PickupRouteStarted,
+                FreightFailureReason.PersonnelRouteRunnerMissing,
+                FreightFailureReason.PickupRouteUnavailable);
         }
 
         private void StartDeliveryRoute()
@@ -202,23 +203,14 @@ namespace AsteroidColony
             if (anchor == null)
             {
                 FreightLogisticsManager.Instance.ReportExecution(
-                    job, this, FreightExecutionReport.Failed, FreightFailureReason.DropoffAnchorMissing);
+                    job, this, CreateCorrelation(), FreightExecutionReport.Failed,
+                    FreightFailureReason.DropoffAnchorMissing);
                 return;
             }
 
-            string failure = "personnel_route_runner_missing";
-            if (routeRunner == null)
-            {
-                HandleRouteStartFailure(FreightFailureReason.PersonnelRouteRunnerMissing, failure);
-                return;
-            }
-            if (!routeRunner.TryStartRoute(anchor, out failure))
-            {
-                HandleRouteStartFailure(FreightFailureReason.DropoffRouteUnavailable, failure);
-                return;
-            }
-            FreightLogisticsManager.Instance.ReportExecution(
-                job, this, FreightExecutionReport.LoadedRouteStarted);
+            StartTrackedRoute(anchor, FreightExecutionReport.LoadedRouteStarted,
+                FreightFailureReason.PersonnelRouteRunnerMissing,
+                FreightFailureReason.DropoffRouteUnavailable);
         }
 
         private void StartReturnToDutyRoute()
@@ -235,9 +227,61 @@ namespace AsteroidColony
 
             returningToDuty = true;
             retryAtTick = long.MaxValue;
-            string failure = "personnel_route_runner_missing";
-            if (!routeRunner.TryStartRoute(anchor, out failure))
-                HandleReturnRouteFailure(failure);
+            StartTrackedRoute(anchor, null,
+                FreightFailureReason.PersonnelRouteRunnerMissing,
+                FreightFailureReason.PersonnelRouteRunnerMissing);
+        }
+
+        private bool StartTrackedRoute(
+            Transform anchor,
+            FreightExecutionReport? freightStartReport,
+            FreightFailureReason missingRunnerReason,
+            FreightFailureReason unavailableReason)
+        {
+            if (!IsActive || routeRunner == null || anchor == null)
+            {
+                if (returningToDuty)
+                    HandleReturnRouteFailure("personnel_route_runner_missing");
+                else
+                    HandleRouteStartFailure(missingRunnerReason, "personnel_route_runner_missing");
+                return false;
+            }
+
+            routeStartInProgress = true;
+            pendingRouteCompletedId = null;
+            pendingRouteFailedId = null;
+            pendingRouteFailedReason = null;
+            bool started = routeRunner.TryStartRoute(anchor, out string routeId, out string failure);
+            routeStartInProgress = false;
+            PersonnelRoutePlan plan = routeRunner.CurrentPlan;
+            if (!started || string.IsNullOrEmpty(routeId) || plan == null)
+            {
+                ClearPendingRouteEvents();
+                string detail = string.IsNullOrEmpty(failure) ? "personnel_route_start_failed" : failure;
+                if (returningToDuty)
+                    HandleReturnRouteFailure(detail);
+                else
+                    HandleRouteStartFailure(unavailableReason, detail);
+                return false;
+            }
+
+            activeRouteId = routeId;
+            activeRouteStableId = plan.StableId;
+            if (freightStartReport.HasValue)
+            {
+                FreightLogisticsManager manager = FreightLogisticsManager.Instance;
+                if (manager == null || !manager.ReportExecution(
+                        job, this, CreateCorrelation(), freightStartReport.Value))
+                {
+                    routeRunner.StopRoute(routeId);
+                    ClearActiveRoute();
+                    ClearPendingRouteEvents();
+                    return false;
+                }
+            }
+
+            ProcessPendingRouteEvents(routeId);
+            return true;
         }
 
         private bool ShouldReturnToDuty()
@@ -285,58 +329,65 @@ namespace AsteroidColony
             }
         }
 
-        private void HandleRouteCompleted(PersonnelRoutePlan plan)
+        private void HandleApproachRouteCompleted(string routeId)
         {
-            if (!IsActive || plan == null || plan.Person != worker)
+            if (routeStartInProgress)
+            {
+                pendingRouteCompletedId = routeId;
+                return;
+            }
+            if (!IsActive || string.IsNullOrEmpty(activeRouteId) ||
+                !string.Equals(activeRouteId, routeId, StringComparison.Ordinal))
                 return;
 
+            FreightExecutionCorrelation correlation = CreateCorrelation();
+            ClearActiveRoute();
             if (returningToDuty)
             {
-                Transform dutyAnchor = Service != null && Service.Workplace != null
-                    ? Service.Workplace.DutyAnchor : null;
-                if (plan.FinalDestination == dutyAnchor)
-                    Release();
+                Release();
                 return;
             }
 
             if (job == null || FreightLogisticsManager.Instance == null)
                 return;
-            LogisticsRouteLeg leg = job.CurrentLeg;
-            if (job.State == FreightJobState.TravelingToPickup &&
-                leg != null && leg.Origin != null && plan.FinalDestination == leg.Origin.FreightAnchor)
+            if (job.State == FreightJobState.TravelingToPickup)
             {
                 if (FreightLogisticsManager.Instance.ReportExecution(
-                        job, this, FreightExecutionReport.ProviderAtSource))
+                        job, this, correlation, FreightExecutionReport.ProviderAtSource))
                     StartDeliveryRoute();
             }
-            else if (job.State == FreightJobState.TravelingToDropoff &&
-                     leg != null && leg.Destination != null &&
-                     plan.FinalDestination == leg.Destination.FreightAnchor)
+            else if (job.State == FreightJobState.TravelingToDropoff)
             {
                 FreightLogisticsManager.Instance.ReportExecution(
-                    job, this, FreightExecutionReport.LoadedLegArrived);
+                    job, this, correlation, FreightExecutionReport.LoadedLegArrived);
             }
         }
 
-        private void HandleRouteFailed(PersonnelRoutePlan plan, string reason)
+        private void HandleApproachRouteFailed(string routeId, string reason)
         {
-            if (!IsActive || plan == null || plan.Person != worker)
+            if (routeStartInProgress)
+            {
+                pendingRouteFailedId = routeId;
+                pendingRouteFailedReason = reason;
+                return;
+            }
+            if (!IsActive || string.IsNullOrEmpty(activeRouteId) ||
+                !string.Equals(activeRouteId, routeId, StringComparison.Ordinal))
                 return;
 
+            FreightExecutionCorrelation correlation = CreateCorrelation();
+            ClearActiveRoute();
             if (returningToDuty)
             {
                 HandleReturnRouteFailure(reason);
                 return;
             }
 
-            if (job == null)
+            if (job == null || FreightLogisticsManager.Instance == null)
                 return;
-            LogisticsRouteLeg leg = job.CurrentLeg;
-            Transform expected = job.State == FreightJobState.TravelingToPickup
-                ? leg != null && leg.Origin != null ? leg.Origin.FreightAnchor : null
-                : leg != null && leg.Destination != null ? leg.Destination.FreightAnchor : null;
-            if (plan.FinalDestination == expected)
-                HandleRouteStartFailure(FreightFailureReason.FreightRouteFailed, reason);
+            FreightLogisticsManager.Instance.ReportExecution(
+                job, this, correlation, FreightExecutionReport.Failed,
+                FreightFailureReason.FreightRouteFailed, reason);
         }
 
         private void HandleRouteStartFailure(FreightFailureReason reason, string detail)
@@ -344,7 +395,50 @@ namespace AsteroidColony
             if (job == null || FreightLogisticsManager.Instance == null)
                 return;
             FreightLogisticsManager.Instance.ReportExecution(
-                job, this, FreightExecutionReport.Failed, reason, detail);
+                job, this, CreateCorrelation(), FreightExecutionReport.Failed, reason, detail);
+        }
+
+        private FreightExecutionCorrelation CreateCorrelation()
+        {
+            return new FreightExecutionCorrelation(
+                job != null ? job.Allocation.Id : string.Empty,
+                LegIndex,
+                ExecutionId,
+                activeRouteId,
+                activeRouteStableId);
+        }
+
+        private void ProcessPendingRouteEvents(string routeId)
+        {
+            if (string.Equals(pendingRouteCompletedId, routeId, StringComparison.Ordinal))
+            {
+                ClearPendingRouteEvents();
+                HandleApproachRouteCompleted(routeId);
+                return;
+            }
+
+            if (string.Equals(pendingRouteFailedId, routeId, StringComparison.Ordinal))
+            {
+                string reason = pendingRouteFailedReason;
+                ClearPendingRouteEvents();
+                HandleApproachRouteFailed(routeId, reason);
+                return;
+            }
+
+            ClearPendingRouteEvents();
+        }
+
+        private void ClearActiveRoute()
+        {
+            activeRouteId = string.Empty;
+            activeRouteStableId = string.Empty;
+        }
+
+        private void ClearPendingRouteEvents()
+        {
+            pendingRouteCompletedId = null;
+            pendingRouteFailedId = null;
+            pendingRouteFailedReason = null;
         }
 
         private void HandleReturnRouteFailure(string reason)
@@ -362,10 +456,13 @@ namespace AsteroidColony
                 return;
             if (routeRunner != null)
             {
-                routeRunner.RouteCompleted -= HandleRouteCompleted;
-                routeRunner.RouteFailed -= HandleRouteFailed;
-                routeRunner.StopRoute();
+                routeRunner.ApproachRouteCompleted -= HandleApproachRouteCompleted;
+                routeRunner.ApproachRouteFailed -= HandleApproachRouteFailed;
+                if (!string.IsNullOrEmpty(activeRouteId))
+                    routeRunner.StopRoute(activeRouteId);
             }
+            ClearActiveRoute();
+            ClearPendingRouteEvents();
             IsActive = false;
             if (lease != null && lease.IsActive)
                 lease.Release();

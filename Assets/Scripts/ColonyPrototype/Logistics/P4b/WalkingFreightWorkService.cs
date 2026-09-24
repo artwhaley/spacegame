@@ -38,7 +38,7 @@ namespace AsteroidColony
         public int MinimumWorkersRemainingAfterEmergencyDispatch =>
             minimumWorkersRemainingAfterEmergencyDispatch;
         public int ActiveExecutionCount => acceptedExecutions.Count;
-        public int SimulationTickPriority => 320;
+        public int SimulationTickPriority => SimulationTickPriorities.LogisticsWorkExecution;
 
         private void Reset() => ResolveWorkplace();
 
@@ -182,11 +182,13 @@ namespace AsteroidColony
         public bool TryAcceptQuote(
             FreightWorkQuote quote,
             float quantity,
+            string executionId,
             out WalkingFreightExecution execution)
         {
             execution = null;
             ResolveWorkplace();
-            if (quote == null || quote.Provider != this || !isActiveAndEnabled ||
+            if (quote == null || quote.Provider != this || string.IsNullOrWhiteSpace(executionId) ||
+                !isActiveAndEnabled ||
                 !IsFinitePositive(quantity) || quantity > quote.MaximumUsefulQuantity + 0.0001f ||
                 quote.SelectedWorker == null || WorkforceManager.Instance == null ||
                 SimulationManager.Instance == null || !IsPolicyAvailable(quote.Destination, quote.IsEmergency))
@@ -236,6 +238,7 @@ namespace AsteroidColony
             execution = new WalkingFreightExecution(
                 this,
                 worker,
+                executionId,
                 lease,
                 assignment.Role,
                 capacity,
@@ -279,11 +282,7 @@ namespace AsteroidColony
         public string GetStableKey()
         {
             ResolveWorkplace();
-            string scene = gameObject.scene.path;
-            string hierarchy = string.Empty;
-            for (Transform current = transform; current != null; current = current.parent)
-                hierarchy = current.name + "[" + current.GetSiblingIndex() + "]/" + hierarchy;
-            return (string.IsNullOrEmpty(scene) ? gameObject.scene.name : scene) + "/" + hierarchy;
+            return SceneStableIdentity.GetKey(this);
         }
 
         private bool IsPolicyAvailable(LogisticsStockComponent destination, bool emergency)

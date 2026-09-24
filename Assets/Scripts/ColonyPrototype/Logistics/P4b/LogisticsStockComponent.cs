@@ -47,7 +47,7 @@ namespace AsteroidColony
         public Transform FreightAnchor => freightAnchor != null ? freightAnchor : transform;
         public IReadOnlyList<LogisticsStockPolicyEntry> Policies => policies;
         public static IReadOnlyList<LogisticsStockComponent> Active => active;
-        public int SimulationTickPriority => 300;
+        public int SimulationTickPriority => SimulationTickPriorities.LogisticsStockPublication;
 
         private void Awake()
         {
@@ -134,11 +134,7 @@ namespace AsteroidColony
 
         public string GetStableKey()
         {
-            string scene = gameObject.scene.path;
-            string hierarchy = string.Empty;
-            for (Transform current = transform; current != null; current = current.parent)
-                hierarchy = current.name + "[" + current.GetSiblingIndex() + "]/" + hierarchy;
-            return (string.IsNullOrEmpty(scene) ? gameObject.scene.name : scene) + "/" + hierarchy;
+            return SceneStableIdentity.GetKey(this);
         }
 
         public void SimulationTick(float deltaGameHours)

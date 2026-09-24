@@ -5,6 +5,7 @@ namespace AsteroidColony
     /// <summary>Runtime execution responsible for physically completing one route leg.</summary>
     public interface IFreightLegExecution
     {
+        string ExecutionId { get; }
         int LegIndex { get; }
         bool IsActive { get; }
         bool IsEmergency { get; }
