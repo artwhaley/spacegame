@@ -268,11 +268,9 @@ namespace AsteroidColony.Editor
             ColonistIdentity[] colonists = FindColonists(scene);
             for (int i = 0; i < colonists.Length; i++)
             {
-                WalkingFreightCarrierComponent carrier = colonists[i].GetComponent<WalkingFreightCarrierComponent>();
-                if (colonists[i].GetComponent<PersonnelRouteRunner>() == null || carrier == null ||
-                    carrier.GetComponent<WalkingFreightRunner>() == null ||
-                    carrier.CargoInventory != colonists[i].GetComponent<InventoryComponent>())
-                { Debug.LogError(colonists[i].DisplayName + " is missing the shared colonist routing/freight composition.", colonists[i]); errors++; }
+                if (colonists[i].GetComponent<PersonnelRouteRunner>() == null ||
+                    colonists[i].GetComponent<InventoryComponent>() == null)
+                { Debug.LogError(colonists[i].DisplayName + " needs the shared InventoryComponent and PersonnelRouteRunner composition.", colonists[i]); errors++; }
             }
 
             ColonistIdentity charlie = FindColonist(scene, "Charlie");

@@ -29,6 +29,7 @@ Added compact API-boundary checks for allocation/route worker ownership, Brain f
 | B1.5-T03 | Complete | Logistics now quotes and accepts workplace services; service-owned worker discovery and route cost calculation replace manager carrier enumeration. The service execution still delegates to legacy runner plumbing until T04/T05. |
 | B1.5-T04 | Complete | Routine Porter jobs now acquire an Airlock service lease and execute pickup, delivery, and return-to-duty routes through PersonnelRouting. Emergency execution remains on the temporary legacy path until T05. |
 | B1.5-T05 | Complete | Emergency Cafeteria pickup now uses the same workplace lease and service route execution; Brain freight/cargo state and its carrier lookup are removed. |
+| B1.5-T06 | Complete | Removed both legacy freight components from the common colonist prefab and codebase; fixture validation now requires generic inventory/routing components and workplace services. Dana's schedule is preserved or taken from an explicit 08:00–16:00 fixture default. |
 
 No Unity compile, Test Runner, or Play Mode run has been performed. The user performs the human Unity acceptance run.
 
@@ -72,3 +73,10 @@ No Unity compile, Test Runner, or Play Mode run has been performed. The user per
 - Removed all work-excursion fields, properties, and methods from `ColonistBrain`, including the mobile-duty `WalkingFreightCarrierComponent.HasCargo` check. Routine and emergency work now share the generic lease behavior.
 - Removed the old carrier's Brain excursion methods and made its obsolete runner reject emergency jobs; the service no longer references either legacy colonist freight type. T06 will remove their scripts and prefab composition.
 - Added a reflection boundary check for the removed Brain cargo field. Interchangeability, activity resume, and physical cargo custody remain human acceptance checks; no Unity compile, Test Runner, or Play Mode run has been performed.
+
+## B1.5-T06 — Generic colonist composition and fixture cleanup
+
+- Removed `WalkingFreightCarrierComponent` and `WalkingFreightRunner` from the shared colonist prefab and deleted both script assets and their `.meta` files. The current project scenes contain no scene-only additions of either component.
+- P4b authoring no longer creates or reverts freight components on colonists. B1/P4b validation now requires only the shared generic `InventoryComponent` and `PersonnelRouteRunner`; P4b validation also checks Airlock/Cafeteria service configuration.
+- Removed Dana's schedule dependency on Alice. Fixture authoring preserves Dana's configured shift when present; otherwise it uses explicit 08:00–16:00 Porter hours.
+- Source checks show no runtime freight path or authoring validator references the deleted component types. The shared prefab keeps Inventory and PersonnelRouteRunner. No Charlie/Pilot behavior was changed. Unity authoring and Play Mode checks remain for the user; no Unity compile or Test Runner was run.

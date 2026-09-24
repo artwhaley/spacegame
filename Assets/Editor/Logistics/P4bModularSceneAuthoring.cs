@@ -20,8 +20,9 @@ namespace AsteroidColony.Editor
         private const string PorterRolePath = "Assets/GameData/Jobs/Porter.asset";
         private const string FoodPath = "Assets/GameData/Resources/Food.asset";
         private const string FarmRecipePath = "Assets/GameData/Recipes/SimpleFarmFood.asset";
-        private const string AliceName = "Alice";
         private const string DanaName = "Dana";
+        private const float DefaultPorterShiftStartHour = 8f;
+        private const float DefaultPorterShiftEndHour = 16f;
 
         [MenuItem("Colony/Logistics/P4b/Configure Modular Fixture")]
         public static void ConfigureModularFixture()
@@ -53,7 +54,7 @@ namespace AsteroidColony.Editor
             if (!EditorSceneManager.SaveScene(scene))
                 throw new InvalidOperationException("Could not save " + ScenePath + ".");
             AssetDatabase.SaveAssets();
-            Debug.Log("P4b modular fixture authored with shared colonist routing/freight composition. Run validation and Play Mode acceptance.");
+            Debug.Log("P4b modular fixture authored with workplace-owned freight services. Run validation and human Play Mode acceptance.");
         }
 
         [MenuItem("Colony/Logistics/P4b/Validate Modular Fixture")]
@@ -172,18 +173,23 @@ namespace AsteroidColony.Editor
             cafeteriaService.ConfigureEmergencyFreight(true, 5f, 0);
             EditorUtility.SetDirty(cafeteriaService);
 
-            ColonistIdentity alice = RequireColonist(scene, AliceName);
             ColonistIdentity dana = RequireColonist(scene, DanaName);
             WorkforceManager workforce = RequireSceneComponent<WorkforceManager>(scene);
-            if (!workforce.TryGetAssignment(alice, out WorkAssignment aliceAssignment) ||
-                aliceAssignment.Shift == null || !aliceAssignment.Shift.IsConfigured)
-                throw new InvalidOperationException("Alice needs a configured Cafeteria shift to seed the P4b Porter shift.");
+            DailyShiftWindow porterShift = new DailyShiftWindow(
+                DefaultPorterShiftStartHour, DefaultPorterShiftEndHour);
+            if (workforce.TryGetAssignment(dana, out WorkAssignment existingDanaAssignment) &&
+                existingDanaAssignment.Shift != null && existingDanaAssignment.Shift.IsConfigured)
+            {
+                porterShift = new DailyShiftWindow(
+                    existingDanaAssignment.Shift.StartHour,
+                    existingDanaAssignment.Shift.EndHour);
+            }
 
             WorkAssignmentResult assignmentResult = workforce.Assign(
                 dana,
                 porterWorkplace,
                 porterRole,
-                new DailyShiftWindow(aliceAssignment.Shift.StartHour, aliceAssignment.Shift.EndHour));
+                porterShift);
             if (assignmentResult != WorkAssignmentResult.Applied)
                 throw new InvalidOperationException("Could not assign Dana to Porter duty: " + assignmentResult + ".");
             EditorUtility.SetDirty(workforce);
@@ -390,6 +396,7 @@ namespace AsteroidColony.Editor
                 porterService == null || porterService.Workplace != porterWorkplace ||
                 !porterService.RoutineFreightEnabled || porterService.RoutineRole != porterRole ||
                 !Mathf.Approximately(porterService.RoutineCapacityPerWorker, 10f) ||
+                porterService.EmergencyFreightEnabled ||
                 cafeteriaService == null || cafeteriaService.Workplace != cafeteria.GetComponent<WorkplaceComponent>() ||
                 cafeteriaService.RoutineFreightEnabled || !cafeteriaService.EmergencyFreightEnabled ||
                 !Mathf.Approximately(cafeteriaService.EmergencyCapacityPerWorker, 5f) ||
@@ -404,20 +411,23 @@ namespace AsteroidColony.Editor
                 errors++;
             }
 
-            ColonistIdentity[] colonists = FindColonists(scene);
-            for (int i = 0; i < colonists.Length; i++)
+            if (!HasCommonColonistRoutingComposition(FindColonists(scene)))
             {
-                WalkingFreightCarrierComponent carrier = colonists[i].GetComponent<WalkingFreightCarrierComponent>();
-                if (carrier == null || carrier.GetComponent<WalkingFreightRunner>() == null ||
-                    carrier.GetComponent<PersonnelRouteRunner>() == null ||
-                    carrier.CargoInventory != colonists[i].GetComponent<InventoryComponent>() ||
-                    !Mathf.Approximately(carrier.MaximumCargoQuantity, 10f))
-                {
-                    Debug.LogError(colonists[i].DisplayName + " is missing the common colonist cargo/route composition.", colonists[i]);
-                    errors++;
-                }
+                Debug.LogError("Every colonist needs the shared InventoryComponent and PersonnelRouteRunner composition.");
+                errors++;
             }
             return errors;
+        }
+
+        private static bool HasCommonColonistRoutingComposition(ColonistIdentity[] colonists)
+        {
+            if (colonists == null || colonists.Length == 0)
+                return false;
+            for (int i = 0; i < colonists.Length; i++)
+                if (colonists[i] == null || colonists[i].GetComponent<InventoryComponent>() == null ||
+                    colonists[i].GetComponent<PersonnelRouteRunner>() == null)
+                    return false;
+            return true;
         }
 
         private static T EnsureComponent<T>(GameObject gameObject) where T : Component
@@ -432,13 +442,10 @@ namespace AsteroidColony.Editor
             if (colonists.Length == 0)
                 throw new InvalidOperationException("The modular scene has no colonists to configure.");
 
-            // Earlier P4b authoring added carrier, runner, and cargo components to
-            // Alice/Dana as scene-only overrides. Remove those overrides before
-            // adding the shared capability to the common colonist prefab.
+            // Remove prior routing/inventory scene overrides before keeping the
+            // shared generic components on the common colonist prefab.
             for (int i = 0; i < colonists.Length; i++)
             {
-                RevertAddedComponent<WalkingFreightCarrierComponent>(colonists[i].gameObject);
-                RevertAddedComponent<WalkingFreightRunner>(colonists[i].gameObject);
                 RevertAddedComponent<PersonnelRouteRunner>(colonists[i].gameObject);
                 RevertAddedComponent<InventoryComponent>(colonists[i].gameObject);
             }
@@ -451,11 +458,8 @@ namespace AsteroidColony.Editor
             {
                 EnsurePrefabComponent<InventoryComponent>(prefab);
                 EnsurePrefabComponent<PersonnelRouteRunner>(prefab);
-                EnsurePrefabComponent<WalkingFreightRunner>(prefab);
-                WalkingFreightCarrierComponent carrier = EnsurePrefabComponent<WalkingFreightCarrierComponent>(prefab);
-                carrier.ConfigureCapacity(10f);
                 if (PrefabUtility.SaveAsPrefabAsset(prefab, ColonistPrefabPath) == null)
-                    throw new InvalidOperationException("Could not save common colonist routing/freight composition.");
+                    throw new InvalidOperationException("Could not save common colonist inventory/routing composition.");
             }
             finally
             {

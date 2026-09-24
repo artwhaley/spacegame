@@ -427,12 +427,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1535953592696572924}
-    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1757216672368404924}
-    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 5676640352266550684}
   m_SourcePrefab: {fileID: 100100000, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
 --- !u!1 &4001080797252171343 stripped
 GameObject:
@@ -648,37 +642,6 @@ MonoBehaviour:
   person: {fileID: 7346298053187492011}
   motor: {fileID: 1815059633108685950}
   activityRunner: {fileID: 4038971582978430938}
---- !u!114 &1757216672368404924
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4001080797252171343}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d016d42a846b481b90462aa3c40783a5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WalkingFreightRunner
---- !u!114 &5676640352266550684
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4001080797252171343}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f580cabcd3984e9dbc0c97a784b6d004, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WalkingFreightCarrierComponent
-  maximumCargoQuantity: 10
-  identity: {fileID: 7346298053187492011}
-  brain: {fileID: 7166048830011223344}
-  routeRunner: {fileID: 1535953592696572924}
-  activityRunner: {fileID: 4038971582978430938}
-  cargoInventory: {fileID: 175859802070953831}
-  runner: {fileID: 1757216672368404924}
 --- !u!4 &4003293624538555137 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4148635591152110, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
