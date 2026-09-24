@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Colony.Interactions;
 using UnityEngine;
 
 namespace AsteroidColony
@@ -56,7 +57,8 @@ namespace AsteroidColony
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("Colony/Logistics/Walking Freight Work Service")]
-    public sealed class WalkingFreightWorkService : MonoBehaviour
+    public sealed class WalkingFreightWorkService : MonoBehaviour,
+        IWorkExecutionOwner, ISimulationTickable, ISimulationTickPriority
     {
         private static readonly List<WalkingFreightWorkService> active =
             new List<WalkingFreightWorkService>();
@@ -82,6 +84,7 @@ namespace AsteroidColony
         public int MinimumWorkersRemainingAfterEmergencyDispatch =>
             minimumWorkersRemainingAfterEmergencyDispatch;
         public int ActiveExecutionCount => acceptedExecutions.Count;
+        public int SimulationTickPriority => 320;
 
         private void Reset() => ResolveWorkplace();
 
@@ -92,9 +95,29 @@ namespace AsteroidColony
             ResolveWorkplace();
             if (!active.Contains(this))
                 active.Add(this);
+            SimulationManager.RegisterTickable(this);
         }
 
-        private void OnDisable() => active.Remove(this);
+        private void OnDisable()
+        {
+            active.Remove(this);
+            SimulationManager.UnregisterTickable(this);
+        }
+
+        public void SimulationTick(float deltaGameHours)
+        {
+            for (int index = acceptedExecutions.Count - 1; index >= 0; index--)
+            {
+                WalkingFreightExecution execution = acceptedExecutions[index];
+                if (execution == null || !execution.IsActive)
+                {
+                    acceptedExecutions.RemoveAt(index);
+                    continue;
+                }
+
+                execution.SimulationTick();
+            }
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetActive() => active.Clear();
@@ -238,29 +261,63 @@ namespace AsteroidColony
             if (quantity > availableCapacity + 0.0001f)
                 return false;
 
-            WalkingFreightCarrierComponent legacyExecution =
-                worker.GetComponent<WalkingFreightCarrierComponent>();
-            if (legacyExecution == null)
+            WalkingFreightCarrierComponent legacyExecution = quote.IsEmergency
+                ? worker.GetComponent<WalkingFreightCarrierComponent>()
+                : null;
+            WorkExecutionLease lease = null;
+            ColonistBrain brain = worker.GetComponent<ColonistBrain>();
+            if (quote.IsEmergency)
+            {
+                if (legacyExecution == null || !legacyExecution.BeginEmergencyExcursion(workplace))
+                    return false;
+            }
+            else if (brain == null || !brain.TryAcquireWorkExecution(workplace, this, out lease))
+            {
                 return false;
-
-            if (quote.IsEmergency && !legacyExecution.BeginEmergencyExcursion(workplace))
-                return false;
+            }
 
             execution = new WalkingFreightExecution(
                 this,
                 worker,
                 legacyExecution,
+                lease,
+                assignment.Role,
                 capacity,
                 positioning.Distance,
                 loaded.Distance,
                 quote.IsEmergency);
             acceptedExecutions.Add(execution);
+            SimulationLogManager.RecordEvent(
+                "logistics.service_execution_assigned",
+                "Logistics",
+                "Info",
+                worker,
+                this,
+                new SimulationLogField("workplace", workplace.name),
+                new SimulationLogField("role", assignment.Role.StableId),
+                new SimulationLogField("emergency", quote.IsEmergency),
+                new SimulationLogField("positioningDistance", positioning.Distance),
+                new SimulationLogField("loadedCargoDistance", loaded.Distance));
             return true;
         }
 
         internal void ReleaseExecution(WalkingFreightExecution execution)
         {
             acceptedExecutions.Remove(execution);
+        }
+
+        public WorkReleaseDisposition RequestRelease(
+            WorkExecutionLease lease,
+            WorkReleaseReason reason)
+        {
+            for (int index = 0; index < acceptedExecutions.Count; index++)
+            {
+                WalkingFreightExecution execution = acceptedExecutions[index];
+                if (execution != null && execution.OwnsLease(lease))
+                    return execution.RequestRelease(reason);
+            }
+
+            return WorkReleaseDisposition.ReleasedNow;
         }
 
         public string GetStableKey()
@@ -311,7 +368,7 @@ namespace AsteroidColony
             if (brain == null || brain.State != ColonistBrainState.Working ||
                 brain.IsCriticallyHungry || brain.ActiveWorkExecutionLease != null ||
                 inventory == null || routeRunner == null || routeRunner.IsExecuting ||
-                legacyExecution == null || legacyExecution.HasActiveJob ||
+                emergency && (legacyExecution == null || legacyExecution.HasActiveJob) ||
                 IsAlreadyAccepted(worker))
             {
                 return false;
@@ -409,11 +466,20 @@ namespace AsteroidColony
     {
         private readonly ColonistIdentity worker;
         private readonly WalkingFreightCarrierComponent legacyExecution;
+        private readonly PersonnelRouteRunner routeRunner;
+        private readonly ColonistActivityRunner activityRunner;
+        private readonly WorkExecutionLease lease;
+        private readonly JobRoleDefinition assignedRole;
+        private FreightDeliveryJob job;
+        private bool returningToDuty;
+        private long retryAtTick;
 
         internal WalkingFreightExecution(
             WalkingFreightWorkService service,
             ColonistIdentity worker,
             WalkingFreightCarrierComponent legacyExecution,
+            WorkExecutionLease lease,
+            JobRoleDefinition assignedRole,
             float capacity,
             float positioningDistance,
             float loadedCargoTravelCost,
@@ -422,11 +488,20 @@ namespace AsteroidColony
             Service = service;
             this.worker = worker;
             this.legacyExecution = legacyExecution;
+            routeRunner = worker != null ? worker.GetComponent<PersonnelRouteRunner>() : null;
+            activityRunner = worker != null ? worker.GetComponent<ColonistActivityRunner>() : null;
+            this.lease = lease;
+            this.assignedRole = assignedRole;
             MaximumCapacity = capacity;
             PositioningDistance = positioningDistance;
             LoadedCargoTravelCost = loadedCargoTravelCost;
             IsEmergency = emergency;
             IsActive = true;
+            if (!IsEmergency && routeRunner != null)
+            {
+                routeRunner.RouteCompleted += HandleRouteCompleted;
+                routeRunner.RouteFailed += HandleRouteFailed;
+            }
         }
 
         public WalkingFreightWorkService Service { get; }
@@ -440,18 +515,30 @@ namespace AsteroidColony
         public bool IsActive { get; private set; }
 
         internal bool IsForWorker(ColonistIdentity candidate) => worker == candidate;
+        internal bool OwnsLease(WorkExecutionLease candidate) => lease == candidate;
 
         internal bool PrepareCargo(ResourceDefinition resource)
         {
-            if (!IsActive || legacyExecution == null || CargoInventory == null || resource == null)
+            if (!IsActive || IsEmergency && legacyExecution == null ||
+                CargoInventory == null || resource == null)
                 return false;
 
-            legacyExecution.ConfigureCapacity(MaximumCapacity);
             return CargoInventory.SetCapacity(resource, MaximumCapacity);
         }
 
-        internal bool Assign(FreightDeliveryJob job) =>
-            IsActive && legacyExecution != null && legacyExecution.Assign(job);
+        internal bool Assign(FreightDeliveryJob assignedJob)
+        {
+            if (!IsActive || assignedJob == null || job != null)
+                return false;
+            if (IsEmergency)
+            {
+                if (legacyExecution == null || !legacyExecution.Assign(assignedJob))
+                    return false;
+            }
+
+            job = assignedJob;
+            return true;
+        }
 
         internal void MarkCargoLoaded()
         {
@@ -471,24 +558,229 @@ namespace AsteroidColony
 
         internal void Complete(FreightDeliveryJob job)
         {
-            if (!IsActive)
+            if (!IsActive || this.job != job)
                 return;
 
-            if (legacyExecution != null)
+            if (IsEmergency)
             {
-                legacyExecution.RouteRunner?.StopRoute();
-                legacyExecution.Complete(job);
-                if (IsEmergency && legacyExecution.Brain != null)
+                if (legacyExecution != null)
+                {
+                    legacyExecution.RouteRunner?.StopRoute();
+                    legacyExecution.Complete(job);
+                }
+                if (legacyExecution != null && legacyExecution.Brain != null)
                     legacyExecution.Brain.CompleteWorkExcursion();
+                Release();
+                return;
             }
-            Release();
+
+            if (ShouldReturnToDuty())
+                StartReturnToDutyRoute();
+            else
+                Release();
+        }
+
+        internal void SimulationTick()
+        {
+            if (!IsActive || IsEmergency)
+                return;
+
+            if (returningToDuty)
+            {
+                if (SimulationManager.Instance != null &&
+                    SimulationManager.Instance.CurrentTick >= retryAtTick)
+                    StartReturnToDutyRoute();
+                return;
+            }
+
+            if (job == null || job.IsTerminal)
+                return;
+
+            if (job.State == FreightJobState.Assigned)
+            {
+                if (lease != null && lease.HasPendingReleaseRequest)
+                {
+                    FreightLogisticsManager.Instance?.CancelBeforePickup(
+                        job, "work_release_before_pickup");
+                    return;
+                }
+
+                StartPickupRoute();
+                return;
+            }
+
+            if (job.State == FreightJobState.Blocked && SimulationManager.Instance != null &&
+                SimulationManager.Instance.CurrentTick >= job.RetryAtTick)
+            {
+                FreightLogisticsManager.Instance?.ResumeJob(
+                    job, FreightJobState.TravelingToDropoff);
+                StartDeliveryRoute();
+            }
+        }
+
+        internal WorkReleaseDisposition RequestRelease(WorkReleaseReason reason)
+        {
+            if (!IsActive || IsEmergency)
+                return WorkReleaseDisposition.ReleasedNow;
+
+            if (job != null && job.HasPickedUp && !job.IsTerminal)
+                return WorkReleaseDisposition.Deferred;
+
+            if (job != null && !job.IsTerminal)
+                FreightLogisticsManager.Instance?.CancelBeforePickup(
+                    job, "work_release_before_pickup_" + reason.ToString());
+            else
+                Release();
+            return WorkReleaseDisposition.ReleasedNow;
+        }
+
+        private void StartPickupRoute()
+        {
+            if (job == null || FreightLogisticsManager.Instance == null)
+                return;
+            if (job.Source == null || job.Source.FreightAnchor == null)
+            {
+                FreightLogisticsManager.Instance.CancelBeforePickup(job, "pickup_anchor_missing");
+                return;
+            }
+
+            FreightLogisticsManager.Instance.SetJobState(job, FreightJobState.TravelingToPickup);
+            string failure = "personnel_route_runner_missing";
+            if (routeRunner == null || !routeRunner.TryStartRoute(job.Source.FreightAnchor, out failure))
+                HandleRouteStartFailure(failure, "pickup_route_unavailable");
+        }
+
+        private void StartDeliveryRoute()
+        {
+            if (job == null || FreightLogisticsManager.Instance == null)
+                return;
+            if (job.Destination == null || job.Destination.FreightAnchor == null)
+            {
+                FreightLogisticsManager.Instance.BlockJob(job, "dropoff_anchor_missing");
+                return;
+            }
+
+            FreightLogisticsManager.Instance.SetJobState(job, FreightJobState.TravelingToDropoff);
+            string failure = "personnel_route_runner_missing";
+            if (routeRunner == null || !routeRunner.TryStartRoute(job.Destination.FreightAnchor, out failure))
+                HandleRouteStartFailure(failure, "dropoff_route_unavailable");
+        }
+
+        private void StartReturnToDutyRoute()
+        {
+            if (!IsActive)
+                return;
+            WorkplaceComponent workplace = Service != null ? Service.Workplace : null;
+            Transform anchor = workplace != null ? workplace.DutyAnchor : null;
+            if (anchor == null || routeRunner == null)
+            {
+                Release();
+                return;
+            }
+
+            returningToDuty = true;
+            retryAtTick = long.MaxValue;
+            string failure = "personnel_route_runner_missing";
+            if (!routeRunner.TryStartRoute(anchor, out failure))
+                HandleReturnRouteFailure(failure);
+        }
+
+        private bool ShouldReturnToDuty()
+        {
+            if (lease == null || lease.HasPendingReleaseRequest || worker == null ||
+                Service == null || Service.Workplace == null || WorkforceManager.Instance == null ||
+                SimulationManager.Instance == null)
+            {
+                return false;
+            }
+
+            return WorkforceManager.Instance.IsGenuinelyOnDuty(
+                worker, Service.Workplace, assignedRole,
+                SimulationManager.Instance.CurrentGameHour);
+        }
+
+        private void HandleRouteCompleted(PersonnelRoutePlan plan)
+        {
+            if (!IsActive || plan == null || plan.Person != worker)
+                return;
+
+            if (returningToDuty)
+            {
+                Transform dutyAnchor = Service != null && Service.Workplace != null
+                    ? Service.Workplace.DutyAnchor : null;
+                if (plan.FinalDestination == dutyAnchor)
+                    Release();
+                return;
+            }
+
+            if (job == null || FreightLogisticsManager.Instance == null)
+                return;
+            if (job.State == FreightJobState.TravelingToPickup &&
+                job.Source != null && plan.FinalDestination == job.Source.FreightAnchor)
+            {
+                if (FreightLogisticsManager.Instance.TryPickup(job))
+                    StartDeliveryRoute();
+            }
+            else if (job.State == FreightJobState.TravelingToDropoff &&
+                     job.Destination != null && plan.FinalDestination == job.Destination.FreightAnchor)
+            {
+                FreightLogisticsManager.Instance.TryDeliver(job);
+            }
+        }
+
+        private void HandleRouteFailed(PersonnelRoutePlan plan, string reason)
+        {
+            if (!IsActive || plan == null || plan.Person != worker)
+                return;
+
+            if (returningToDuty)
+            {
+                HandleReturnRouteFailure(reason);
+                return;
+            }
+
+            if (job == null)
+                return;
+            Transform expected = job.State == FreightJobState.TravelingToPickup
+                ? job.Source != null ? job.Source.FreightAnchor : null
+                : job.Destination != null ? job.Destination.FreightAnchor : null;
+            if (plan.FinalDestination == expected)
+                HandleRouteStartFailure(reason, "freight_route_failed");
+        }
+
+        private void HandleRouteStartFailure(string reason, string fallbackReason)
+        {
+            if (job == null || FreightLogisticsManager.Instance == null)
+                return;
+            string failure = string.IsNullOrWhiteSpace(reason) ? fallbackReason : reason;
+            if (job.HasPickedUp)
+                FreightLogisticsManager.Instance.BlockJob(job, failure);
+            else
+                FreightLogisticsManager.Instance.CancelBeforePickup(job, failure);
+        }
+
+        private void HandleReturnRouteFailure(string reason)
+        {
+            retryAtTick = SimulationManager.Instance != null
+                ? SimulationManager.Instance.CurrentTick + 5L
+                : long.MaxValue;
+            Debug.LogWarning($"{worker.name}: return to the Airlock duty anchor failed through Personnel Routing: " +
+                (string.IsNullOrWhiteSpace(reason) ? "route_unavailable" : reason), worker);
         }
 
         private void Release()
         {
             if (!IsActive)
                 return;
+            if (routeRunner != null && !IsEmergency)
+            {
+                routeRunner.RouteCompleted -= HandleRouteCompleted;
+                routeRunner.RouteFailed -= HandleRouteFailed;
+                routeRunner.StopRoute();
+            }
             IsActive = false;
+            if (lease != null && lease.IsActive)
+                lease.Release();
             Service?.ReleaseExecution(this);
         }
     }

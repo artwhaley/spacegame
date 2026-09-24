@@ -28,6 +28,8 @@ namespace AsteroidColony.Tests
             Assert.That(typeof(WalkingFreightWorkService).GetProperty("Active"), Is.Not.Null);
             Assert.That(typeof(FreightWorkQuote).GetProperty("Provider"), Is.Not.Null);
             Assert.That(typeof(WalkingFreightExecution).GetProperty("Worker"), Is.Null);
+            Assert.That(typeof(WalkingFreightWorkService).GetInterfaces(),
+                Does.Contain(typeof(IWorkExecutionOwner)));
         }
 
         [Test]

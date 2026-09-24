@@ -27,6 +27,7 @@ Added compact API-boundary checks for allocation/route worker ownership, Brain f
 | B1.5-T01 | Complete | Allocation and cargo-route data no longer contain a worker; the current walking binding and empty positioning estimate live in a separate execution record. |
 | B1.5-T02 | Complete | Added a generic owner/lease/release contract and narrow deferred-release owner tests. |
 | B1.5-T03 | Complete | Logistics now quotes and accepts workplace services; service-owned worker discovery and route cost calculation replace manager carrier enumeration. The service execution still delegates to legacy runner plumbing until T04/T05. |
+| B1.5-T04 | Complete | Routine Porter jobs now acquire an Airlock service lease and execute pickup, delivery, and return-to-duty routes through PersonnelRouting. Emergency execution remains on the temporary legacy path until T05. |
 
 No Unity compile, Test Runner, or Play Mode run has been performed. The user performs the human Unity acceptance run.
 
@@ -54,3 +55,11 @@ No Unity compile, Test Runner, or Play Mode run has been performed. The user per
 - P4b fixture authoring configures the Airlock routine service (Porter, capacity 10) and Cafeteria emergency service (capacity 5, minimum remaining staff 0). B1/P4b validation now checks the provider setup.
 - The legacy carrier/runner remains only as a temporary execution adapter for T03. T04/T05 move route execution and release decisions into the provider; T06 removes those old colonist components and updates the shared prefab.
 - `SupplyChainDebugLog` reports active workplace services and job provider instead of enumerating colonist freight components. Added API-boundary checks for the provider-facing logistics seam. No Unity compile, Test Runner, or Play Mode run has been performed.
+
+## B1.5-T04 — Airlock-owned routine Porter execution
+
+- Routine job acceptance now acquires a `WorkExecutionLease` from the Airlock `WalkingFreightWorkService`. The Brain remains Working while the service owns that lease.
+- The service execution drives PersonnelRouting to the source, transfers reserved stock into the worker's generic Inventory, routes to the requesting stock, and then returns an on-duty Porter to the Airlock duty anchor.
+- A shift-end or critical-need release before pickup cancels the job, releases its source reservation, and releases the lease. After pickup, the service defers release until delivery; it skips the optional return route when the Brain has requested release.
+- Worker identity remains inside the quote/service execution. The provider records which assigned worker it selected so the work log retains attribution without making worker selection a Logistics concern.
+- Identity-swap acceptance (Bob assigned Porter, Dana Farmer) remains a human fixture/Play Mode check. No prefab change was made for T04. No Unity compile, Test Runner, or Play Mode run has been performed.
