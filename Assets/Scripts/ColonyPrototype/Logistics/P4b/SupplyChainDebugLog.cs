@@ -272,7 +272,10 @@ namespace AsteroidColony
                         Add(row, "resource", job.Resource != null ? job.Resource.name : string.Empty);
                         Add(row, "quantity", F(job.Quantity));
                         Add(row, "pickedUp", job.HasPickedUp.ToString());
-                        Add(row, "carrier", job.Carrier != null ? job.Carrier.name : string.Empty);
+                        WalkingFreightCarrierComponent worker = job.WalkingExecution != null
+                            ? job.WalkingExecution.Worker
+                            : null;
+                        Add(row, "worker", worker != null ? worker.name : string.Empty);
                         Add(row, "source", job.Source != null ? job.Source.name : string.Empty);
                         Add(row, "destination", job.Destination != null ? job.Destination.name : string.Empty);
                         Add(row, "emergency", job.IsEmergencyExcursion.ToString());

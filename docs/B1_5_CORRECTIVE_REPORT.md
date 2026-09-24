@@ -23,6 +23,16 @@ Added compact API-boundary checks for allocation/route worker ownership, Brain f
 
 | Ticket | Status | Evidence |
 |---|---|---|
-| B1.5-T00 | In progress | Baseline documented; architecture boundary tests added. |
+| B1.5-T00 | Complete | Baseline documented; architecture boundary tests added before the refactor. |
+| B1.5-T01 | Complete | Allocation and cargo-route data no longer contain a worker; the current walking binding and empty positioning estimate live in a separate execution record. |
 
 No Unity compile, Test Runner, or Play Mode run has been performed. The user performs the human Unity acceptance run.
+
+## B1.5-T01 — Cargo allocation and route
+
+- `FreightAllocation` now owns order, resource, quantity, source, final destination, and cargo route only.
+- `LogisticsRoutePlan` contains stock-to-stock cargo legs and has no worker field. A current local allocation contains one `WalkingCarrier` leg from its source stock to the requesting stock.
+- The former worker-current-position → source estimate remains part of candidate service cost. It is stored on the separate `WalkingFreightExecution` record and remains included in candidate ranking; it is no longer a freight cargo leg.
+- The source → destination estimate is the loaded distance on the single route leg. Job diagnostics now distinguish loaded cargo distance from worker positioning distance.
+- The existing `FreightCandidateRankingTests` still covers quantity-first, distance-second, and stable tie-break ranking. The T00 public boundary checks now match the route/allocation API. Neither suite was run.
+- Source inspection confirms no remaining `job.Carrier`, `FreightAllocation.Carrier`, `LogisticsRoutePlan.Carrier`, or `TotalEstimatedDistance` reference in P4b Logistics. These are source checks, not a Unity acceptance claim.
