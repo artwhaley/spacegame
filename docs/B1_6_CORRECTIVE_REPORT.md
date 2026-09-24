@@ -30,6 +30,13 @@ Legacy transport types remain in the shared runtime assembly and existing source
 
 Source audit completed at the starting revision. Existing EditMode coverage includes inventory, freight candidate ranking, personnel route planning, and the B1.5 architecture boundary. This report records the baseline before production changes.
 
+## B1.6-T01 — Activity Approach Completion
+
+`IActivityApproachRouter` now starts a route with a correlation ID, reports whole-route completion/failure with that ID, and stops only the matching route. `PersonnelRouteRunner` creates unique runtime route IDs and translates its complete-plan and failure outcomes through the package-owned seam. `ColonistActivityRunner` now starts entry only after receiving completion for its expected route ID; it ignores stale completion/failure and no longer subscribes to motor arrival or movement-failure events for approach lifecycle.
+
+Added `ActivityApproachCorrelationTests` to cover intermediate motor arrivals, stale route outcomes, matching whole-route completion, and matching failure. The test uses a fake route and deliberately has no baked NavMesh; physical entry remains a Unity Play Mode check.
+
 ## Ticket Progress
 
-Remaining: T01–T07.
+Completed: T00, T01.
+Remaining: T02–T07.

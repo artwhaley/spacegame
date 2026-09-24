@@ -54,6 +54,7 @@ namespace Colony.Interactions
         [SerializeField] private ColonistMotor motor;
 
         private IActivityApproachRouter approachRouter;
+        private string approachRouteId;
         private InteractableFacility currentFacility;
         private FacilityActivityBinding currentBinding;
         private FacilityReservationToken reservation;
@@ -132,8 +133,6 @@ namespace Colony.Interactions
 
             if (motor != null)
             {
-                motor.Arrived += HandleArrived;
-                motor.MoveFailed += HandleMoveFailed;
                 motor.PlacementBlendCompleted += HandlePlacementBlendCompleted;
                 motor.ActivityFacingAligned += HandleActivityFacingAligned;
             }
@@ -152,10 +151,9 @@ namespace Colony.Interactions
 
         private void OnDestroy()
         {
+            SetApproachRouter(null);
             if (motor != null)
             {
-                motor.Arrived -= HandleArrived;
-                motor.MoveFailed -= HandleMoveFailed;
                 motor.PlacementBlendCompleted -= HandlePlacementBlendCompleted;
                 motor.ActivityFacingAligned -= HandleActivityFacingAligned;
             }
@@ -180,9 +178,19 @@ namespace Colony.Interactions
             if (ReferenceEquals(approachRouter, router))
                 return;
 
-            if (approachRouter != null && Phase == ActivityPhase.Navigating)
-                approachRouter.StopRoute();
+            if (Phase == ActivityPhase.Navigating)
+                StopApproachRoute();
+            if (approachRouter != null)
+            {
+                approachRouter.ApproachRouteCompleted -= HandleApproachRouteCompleted;
+                approachRouter.ApproachRouteFailed -= HandleApproachRouteFailed;
+            }
             approachRouter = router;
+            if (approachRouter != null)
+            {
+                approachRouter.ApproachRouteCompleted += HandleApproachRouteCompleted;
+                approachRouter.ApproachRouteFailed += HandleApproachRouteFailed;
+            }
         }
 
         public bool RequestActivity(InteractableFacility facility, string activityId)
@@ -376,7 +384,7 @@ namespace Colony.Interactions
                 return;
             }
 
-            approachRouter?.StopRoute();
+            StopApproachRoute();
             if (motor != null)
             {
                 motor.Stop();
@@ -435,6 +443,7 @@ namespace Colony.Interactions
                 $"(holding {reservation.ReservationGroup}).");
             if (!TryStartApproachNavigation(
                     binding.ApproachAnchor,
+                    out _,
                     out string failureReason))
             {
                 if (Phase != ActivityPhase.Failed)
@@ -579,8 +588,10 @@ namespace Colony.Interactions
 
         private bool TryStartApproachNavigation(
             Transform destination,
+            out string routeId,
             out string failureReason)
         {
+            routeId = string.Empty;
             failureReason = string.Empty;
             if (destination == null)
             {
@@ -589,26 +600,35 @@ namespace Colony.Interactions
             }
 
             if (approachRouter != null &&
-                approachRouter.TryStartRoute(destination, out failureReason))
+                approachRouter.TryStartRoute(destination, out routeId, out failureReason) &&
+                !string.IsNullOrWhiteSpace(routeId))
+            {
+                approachRouteId = routeId;
                 return true;
+            }
 
             if (string.IsNullOrWhiteSpace(failureReason))
                 failureReason = approachRouter == null
                     ? "personnel_route_runner_missing"
-                    : "personnel_route_unavailable";
+                    : string.IsNullOrWhiteSpace(routeId)
+                        ? "personnel_route_identity_missing"
+                        : "personnel_route_unavailable";
             return false;
         }
 
-        private void HandleArrived()
+        private void HandleApproachRouteCompleted(string routeId)
         {
-            if (Phase != ActivityPhase.Navigating || currentBinding == null)
+            if (Phase != ActivityPhase.Navigating || currentBinding == null ||
+                string.IsNullOrWhiteSpace(approachRouteId) ||
+                !string.Equals(approachRouteId, routeId, StringComparison.Ordinal))
             {
                 return;
             }
 
+            approachRouteId = null;
             Phase = ActivityPhase.ReadyForEntry;
             StatusChanged?.Invoke(
-                $"Arrived at {currentBinding.ActivityId} approach. Aligning to animation anchor.");
+                $"Completed the route to {currentBinding.ActivityId}. Aligning to animation anchor.");
 
             if (motor == null)
             {
@@ -653,6 +673,29 @@ namespace Colony.Interactions
             {
                 Fail("The actor could not align to the activity entry facing.");
             }
+        }
+
+        private void HandleApproachRouteFailed(string routeId, string reason)
+        {
+            if (Phase != ActivityPhase.Navigating || currentBinding == null ||
+                string.IsNullOrWhiteSpace(approachRouteId) ||
+                !string.Equals(approachRouteId, routeId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            approachRouteId = null;
+            Fail(string.IsNullOrWhiteSpace(reason)
+                ? "activity_approach_route_failed"
+                : reason);
+        }
+
+        private void StopApproachRoute()
+        {
+            string routeId = approachRouteId;
+            approachRouteId = null;
+            if (approachRouter != null && !string.IsNullOrWhiteSpace(routeId))
+                approachRouter.StopRoute(routeId);
         }
 
         private bool TryGetFirstPlayableSegment(out AnimationSegment segment)
@@ -1089,14 +1132,6 @@ namespace Colony.Interactions
             }
         }
 
-        private void HandleMoveFailed(string reason)
-        {
-            if (Phase == ActivityPhase.Navigating || Phase == ActivityPhase.Reserved)
-            {
-                Fail(reason);
-            }
-        }
-
         private bool Fail(string reason)
         {
             CancelSequenceIntent();
@@ -1109,7 +1144,7 @@ namespace Colony.Interactions
                 animationDriver.StopPlayback(true);
             }
 
-            approachRouter?.StopRoute();
+            StopApproachRoute();
             if (motor != null)
             {
                 // Failing mid-activity leaves the NavMeshAgent detached and the root
@@ -1218,6 +1253,7 @@ namespace Colony.Interactions
 
             if (!TryStartApproachNavigation(
                     binding.ApproachAnchor,
+                    out _,
                     out string failureReason))
             {
                 return Phase == ActivityPhase.Failed
@@ -1249,7 +1285,7 @@ namespace Colony.Interactions
         private void CancelBeforeEntryForReplacement()
         {
             CancelSequenceIntent();
-            approachRouter?.StopRoute();
+            StopApproachRoute();
 
             if (motor != null)
             {

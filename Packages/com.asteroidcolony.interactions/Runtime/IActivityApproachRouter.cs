@@ -9,10 +9,14 @@ namespace Colony.Interactions
     /// </summary>
     public interface IActivityApproachRouter
     {
+        event Action<string> ApproachRouteCompleted;
+        event Action<string, string> ApproachRouteFailed;
+
         bool TryStartRoute(
             Transform destination,
+            out string routeId,
             out string failureReason);
 
-        void StopRoute();
+        void StopRoute(string routeId);
     }
 }
