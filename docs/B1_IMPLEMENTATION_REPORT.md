@@ -83,7 +83,7 @@ B1 must use `FreightLogisticsManager` and canonical `WorkforceManager`; it must 
 
 ### B1-T00
 
-Commit: B1-T00 audit checkpoint (this commit)
+Commit: `6f55f8e9` (`B1-T00 document current routing ownership`)
 
 Files: `docs/B1_IMPLEMENTATION_REPORT.md`
 
@@ -96,3 +96,29 @@ Findings:
 - Confirmed candidate ranking is quantity/distance-first rather than quantity-first.
 - Confirmed Work/Food/Sleep/OffDuty facility approach is centralized only inside `ColonistActivityRunner`, while MobileDuty and freight bypass it.
 - No production behavior changed.
+
+### B1-T01
+
+Commit: B1-T01 personnel routing seam (this commit)
+
+Files:
+
+- `Assets/Scripts/ColonyPrototype/People/Routing/PersonnelRoutePlan.cs`
+- `Assets/Scripts/ColonyPrototype/People/Routing/PedestrianRouteProvider.cs`
+- `Assets/Scripts/ColonyPrototype/People/Routing/PersonnelRoutingManager.cs`
+- `Assets/Tests/EditMode/PersonnelRoutingManagerTests.cs`
+- Unity metadata for the new folder and files
+
+Tests:
+
+- Added 7 focused EditMode owner tests covering one-Walk-leg success, NoRoute, useful distance, hypothetical start, policy independence, deterministic repeated plans, and no B1 Shuttle leg.
+- `ColonyPrototype.Runtime` and `ColonyPrototype.Tests` compiled successfully with the new sources explicitly included while the already-open Unity Editor refreshes its generated project files.
+- Unity Test Runner execution was not started because this checkout is currently open in the Unity Editor; launching a second Editor against the same project would violate the project safety policy. No test is claimed as executed yet.
+
+Design decisions:
+
+- A route plan contains only person, final destination, ordered physical legs, estimated distance, and a stable diagnostic identity. It contains no Brain/activity purpose or need policy.
+- `PersonnelRoutingManager` is the only B1 planner. It delegates all reachability/distance to `IPersonnelRouteProvider` and creates exactly one `Walk` leg when a provider returns a complete route.
+- `PedestrianRouteProvider` is the only new personnel NavMesh estimator. It samples the person's area mask, calculates a complete path, and returns a transient estimate; it does not retain `NavMeshPath` in gameplay route state.
+- Hypothetical-start estimates are exposed for Logistics' future `carrier → source` and `source → destination` questions without coupling Logistics to Unity NavMesh.
+- The B1 enum contains only `Walk`; another transport kind can be introduced when B2 implements it. No Shuttle request or behavior exists in this ticket.
