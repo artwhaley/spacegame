@@ -82,6 +82,7 @@ namespace AsteroidColony
         private bool ticking;
         private int lastFrameLogicalSteps;
         private double lastFrameRequestedSimulationSeconds;
+        private double lastFrameAdmittedSimulationSeconds;
         private double lastFrameCommittedSimulationSeconds;
         private float lastPresentationRealDeltaSeconds;
         private double simulationStopSeconds = double.PositiveInfinity;
@@ -144,8 +145,15 @@ namespace AsteroidColony
                 if (lastPresentationRealDeltaSeconds <= 0f)
                     return EffectiveSpeedMultiplier;
 
-                return (float)(lastFrameCommittedSimulationSeconds /
-                    lastPresentationRealDeltaSeconds);
+                // Logical steps are discrete. Include admitted fractional time so
+                // animation and navigation move between ticks; use committed time
+                // when a full admission queue is being drained. Never exceed the
+                // requested pace when a step crosses a rendered-frame boundary.
+                double presentedSeconds = System.Math.Min(
+                    lastFrameRequestedSimulationSeconds,
+                    System.Math.Max(lastFrameAdmittedSimulationSeconds,
+                        lastFrameCommittedSimulationSeconds));
+                return (float)(presentedSeconds / lastPresentationRealDeltaSeconds);
             }
         }
 
@@ -198,6 +206,7 @@ namespace AsteroidColony
         {
             lastPresentationRealDeltaSeconds = realDeltaSeconds;
             lastFrameRequestedSimulationSeconds = 0d;
+            lastFrameAdmittedSimulationSeconds = 0d;
             lastFrameCommittedSimulationSeconds = 0d;
             lastFrameLogicalSteps = 0;
 
@@ -213,6 +222,7 @@ namespace AsteroidColony
                 0d,
                 maximumPendingSimulationSeconds - simulationDebtSeconds);
             double admitted = System.Math.Min(requested, availableAdmission);
+            lastFrameAdmittedSimulationSeconds = admitted;
             simulationDebtSeconds += admitted;
             double shortfall = requested - admitted;
             if (shortfall > 0d)
@@ -302,6 +312,7 @@ namespace AsteroidColony
             float simulatedSeconds = realDeltaSeconds * EffectiveSpeedMultiplier;
             lastPresentationRealDeltaSeconds = realDeltaSeconds;
             lastFrameRequestedSimulationSeconds = simulatedSeconds;
+            lastFrameAdmittedSimulationSeconds = simulatedSeconds;
             lastFrameCommittedSimulationSeconds = simulatedSeconds;
             requestedSimulationSeconds += simulatedSeconds;
             AdvanceLogicalStep(simulatedSeconds);
