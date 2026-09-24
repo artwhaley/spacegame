@@ -1584,6 +1584,66 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1099281627}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1481888042
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1481888045}
+  - component: {fileID: 1481888044}
+  - component: {fileID: 1481888043}
+  m_Layer: 0
+  m_Name: PersonnelRoutingManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1481888043
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1481888042}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31f99242748b42dc949e766ab209c298, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.PedestrianRouteProvider
+  destinationSampleDistance: 1
+  areaMask: -1
+--- !u!114 &1481888044
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1481888042}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a8d3f72149c4b06bf52e6da71830c94, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.PersonnelRoutingManager
+  pedestrianProvider: {fileID: 1481888043}
+--- !u!4 &1481888045
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1481888042}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1535159105
 GameObject:
   m_ObjectHideFlags: 0
@@ -2009,7 +2069,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f067128934012345f067128934012345, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WorkplaceComponent
+  executionMode: 0
   facility: {fileID: 1819463919}
+  dutyAnchor: {fileID: 0}
   roles:
   - role: {fileID: 11400000, guid: 7b2e6c1f9a3448d0b6e5c2f18a3d740c, type: 2}
     activityId: ServeFood
@@ -2217,7 +2279,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f067128934012345f067128934012345, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WorkplaceComponent
+  executionMode: 0
   facility: {fileID: 1856994485}
+  dutyAnchor: {fileID: 0}
   roles:
   - role: {fileID: 11400000, guid: cd34ef5601789012cd34ef5601789012, type: 2}
     activityId: Farm
@@ -2682,7 +2746,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.FoodServiceComponent
   facility: {fileID: 1819463919}
   eatActivityId: Eat
-  hungerRecoveryPerGameHour: 60
   requiresStaff: 1
   requiredWorkplace: {fileID: 1819463918}
   requiredRole: {fileID: 11400000, guid: 7b2e6c1f9a3448d0b6e5c2f18a3d740c, type: 2}
@@ -2691,7 +2754,6 @@ MonoBehaviour:
   inventoryAccountingEnabled: 1
   foodInventory: {fileID: 2200000003}
   foodResource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
-  foodPerMeal: 1
 --- !u!1 &2050100014
 GameObject:
   m_ObjectHideFlags: 0
@@ -4278,7 +4340,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f067128934012345f067128934012345, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WorkplaceComponent
+  executionMode: 0
   facility: {fileID: 1535159106}
+  dutyAnchor: {fileID: 0}
   roles:
   - role: {fileID: 11400000, guid: 91d7a4c2e6b84f50a3c9d12e7f6548ab, type: 2}
     activityId: Command
@@ -4709,3 +4773,4 @@ SceneRoots:
   - {fileID: 2111000082}
   - {fileID: 2111000080}
   - {fileID: 2200000002}
+  - {fileID: 1481888045}

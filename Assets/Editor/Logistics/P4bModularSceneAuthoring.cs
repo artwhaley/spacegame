@@ -563,11 +563,11 @@ namespace AsteroidColony.Editor
 
         private static GameObject FindModule(Scene scene, string path)
         {
+            string expectedName = System.IO.Path.GetFileNameWithoutExtension(path);
             GameObject[] roots = scene.GetRootGameObjects();
             for (int i = 0; i < roots.Length; i++)
             {
-                UnityEngine.Object source = PrefabUtility.GetCorrespondingObjectFromSource(roots[i]);
-                if (source != null && AssetDatabase.GetAssetPath(source) == path)
+                if (roots[i].name == expectedName)
                     return roots[i];
             }
             return null;

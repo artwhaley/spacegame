@@ -508,6 +508,10 @@ namespace AsteroidColony
                 new SimulationLogField("quantity", candidate.Quantity),
                 new SimulationLogField("source", candidate.Source.name),
                 new SimulationLogField("distance", candidate.Distance),
+                new SimulationLogField("pickupAnchor", sourceAnchor.name),
+                new SimulationLogField("pickupDistance", candidate.PickupEstimate.Distance),
+                new SimulationLogField("dropoffAnchor", destinationAnchor.name),
+                new SimulationLogField("dropoffDistance", candidate.DeliveryEstimate.Distance),
                 new SimulationLogField("routeLegs", job.RoutePlan.Legs.Count),
                 new SimulationLogField("emergency", emergency));
         }

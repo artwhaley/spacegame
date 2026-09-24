@@ -290,10 +290,19 @@ namespace AsteroidColony
                     row.eventKey = "supply.snapshot.carrier";
                     Add(row, "hasActiveJob", carrier.HasActiveJob.ToString());
                     Add(row, "brainState", carrier.Brain != null ? carrier.Brain.State.ToString() : string.Empty);
+                    JobRoleDefinition routineRole = FreightLogisticsManager.Instance != null
+                        ? FreightLogisticsManager.Instance.RoutineCarrierRole
+                        : null;
+                    WorkAssignment currentDuty = null;
+                    if (carrier.Identity != null && WorkforceManager.Instance != null &&
+                        SimulationManager.Instance != null)
+                        WorkforceManager.Instance.TryGetCurrentDuty(
+                            carrier.Identity, gameHour, out currentDuty);
+                    Add(row, "routineRole", routineRole != null ? routineRole.StableId : string.Empty);
+                    Add(row, "currentDutyRole", currentDuty != null && currentDuty.Role != null
+                        ? currentDuty.Role.StableId : string.Empty);
                     Add(row, "routineEligibleByDuty", carrier.CanAcceptRoutineJob(
-                        FreightLogisticsManager.Instance != null
-                            ? FreightLogisticsManager.Instance.RoutineCarrierRole
-                            : null,
+                        routineRole,
                         out _).ToString());
                     Add(row, "cargoCapacity", F(carrier.MaximumCargoQuantity));
                     Add(row, "jobId", carrier.CurrentJob != null ? carrier.CurrentJob.Id : string.Empty);

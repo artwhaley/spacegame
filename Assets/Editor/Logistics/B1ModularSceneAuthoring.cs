@@ -27,6 +27,12 @@ namespace AsteroidColony.Editor
                 Debug.LogError("Open " + ScenePath + " before configuring the B1 fixture.");
                 return;
             }
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                Debug.LogError("Stop Play Mode before configuring the B1 fixture; Play Mode scene edits will be discarded.");
+                return;
+            }
+            Debug.Log("Configuring B1 modular fixture in " + scene.path + ".");
             try { ConfigureLoadedSceneAndSave(scene); }
             catch (Exception exception) { Debug.LogException(exception); }
         }
@@ -207,16 +213,26 @@ namespace AsteroidColony.Editor
             ColonistIdentity dana = FindColonist(scene, "Dana");
             JobRoleDefinition porter = AssetDatabase.LoadAssetAtPath<JobRoleDefinition>(PorterRolePath);
             WorkforceManager fixtureWorkforce = FindUniqueSceneComponent<WorkforceManager>(scene);
+            FreightLogisticsManager freightManager = FindUniqueSceneComponent<FreightLogisticsManager>(scene);
             WorkplaceComponent porterWorkplace = airlock != null ? airlock.GetComponent<WorkplaceComponent>() : null;
-            if (farm == null || cafeteria == null || airlock == null ||
-                farm.GetComponent<InventoryComponent>() == null ||
-                cafeteria.GetComponent<InventoryComponent>() == null ||
-                farm.GetComponent<InventoryComponent>() == cafeteria.GetComponent<InventoryComponent>() ||
-                !HasDepotPolicy(airlock, AssetDatabase.LoadAssetAtPath<ResourceDefinition>(FoodPath)) ||
-                dana == null || porter == null || fixtureWorkforce == null || porterWorkplace == null ||
-                !fixtureWorkforce.TryGetAssignment(dana, out WorkAssignment danaAssignment) ||
-                danaAssignment.Role != porter || danaAssignment.Workplace != porterWorkplace)
-            { Debug.LogError("P4b parity missing: separate Farm/Cafeteria inventories, Airlock Depot, or Dana's Airlock Porter assignment."); errors++; }
+            if (freightManager == null || porter == null || freightManager.RoutineCarrierRole != porter)
+            { Debug.LogError("Freight Logistics Manager needs the Porter routine carrier role."); errors++; }
+            if (farm == null || cafeteria == null || airlock == null)
+            { Debug.LogError("B1 requires Farm, Cafeteria, and Airlock prefab instances."); errors++; }
+            else
+            {
+                InventoryComponent farmInventory = farm.GetComponent<InventoryComponent>();
+                InventoryComponent cafeteriaInventory = cafeteria.GetComponent<InventoryComponent>();
+                if (farmInventory == null || cafeteriaInventory == null ||
+                    farmInventory == cafeteriaInventory)
+                { Debug.LogError("Farm and Cafeteria need separate inventories."); errors++; }
+                if (!HasDepotPolicy(airlock, AssetDatabase.LoadAssetAtPath<ResourceDefinition>(FoodPath)))
+                { Debug.LogError("Airlock needs a Food Depot stock policy."); errors++; }
+                if (dana == null || porter == null || fixtureWorkforce == null || porterWorkplace == null ||
+                    !fixtureWorkforce.TryGetAssignment(dana, out WorkAssignment danaAssignment) ||
+                    danaAssignment.Role != porter || danaAssignment.Workplace != porterWorkplace)
+                { Debug.LogError("Dana needs an Airlock Porter assignment."); errors++; }
+            }
 
             List<GameObject> shuttleBases = FindModules(scene, ShuttleBasePath);
             GameObject shuttleBase = shuttleBases.Count == 1 ? shuttleBases[0] : null;
@@ -224,7 +240,11 @@ namespace AsteroidColony.Editor
             { Debug.LogError("B1 requires exactly one Shuttle Base prefab instance."); errors++; }
             JobRoleDefinition pilot = AssetDatabase.LoadAssetAtPath<JobRoleDefinition>(PilotRolePath);
             if (shuttleBase == null || pilot == null)
-            { Debug.LogError("Shuttle Base prefab instance or Pilot role asset is missing."); return errors + 1; }
+            {
+                if (pilot == null)
+                { Debug.LogError("Pilot role asset is missing."); errors++; }
+                return errors;
+            }
 
             ShuttleBaseComponent fixture = shuttleBase.GetComponent<ShuttleBaseComponent>();
             DockingPortComponent port = shuttleBase.GetComponent<DockingPortComponent>();
@@ -350,11 +370,16 @@ namespace AsteroidColony.Editor
         private static List<GameObject> FindModules(Scene scene, string path)
         {
             List<GameObject> result = new List<GameObject>();
+            string expectedName = path == ShuttleBasePath
+                ? "Shuttle Base"
+                : System.IO.Path.GetFileNameWithoutExtension(path);
             GameObject[] roots = scene.GetRootGameObjects();
             for (int i = 0; i < roots.Length; i++)
             {
-                UnityEngine.Object source = PrefabUtility.GetCorrespondingObjectFromSource(roots[i]);
-                if (source != null && AssetDatabase.GetAssetPath(source) == path) result.Add(roots[i]);
+                // A prefab variant can resolve through its base Airlock source in
+                // the loaded scene. The fixture names distinguish the two roots.
+                if (roots[i].name == expectedName)
+                    result.Add(roots[i]);
             }
             return result;
         }

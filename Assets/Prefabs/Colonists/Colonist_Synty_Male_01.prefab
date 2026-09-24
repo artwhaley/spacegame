@@ -62,7 +62,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 5b983c2596991de409fe71f9a65d16ea, type: 2}
+  - {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -109,7 +109,7 @@ MonoBehaviour:
   m_text: Colonist
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_sharedMaterial: {fileID: 2100000, guid: 5b983c2596991de409fe71f9a65d16ea, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -211,7 +211,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 6793879462645269019}
-  - {fileID: 2050100021}
+  - {fileID: 4238126976729808}
   m_Father: {fileID: 225659229795217207}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &7139497906746169694
@@ -265,10 +265,65 @@ MonoBehaviour:
   nameText: {fileID: 5888246101396275489}
   iconStack: {fileID: 8281719990807253752}
   sleepyIcon: {fileID: 6799869122472827157}
-  hungryIcon: {fileID: 2050100022}
+  hungryIcon: {fileID: 1056325761979298}
   identity: {fileID: 7346298053187492011}
   iconSpacing: 1.15
   billboardYawOffset: 180
+--- !u!1001 &2050100020
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 8281719990807253752}
+    m_Modifications:
+    - target: {fileID: 1056327811815574, guid: f60777c8546d694459752693b4143363, type: 3}
+      propertyPath: m_Name
+      value: HungryFood
+      objectReference: {fileID: 0}
+    - target: {fileID: 1056327811815574, guid: f60777c8546d694459752693b4143363, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1.35
+      objectReference: {fileID: 0}
+    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1.35
+      objectReference: {fileID: 0}
+    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1.35
+      objectReference: {fileID: 0}
+    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: f60777c8546d694459752693b4143363, type: 3}
+--- !u!1 &1056325761979298 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1056327811815574, guid: f60777c8546d694459752693b4143363, type: 3}
+  m_PrefabInstance: {fileID: 2050100020}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &4238126976729808 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
+  m_PrefabInstance: {fileID: 2050100020}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &3999253086043534063
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -366,6 +421,18 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
       insertIndex: -1
       addedObject: {fileID: 7166048830011223344}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 175859802070953831}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1535953592696572924}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1757216672368404924}
+    - targetCorrespondingSourceObject: {fileID: 1832574453826720, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5676640352266550684}
   m_SourcePrefab: {fileID: 100100000, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
 --- !u!1 &4001080797252171343 stripped
 GameObject:
@@ -388,6 +455,7 @@ MonoBehaviour:
   baselineFatiguePerGameHour: 5
   preferredWorkStartFatigue: 30
   activityRunner: {fileID: 0}
+  identity: {fileID: 0}
   sleepyThreshold: 70
   restPreferredThreshold: 60
   exhaustionThreshold: 100
@@ -396,6 +464,12 @@ MonoBehaviour:
   hungryThreshold: 80
   starvationThreshold: 100
   criticalHungerThreshold: 90
+  stimulationNeed: 0
+  baselineStimulationNeedPerGameHour: 4
+  stimulationNeedThreshold: 50
+  relaxationNeed: 0
+  baselineRelaxationNeedPerGameHour: 4
+  relaxationNeedThreshold: 50
 --- !u!114 &7346298053187492011
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -545,6 +619,66 @@ MonoBehaviour:
   targetResolver: {fileID: 8166048830011223344}
   activityRunner: {fileID: 4038971582978430938}
   state: 0
+--- !u!114 &175859802070953831
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d4e5f60718293a4b5c6d7e8f90a1b2c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.InventoryComponent
+  entries: []
+--- !u!114 &1535953592696572924
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d5dcd755d8245d78c27ec15fa913355, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.PersonnelRouteRunner
+  routingManager: {fileID: 0}
+  person: {fileID: 7346298053187492011}
+  motor: {fileID: 1815059633108685950}
+  activityRunner: {fileID: 4038971582978430938}
+--- !u!114 &1757216672368404924
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d016d42a846b481b90462aa3c40783a5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WalkingFreightRunner
+--- !u!114 &5676640352266550684
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4001080797252171343}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f580cabcd3984e9dbc0c97a784b6d004, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WalkingFreightCarrierComponent
+  maximumCargoQuantity: 10
+  identity: {fileID: 7346298053187492011}
+  brain: {fileID: 7166048830011223344}
+  routeRunner: {fileID: 1535953592696572924}
+  activityRunner: {fileID: 4038971582978430938}
+  cargoInventory: {fileID: 175859802070953831}
+  runner: {fileID: 1757216672368404924}
 --- !u!4 &4003293624538555137 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4148635591152110, guid: 788b00144675db14ab99aaf2c6e9b1d8, type: 3}
@@ -619,7 +753,7 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 23564007167012292, guid: 88964515302c91e42b79ad2301be34da, type: 3}
-      propertyPath: m_Materials.Array.data[0]
+      propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: c1b99885260495d478b61f83707892cd, type: 2}
     m_RemovedComponents: []
@@ -627,61 +761,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 88964515302c91e42b79ad2301be34da, type: 3}
---- !u!1001 &2050100020
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 8281719990807253752}
-    m_Modifications:
-    - target: {fileID: 1056327811815574, guid: f60777c8546d694459752693b4143363, type: 3}
-      propertyPath: m_Name
-      value: HungryFood
-      objectReference: {fileID: 0}
-    - target: {fileID: 1056327811815574, guid: f60777c8546d694459752693b4143363, type: 3}
-      propertyPath: m_IsActive
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
-      propertyPath: m_LocalScale.x
-      value: 1.35
-      objectReference: {fileID: 0}
-    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
-      propertyPath: m_LocalScale.y
-      value: 1.35
-      objectReference: {fileID: 0}
-    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
-      propertyPath: m_LocalScale.z
-      value: 1.35
-      objectReference: {fileID: 0}
-    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 0
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: f60777c8546d694459752693b4143363, type: 3}
---- !u!4 &2050100021 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 4238126335920612, guid: f60777c8546d694459752693b4143363, type: 3}
-  m_PrefabInstance: {fileID: 2050100020}
-  m_PrefabAsset: {fileID: 0}
---- !u!1 &2050100022 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 1056327811815574, guid: f60777c8546d694459752693b4143363, type: 3}
-  m_PrefabInstance: {fileID: 2050100020}
-  m_PrefabAsset: {fileID: 0}
 --- !u!4 &6793879462645269019 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4963868749096710, guid: 88964515302c91e42b79ad2301be34da, type: 3}

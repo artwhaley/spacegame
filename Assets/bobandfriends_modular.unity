@@ -351,6 +351,66 @@ MonoBehaviour:
       data1: 0
       data2: 0
   defaultFrameSettings: 0
+--- !u!1 &148861795
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 148861798}
+  - component: {fileID: 148861797}
+  - component: {fileID: 148861796}
+  m_Layer: 0
+  m_Name: PersonnelRoutingManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &148861796
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 148861795}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31f99242748b42dc949e766ab209c298, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.PedestrianRouteProvider
+  destinationSampleDistance: 1
+  areaMask: -1
+--- !u!114 &148861797
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 148861795}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a8d3f72149c4b06bf52e6da71830c94, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.PersonnelRoutingManager
+  pedestrianProvider: {fileID: 148861796}
+--- !u!4 &148861798
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 148861795}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &199693475
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -713,6 +773,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a4568e5ffb644ea1b3a550f1eb21cbbd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.FreightLogisticsManager
+  routineCarrierRole: {fileID: 11400000, guid: e3ffbd76b7b0c934194fe7094ce6bc6d, type: 2}
 --- !u!4 &270411373
 Transform:
   m_ObjectHideFlags: 0
@@ -861,11 +922,6 @@ MonoBehaviour:
     cooldownKey: relax
     stimulationRecoveryPerGameHour: 0
     relaxationRecoveryPerGameHour: 60
---- !u!1 &515504053 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 4001080797252171343, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-  m_PrefabInstance: {fileID: 2111000080}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &961555875
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -981,106 +1037,17 @@ MonoBehaviour:
   - role: {fileID: 11400000, guid: 91d7a4c2e6b84f50a3c9d12e7f6548ab, type: 2}
     activityId: Command01
     maximumConcurrentScheduledWorkers: 1
---- !u!1 &1236100407 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 4001080797252171343, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-  m_PrefabInstance: {fileID: 2111000084}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &1236100408 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 7166048830011223344, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-  m_PrefabInstance: {fileID: 2111000084}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1236100407}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b4d2f6a89c70417db3e18c650e4a2f91, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistBrain
---- !u!114 &1236100411 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 4038971582978430938, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-  m_PrefabInstance: {fileID: 2111000084}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1236100407}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c95a31e7f2b8490a8d6e4c1b3f507928, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Colony.Interactions.Runtime::Colony.Interactions.ColonistActivityRunner
---- !u!114 &1236100413 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 1815059633108685950, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-  m_PrefabInstance: {fileID: 2111000084}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1236100407}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0e18ead18f624053b414b086f36d5250, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Colony.Interactions.Runtime::Colony.Interactions.ColonistMotor
 --- !u!114 &1236100416 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 7346298053187492011, guid: b6849b056c7b4474d93989bff971e110, type: 3}
   m_PrefabInstance: {fileID: 2111000084}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1236100407}
+  m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f3a1c9d74e2b4a6d8f0c1b5e7a9d3f21, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistIdentity
---- !u!114 &1236100420
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1236100407}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f580cabcd3984e9dbc0c97a784b6d004, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WalkingFreightCarrierComponent
-  maximumCargoQuantity: 10
-  emergencyOnly: 0
-  emergencyWorkplace: {fileID: 0}
-  identity: {fileID: 1236100416}
-  brain: {fileID: 1236100408}
-  motor: {fileID: 1236100413}
-  activityRunner: {fileID: 1236100411}
-  cargoInventory: {fileID: 1236100422}
-  runner: {fileID: 1236100421}
---- !u!114 &1236100421
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1236100407}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d016d42a846b481b90462aa3c40783a5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WalkingFreightRunner
---- !u!114 &1236100422
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1236100407}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9d4e5f60718293a4b5c6d7e8f90a1b2c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.InventoryComponent
-  entries:
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
-    onHand: 0
-    reserved: 0
-    capacity: 10
-    available: 0
 --- !u!4 &1276005178 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7298145208926353513, guid: e8aad2cf6fe3f864db0c2b4f98ca68db, type: 3}
@@ -1348,7 +1315,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.SimulationManager
   paused: 0
-  speedMultiplier: 673
+  speedMultiplier: 1
   gameHoursPerRealSecond: 0.1
   tickIntervalSeconds: 0.1
   logicalStepSimulationSeconds: 1
@@ -1855,18 +1822,18 @@ MonoBehaviour:
     shift:
       startHour: 8
       endHour: 20
-  - colonist: {fileID: 2111000083}
-    workplace: {fileID: 961555878}
-    role: {fileID: 11400000, guid: 91d7a4c2e6b84f50a3c9d12e7f6548ab, type: 2}
-    shift:
-      startHour: 8
-      endHour: 16
   - colonist: {fileID: 1236100416}
     workplace: {fileID: 1819248629}
     role: {fileID: 11400000, guid: e3ffbd76b7b0c934194fe7094ce6bc6d, type: 2}
     shift:
       startHour: 8
       endHour: 20
+  - colonist: {fileID: 2111000083}
+    workplace: {fileID: 4538411780452280624}
+    role: {fileID: 11400000, guid: a1542d353c2f0a1499ec39b6af0872e0, type: 2}
+    shift:
+      startHour: 8
+      endHour: 16
 --- !u!1 &2050100014
 GameObject:
   m_ObjectHideFlags: 0
@@ -2117,15 +2084,6 @@ PrefabInstance:
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 4001080797252171343, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 2111000098}
-    - targetCorrespondingSourceObject: {fileID: 4001080797252171343, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 2111000097}
-    - targetCorrespondingSourceObject: {fileID: 4001080797252171343, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 2111000096}
     - targetCorrespondingSourceObject: {fileID: 1085912792469371884, guid: b6849b056c7b4474d93989bff971e110, type: 3}
       insertIndex: -1
       addedObject: {fileID: 0}
@@ -2135,7 +2093,7 @@ MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 7346298053187492011, guid: b6849b056c7b4474d93989bff971e110, type: 3}
   m_PrefabInstance: {fileID: 2111000080}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 515504053}
+  m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f3a1c9d74e2b4a6d8f0c1b5e7a9d3f21, type: 3}
@@ -2372,103 +2330,10 @@ PrefabInstance:
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 4001080797252171343, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1236100422}
-    - targetCorrespondingSourceObject: {fileID: 4001080797252171343, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1236100421}
-    - targetCorrespondingSourceObject: {fileID: 4001080797252171343, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1236100420}
     - targetCorrespondingSourceObject: {fileID: 1085912792469371884, guid: b6849b056c7b4474d93989bff971e110, type: 3}
       insertIndex: -1
       addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: b6849b056c7b4474d93989bff971e110, type: 3}
---- !u!114 &2111000085 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 7166048830011223344, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-  m_PrefabInstance: {fileID: 2111000080}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 515504053}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b4d2f6a89c70417db3e18c650e4a2f91, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.ColonistBrain
---- !u!114 &2111000088 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 4038971582978430938, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-  m_PrefabInstance: {fileID: 2111000080}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 515504053}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c95a31e7f2b8490a8d6e4c1b3f507928, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Colony.Interactions.Runtime::Colony.Interactions.ColonistActivityRunner
---- !u!114 &2111000090 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 1815059633108685950, guid: b6849b056c7b4474d93989bff971e110, type: 3}
-  m_PrefabInstance: {fileID: 2111000080}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 515504053}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0e18ead18f624053b414b086f36d5250, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Colony.Interactions.Runtime::Colony.Interactions.ColonistMotor
---- !u!114 &2111000096
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 515504053}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f580cabcd3984e9dbc0c97a784b6d004, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WalkingFreightCarrierComponent
-  maximumCargoQuantity: 5
-  emergencyOnly: 1
-  emergencyWorkplace: {fileID: 2046073004}
-  identity: {fileID: 2111000081}
-  brain: {fileID: 2111000085}
-  motor: {fileID: 2111000090}
-  activityRunner: {fileID: 2111000088}
-  cargoInventory: {fileID: 2111000098}
-  runner: {fileID: 2111000097}
---- !u!114 &2111000097
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 515504053}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d016d42a846b481b90462aa3c40783a5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WalkingFreightRunner
---- !u!114 &2111000098
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 515504053}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9d4e5f60718293a4b5c6d7e8f90a1b2c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.InventoryComponent
-  entries:
-  - resource: {fileID: 11400000, guid: c738495a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
-    onHand: 0
-    reserved: 0
-    capacity: 5
-    available: 0
 --- !u!1 &2200000001
 GameObject:
   m_ObjectHideFlags: 0
@@ -2583,6 +2448,74 @@ MonoBehaviour:
   zoomSpeed: 18
   zoomSmoothTime: 0.12
   recenterSmoothTime: 0.25
+--- !u!1001 &4538411780452280623
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 346509903400738588, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_Name
+      value: Shuttle Base
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 2.260985
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.014773369
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 61.491
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0.00000017881393
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8987088955100322803, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+--- !u!114 &4538411780452280624 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 2366185078097253090, guid: 8a5b4f94f40ddc24a80439912cf3bbea, type: 3}
+  m_PrefabInstance: {fileID: 4538411780452280623}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f067128934012345f067128934012345, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ColonyPrototype.Runtime::AsteroidColony.WorkplaceComponent
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -2606,3 +2539,5 @@ SceneRoots:
   - {fileID: 1597968810}
   - {fileID: 1819248626}
   - {fileID: 270411373}
+  - {fileID: 4538411780452280623}
+  - {fileID: 148861798}
