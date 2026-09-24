@@ -272,9 +272,9 @@ namespace AsteroidColony
                         Add(row, "resource", job.Resource != null ? job.Resource.name : string.Empty);
                         Add(row, "quantity", F(job.Quantity));
                         Add(row, "pickedUp", job.HasPickedUp.ToString());
-                        Add(row, "provider", job.WalkingExecution != null &&
-                            job.WalkingExecution.Service != null
-                                ? job.WalkingExecution.Service.name : string.Empty);
+                        Add(row, "provider", job.ActiveLegExecution != null &&
+                            job.ActiveLegExecution.ProviderContext != null
+                                ? job.ActiveLegExecution.ProviderContext.name : string.Empty);
                         Add(row, "source", job.Source != null ? job.Source.name : string.Empty);
                         Add(row, "destination", job.Destination != null ? job.Destination.name : string.Empty);
                         Add(row, "emergency", job.IsEmergencyWork.ToString());

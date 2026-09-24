@@ -35,6 +35,25 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void FreightJobOwnsAnActiveGenericLegExecution()
+        {
+            Assert.That(typeof(FreightDeliveryJob).GetProperty("WalkingExecution"), Is.Null);
+            PropertyInfo execution = typeof(FreightDeliveryJob).GetProperty("ActiveLegExecution");
+            PropertyInfo legIndex = typeof(FreightDeliveryJob).GetProperty("CurrentLegIndex");
+            PropertyInfo currentLeg = typeof(FreightDeliveryJob).GetProperty("CurrentLeg");
+            Assert.That(execution, Is.Not.Null);
+            Assert.That(legIndex, Is.Not.Null);
+            Assert.That(currentLeg, Is.Not.Null);
+            Assert.That(execution.PropertyType,
+                Is.EqualTo(typeof(IFreightLegExecution)));
+            Assert.That(legIndex.PropertyType, Is.EqualTo(typeof(int)));
+            Assert.That(currentLeg.PropertyType,
+                Is.EqualTo(typeof(LogisticsRouteLeg)));
+            Assert.That(typeof(WalkingFreightExecution).GetInterfaces(),
+                Does.Contain(typeof(IFreightLegExecution)));
+        }
+
+        [Test]
         public void FreightLogisticsManagerApiDoesNotBindAColonistWorker()
         {
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static |

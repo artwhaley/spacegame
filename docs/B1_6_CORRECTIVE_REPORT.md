@@ -44,7 +44,13 @@ Added focused inventory tests for mixed legacy/owned double-allocation preventio
 
 Verification note: the focused EditMode tests were not executed in this turn. `dotnet test ColonyPrototype.Tests.csproj --no-restore --filter FullyQualifiedName~InventoryComponentTests` could not start because the sandbox denied access to `C:\Users\artwh\AppData\Local\Microsoft SDKs`. Unity Editor processes are already running, so I did not launch a second editor in batch mode. Manual Play Mode acceptance remains with the user.
 
+## B1.6-T03 — Generic Freight Leg Execution
+
+`FreightDeliveryJob` now stores an `IFreightLegExecution`, `CurrentLegIndex`, and derived `CurrentLeg`; it no longer exposes a walking-typed execution field. The job's cargo inventory, emergency classification, provider context, and completion callback now come through that seam. The current walking execution implements the contract, while candidate discovery and assignment remain owned by `WalkingFreightWorkService`.
+
+Split `FreightWorkQuote`, `WalkingFreightWorkService`, and `WalkingFreightExecution` into separate source files, preserving the existing Unity script metadata for the `WalkingFreightWorkService` component. The supply debug snapshot reads the generic provider context. Added an architecture assertion that jobs depend on the generic execution contract and identify their current route leg.
+
 ## Ticket Progress
 
-Completed: T00, T01, T02.
-Remaining: T03–T07.
+Completed: T00, T01, T02, T03.
+Remaining: T04–T07.

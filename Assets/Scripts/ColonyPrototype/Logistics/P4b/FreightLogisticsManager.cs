@@ -46,21 +46,30 @@ namespace AsteroidColony
     public sealed class FreightDeliveryJob
     {
         internal FreightDeliveryJob(FreightAllocation allocation,
-            WalkingFreightExecution walkingExecution, InventoryReservationToken reservation)
+            IFreightLegExecution activeLegExecution, InventoryReservationToken reservation)
         {
-            if (allocation == null || walkingExecution == null || reservation == null)
+            if (allocation == null || activeLegExecution == null || reservation == null)
                 throw new ArgumentNullException(
-                    "A walking freight job requires an allocation, execution, and source reservation.");
+                    "A freight job requires an allocation, leg execution, and source reservation.");
 
             Allocation = allocation;
-            WalkingExecution = walkingExecution;
+            ActiveLegExecution = activeLegExecution;
             Reservation = reservation;
+            CurrentLegIndex = activeLegExecution.LegIndex;
+            if (CurrentLegIndex < 0 || CurrentLegIndex >= allocation.RoutePlan.Legs.Count)
+                throw new ArgumentOutOfRangeException(nameof(activeLegExecution),
+                    "The active execution must reference a leg in the allocation route.");
             State = FreightJobState.Assigned;
         }
 
         public FreightAllocation Allocation { get; }
-        public WalkingFreightExecution WalkingExecution { get; }
+        public IFreightLegExecution ActiveLegExecution { get; internal set; }
         public LogisticsRoutePlan RoutePlan => Allocation.RoutePlan;
+        public int CurrentLegIndex { get; internal set; }
+        public LogisticsRouteLeg CurrentLeg => CurrentLegIndex >= 0 &&
+            CurrentLegIndex < RoutePlan.Legs.Count ? RoutePlan.Legs[CurrentLegIndex] : null;
+        public InventoryComponent CargoInventory => ActiveLegExecution != null
+            ? ActiveLegExecution.CargoInventory : null;
         public string Id => Allocation.Id;
         public FreightOrder Order => Allocation.Order;
         public ResourceDefinition Resource => Allocation.Resource;
@@ -68,7 +77,7 @@ namespace AsteroidColony
         public LogisticsStockComponent Destination => Allocation.FinalDestination;
         public InventoryReservationToken Reservation { get; }
         public float Quantity { get => Allocation.Quantity; internal set => Allocation.Quantity = value; }
-        public bool IsEmergencyWork => WalkingExecution.IsEmergency;
+        public bool IsEmergencyWork => ActiveLegExecution != null && ActiveLegExecution.IsEmergency;
         public FreightJobState State { get; internal set; }
         public bool HasPickedUp { get; internal set; }
         public bool IsTerminal => State == FreightJobState.Completed || State == FreightJobState.Cancelled;
@@ -181,7 +190,7 @@ namespace AsteroidColony
             job.State = state;
             Log(state == FreightJobState.Blocked ? "logistics.job_blocked" : "logistics.job_state_changed",
                 state == FreightJobState.Blocked ? "Warning" : "Info",
-                job.WalkingExecution.Service, job.Destination,
+                job.ActiveLegExecution.ProviderContext, job.Destination,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Allocation.Id),
                 new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
@@ -189,7 +198,7 @@ namespace AsteroidColony
                 new SimulationLogField("reason", reason ?? string.Empty),
                 new SimulationLogField("quantity", job.Quantity),
                 new SimulationLogField("routeDistance", job.RoutePlan.TotalEstimatedLoadedDistance),
-                new SimulationLogField("positioningDistance", job.WalkingExecution.PositioningDistance),
+                new SimulationLogField("positioningDistance", job.ActiveLegExecution.PositioningDistance),
                 new SimulationLogField("freightLeg", state == FreightJobState.TravelingToPickup ||
                     state == FreightJobState.PickingUp ? "pickup" :
                     state == FreightJobState.TravelingToDropoff || state == FreightJobState.DroppingOff
@@ -221,7 +230,7 @@ namespace AsteroidColony
             }
 
             job.State = FreightJobState.PickingUp;
-            InventoryComponent cargoInventory = job.WalkingExecution.CargoInventory;
+            InventoryComponent cargoInventory = job.CargoInventory;
             if (cargoInventory == null)
             {
                 CancelBeforePickup(job, "worker_inventory_missing");
@@ -241,7 +250,7 @@ namespace AsteroidColony
             order.Committed = Mathf.Max(0f, order.Committed - reduced);
             job.Quantity = moved;
             job.HasPickedUp = true;
-            Log("logistics.pickup_completed", "Info", job.WalkingExecution.Service, job.Source,
+            Log("logistics.pickup_completed", "Info", job.ActiveLegExecution.ProviderContext, job.Source,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Id),
                 new SimulationLogField("resource", job.Resource.name),
@@ -254,7 +263,7 @@ namespace AsteroidColony
         {
             if (!IsKnown(job) || !job.HasPickedUp || job.IsTerminal ||
                 job.Destination == null || job.Destination.Inventory == null ||
-                job.WalkingExecution.CargoInventory == null)
+                job.CargoInventory == null)
             {
                 BlockJob(job, "destination_or_carrier_unavailable");
                 return false;
@@ -269,7 +278,7 @@ namespace AsteroidColony
             }
 
             job.State = FreightJobState.DroppingOff;
-            float moved = job.WalkingExecution.CargoInventory.TransferAvailableTo(
+            float moved = job.CargoInventory.TransferAvailableTo(
                 job.Destination.Inventory,
                 job.Resource,
                 requestedTransfer);
@@ -282,7 +291,7 @@ namespace AsteroidColony
             job.Quantity = Mathf.Max(0f, job.Quantity - moved);
             job.Order.Committed = Mathf.Max(0f, job.Order.Committed - moved);
             job.Order.Delivered += moved;
-            Log("logistics.delivery_completed", "Info", job.WalkingExecution.Service, job.Destination,
+            Log("logistics.delivery_completed", "Info", job.ActiveLegExecution.ProviderContext, job.Destination,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Id),
                 new SimulationLogField("resource", job.Resource.name),
@@ -310,7 +319,7 @@ namespace AsteroidColony
             if (job.Order != null)
                 job.Order.Committed = Mathf.Max(0f, job.Order.Committed - job.Quantity);
             job.State = FreightJobState.Cancelled;
-            Log("logistics.job_cancelled", "Warning", job.WalkingExecution.Service, job.Destination,
+            Log("logistics.job_cancelled", "Warning", job.ActiveLegExecution.ProviderContext, job.Destination,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
                 new SimulationLogField("reason", reason ?? string.Empty),
@@ -611,8 +620,8 @@ namespace AsteroidColony
 
         private void FinishExecution(FreightDeliveryJob job)
         {
-            if (job != null && job.WalkingExecution != null)
-                job.WalkingExecution.Complete(job);
+            if (job != null && job.ActiveLegExecution != null)
+                job.ActiveLegExecution.Complete(job);
         }
 
         private bool IsKnown(FreightDeliveryJob job) => job != null && jobs.Contains(job);
