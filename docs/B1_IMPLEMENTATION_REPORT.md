@@ -6,7 +6,7 @@ B1 work began at `b13b43e5d24a7d46a5e1d9cd5106520ad3f18109`; T00 and T01 were al
 
 Packet baseline: `2d8523c3f40edaeaa57d5d57296f951d851ce209`
 
-The checkout was clean when B1 began. The actual starting HEAD is newer than the packet-authoring baseline and includes Sprint A/A2 shuttle-flight work.
+The original B1 work began from the packet baseline and T00/T01 preceded this execution. At this execution's resume HEAD, the working tree contained a partial T02 implementation and a material edit; additional scene/Synty asset edits appeared during execution. Those unrelated working-tree changes were preserved and excluded from the B1 commits.
 
 ## Current Personnel Routing Ownership
 
@@ -166,7 +166,7 @@ Verification: Source review, direct dependency search, and `git diff --check` on
 
 ### B1-T04
 
-Commit: pending
+Commit: `75f44122` (`B1-T04 execute freight legs through personnel routing`)
 
 Files:
 
@@ -182,3 +182,107 @@ Changes:
 - Source review confirms no direct `ColonistMotor.MoveTo` or NavMesh API remains in the P4b manager/runner/carrier.
 
 Verification: Source review and `git diff --check` only. No compile, automated test, or Unity run was performed. Dana/Alice physical movement and inventory custody remain pending in Play Mode.
+
+### B1-T05
+
+Commit: `ec0634e8` (`B1-T05/T06 add Shuttle Base fixture authoring`)
+
+Files:
+
+- `Assets/Scripts/ColonyPrototype/Vehicles/Flight/ShuttleBaseComponent.cs`
+- `Assets/Prefabs/ShuttleBase.prefab` (created by the B1 Configure menu as an Airlock prefab variant)
+- `Assets/GameData/Jobs/Pilot.asset` (created by the B1 Configure menu)
+- `Assets/Editor/Logistics/B1ModularSceneAuthoring.cs`
+
+Changes:
+
+- Added a small `ShuttleBaseComponent` that references only its docking port, Pilot workplace, Depot inventory/stock policy, and duty anchor. It has no fleet scheduling or mission authority.
+- The editor Configure command creates a semantic Shuttle Base prefab variant from Airlock geometry, preserves the Airlock's authored docking-node transforms, wires `nodeDocking`, `nodeApproach`, and `nodeClearance`, then applies component/binding overrides to the variant asset for reuse.
+- Shuttle Base receives an empty Food Depot inventory, `LogisticsStockComponent`, and a Pilot `MobileDuty` workplace with one slot. It does not provision stock.
+- Charlie is reassigned from his existing assignment to Pilot while preserving his configured shift window. No home, current-location, ship attachment, or mission prerequisite was introduced.
+
+Verification: Source review and `git diff --check` only. Unity prefab/scene authoring was not executed in this environment, and Charlie's actual on-duty behavior remains pending the user's Play Mode acceptance.
+
+### B1-T06
+
+Commit: `ec0634e8` (`B1-T05/T06 add Shuttle Base fixture authoring`)
+
+Files:
+
+- `Assets/Editor/Logistics/B1ModularSceneAuthoring.cs`
+- `Assets/Editor/Logistics/B1ModularSceneAuthoring.cs.meta`
+
+Changes:
+
+- Added `Colony/Logistics/B1/Configure Modular Fixture` and `Colony/Logistics/B1/Validate Modular Fixture` for `Assets/bobandfriends_modular.unity`.
+- Configuration calls the existing P4b authoring first, then creates/reuses the Shuttle Base, ensures one PersonnelRoutingManager with one PedestrianRouteProvider, retains the single FreightLogisticsManager, adds one PersonnelRouteRunner per scene colonist, and assigns Charlie to Pilot.
+- Configuration is repeatable: it reuses the role, prefab instance, managers, and components; rejects duplicate managers/modules; and does not move or transfer existing stock.
+- Validation covers routing/freight manager cardinality, colonist route runners, Charlie Pilot/no Command assignment, Shuttle Base docking/workplace/Depot wiring, the separate Farm/Cafeteria inventories, Airlock Depot policy, and Dana's Porter assignment.
+
+Verification: Source review and `git diff --check` only. The menu has not been run in Unity; run Configure once, then Validate before Play Mode.
+
+### B1-T07
+
+Commit: `ec0634e8` (`B1-T05/T06 add Shuttle Base fixture authoring`)
+
+Tests:
+
+- No new broad integration/source-structure suite was added. Scene authoring, NavMesh travel, physical cargo custody, and gameplay parity are human acceptance under `TESTING_IN_EXPLORATION_MODE.md`.
+- The earlier T01 route-owner tests and T03 quantity-first ranking test remain in the repository. No Unity Test Runner, compile, automated tests, or gameplay run was started in this execution, per the project's manual acceptance workflow.
+- Follow the packet's manual runbook in Unity after B1 Configure/Validate: Bob Work; Alice Cafeteria Work and emergency excursion; Charlie Pilot; Dana Porter; quantity-first ranking; Food/Sleep/OffDuty; unreachable route; pre-pickup and post-pickup freight failures. Observe `PersonnelRouteRunner` and freight diagnostics and verify custody at each transfer.
+
+## Final Architecture
+
+### Personnel Routing
+
+- Planner: `PersonnelRoutingManager`.
+- Pedestrian estimator: `PedestrianRouteProvider`.
+- Executor: per-colonist `PersonnelRouteRunner`, which drives the existing `ColonistMotor` for a planned Walk leg.
+- Migrated callers: ActivityRunner approaches (Work/Food/Sleep/OffDuty and sequences), MobileDuty work, walking freight pickup/dropoff, and Porter return-to-duty.
+
+### Logistics
+
+- Demand/allocation authority: `FreightLogisticsManager`.
+- Allocation/route data: `FreightAllocation`, `LogisticsRoutePlan`, and `WalkingCarrier` legs.
+- Walking executor: `WalkingFreightRunner` through the carrier's `PersonnelRouteRunner`.
+- Freight manager no longer calculates NavMesh paths; its two walking estimates come from Personnel Routing.
+
+### Character Fixture
+
+- Bob remains on his Farm assignment; physical Play acceptance pending.
+- Alice remains on her Cafeteria assignment and retains the emergency-carrier path; physical Play acceptance pending.
+- Charlie is authored by the B1 menu as Pilot at Shuttle Base with the previous shift preserved; physical Play acceptance pending.
+- Dana remains Porter at the Airlock; physical Play acceptance pending.
+
+### Shuttle Base
+
+- Prefab: `Assets/Prefabs/ShuttleBase.prefab`, generated by the editor Configure command as an Airlock prefab variant.
+- Pilot workplace: one-slot MobileDuty using `Assets/GameData/Jobs/Pilot.asset`.
+- Depot: empty local inventory and Depot stock policy.
+- Future seams: docking and duty anchor references are available; no shuttle mission, passenger route, ShuttleManager, or fleet scheduler exists.
+
+### Legacy Debt
+
+- The legacy `LogisticsManager`, `ContractManager`, and `TransportExecutor` remain for unrelated older fixtures; B1 uses the modern FreightLogisticsManager.
+- Older ship crew/staffing paths remain untouched. The B1 slice uses WorkforceManager for Charlie's employment.
+
+## Manual Acceptance Status
+
+All rows are **NOT RUN** in this execution. Per `TESTING_IN_EXPLORATION_MODE.md`, the owner must press Play and observe scene/NavMesh behavior.
+
+| Packet check | Status |
+|---|---|
+| Configure and Validate modular scene | NOT RUN |
+| Bob Work | NOT RUN |
+| Alice Cafeteria Work / emergency freight | NOT RUN |
+| Charlie Pilot | NOT RUN |
+| Dana Porter and custody | NOT RUN |
+| Quantity-first source choice | NOT RUN |
+| Food / Sleep / OffDuty parity | NOT RUN |
+| Unreachable route | NOT RUN |
+| Freight failure before pickup | NOT RUN |
+| Freight failure after pickup | NOT RUN |
+
+## Final Result
+
+**B1 implementation is authored in code; manual acceptance remains pending.** The Shuttle Base prefab variant and scene fixture are created when the user runs `Colony/Logistics/B1/Configure Modular Fixture` in Unity. Run `Colony/Logistics/B1/Validate Modular Fixture`, then perform the packet's Play Mode runbook. B1 cannot be marked behaviorally passed until those observations are reported.
