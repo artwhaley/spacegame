@@ -22,6 +22,15 @@ namespace AsteroidColony.Tests
         }
 
         [Test]
+        public void FreightLogisticsUsesWorkplaceServiceBoundary()
+        {
+            Assert.That(typeof(FreightLogisticsManager).GetProperty("RoutineCarrierRole"), Is.Null);
+            Assert.That(typeof(WalkingFreightWorkService).GetProperty("Active"), Is.Not.Null);
+            Assert.That(typeof(FreightWorkQuote).GetProperty("Provider"), Is.Not.Null);
+            Assert.That(typeof(WalkingFreightExecution).GetProperty("Worker"), Is.Null);
+        }
+
+        [Test]
         public void ColonistBrainDoesNotExposeFreightExcursionPolicy()
         {
             var brainType = typeof(ColonistBrain);

@@ -86,8 +86,6 @@ namespace AsteroidColony
         private static long nextOrderId;
         private static long nextJobId;
 
-        [SerializeField] private JobRoleDefinition routineCarrierRole;
-
         [NonSerialized] private readonly List<FreightOrder> orders = new List<FreightOrder>();
         [NonSerialized] private readonly List<FreightDeliveryJob> jobs = new List<FreightDeliveryJob>();
 
@@ -95,13 +93,6 @@ namespace AsteroidColony
         public IReadOnlyList<FreightOrder> Orders => orders;
         public IReadOnlyList<FreightDeliveryJob> Jobs => jobs;
         public int SimulationTickPriority => 310;
-
-        public JobRoleDefinition RoutineCarrierRole => routineCarrierRole;
-
-        public void ConfigureRoutineCarrierRole(JobRoleDefinition role)
-        {
-            routineCarrierRole = role;
-        }
 
         private void Awake()
         {
@@ -190,7 +181,7 @@ namespace AsteroidColony
             job.State = state;
             Log(state == FreightJobState.Blocked ? "logistics.job_blocked" : "logistics.job_state_changed",
                 state == FreightJobState.Blocked ? "Warning" : "Info",
-                job.WalkingExecution.Worker, job.Destination,
+                job.WalkingExecution.Service, job.Destination,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Allocation.Id),
                 new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
@@ -230,15 +221,15 @@ namespace AsteroidColony
             }
 
             job.State = FreightJobState.PickingUp;
-            WalkingFreightCarrierComponent worker = job.WalkingExecution.Worker;
-            if (worker == null || worker.CargoInventory == null)
+            InventoryComponent cargoInventory = job.WalkingExecution.CargoInventory;
+            if (cargoInventory == null)
             {
                 CancelBeforePickup(job, "worker_inventory_missing");
                 return false;
             }
             float moved = job.Source.Inventory.TransferOwnedTo(
                 job.Reservation,
-                worker.CargoInventory,
+                cargoInventory,
                 job.Quantity);
             if (moved <= QuantityEpsilon)
             {
@@ -250,10 +241,9 @@ namespace AsteroidColony
             order.Committed = Mathf.Max(0f, order.Committed - reduced);
             job.Quantity = moved;
             job.HasPickedUp = true;
-            if (job.IsEmergencyExcursion && worker.Brain != null)
-                worker.Brain.SetWorkExcursionCargo(true);
+            job.WalkingExecution.MarkCargoLoaded();
 
-            Log("logistics.pickup_completed", "Info", worker, job.Source,
+            Log("logistics.pickup_completed", "Info", job.WalkingExecution.Service, job.Source,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Id),
                 new SimulationLogField("resource", job.Resource.name),
@@ -264,12 +254,9 @@ namespace AsteroidColony
 
         public bool TryDeliver(FreightDeliveryJob job)
         {
-            WalkingFreightCarrierComponent worker = job != null && job.WalkingExecution != null
-                ? job.WalkingExecution.Worker
-                : null;
             if (!IsKnown(job) || !job.HasPickedUp || job.IsTerminal ||
                 job.Destination == null || job.Destination.Inventory == null ||
-                worker == null || worker.CargoInventory == null)
+                job.WalkingExecution.CargoInventory == null)
             {
                 BlockJob(job, "destination_or_carrier_unavailable");
                 return false;
@@ -284,7 +271,7 @@ namespace AsteroidColony
             }
 
             job.State = FreightJobState.DroppingOff;
-            float moved = worker.CargoInventory.TransferAvailableTo(
+            float moved = job.WalkingExecution.CargoInventory.TransferAvailableTo(
                 job.Destination.Inventory,
                 job.Resource,
                 requestedTransfer);
@@ -297,7 +284,7 @@ namespace AsteroidColony
             job.Quantity = Mathf.Max(0f, job.Quantity - moved);
             job.Order.Committed = Mathf.Max(0f, job.Order.Committed - moved);
             job.Order.Delivered += moved;
-            Log("logistics.delivery_completed", "Info", worker, job.Destination,
+            Log("logistics.delivery_completed", "Info", job.WalkingExecution.Service, job.Destination,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Id),
                 new SimulationLogField("resource", job.Resource.name),
@@ -325,7 +312,7 @@ namespace AsteroidColony
             if (job.Order != null)
                 job.Order.Committed = Mathf.Max(0f, job.Order.Committed - job.Quantity);
             job.State = FreightJobState.Cancelled;
-            Log("logistics.job_cancelled", "Warning", job.WalkingExecution.Worker, job.Destination,
+            Log("logistics.job_cancelled", "Warning", job.WalkingExecution.Service, job.Destination,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("demandId", job.Order != null ? job.Order.Id : string.Empty),
                 new SimulationLogField("reason", reason ?? string.Empty),
@@ -402,18 +389,14 @@ namespace AsteroidColony
         private Candidate FindBestCandidate(FreightOrder order, float dispatchable, bool emergencyOnly)
         {
             Candidate best = null;
-            IReadOnlyList<WalkingFreightCarrierComponent> carriers = WalkingFreightCarrierComponent.Active;
+            IReadOnlyList<WalkingFreightWorkService> services = WalkingFreightWorkService.Active;
             IReadOnlyList<LogisticsStockComponent> supplies = LogisticsStockComponent.Active;
-            for (int c = 0; c < carriers.Count; c++)
+            for (int serviceIndex = 0; serviceIndex < services.Count; serviceIndex++)
             {
-                WalkingFreightCarrierComponent carrier = carriers[c];
-                if (carrier == null || (emergencyOnly
-                        ? !carrier.CanAcceptEmergencyJob(order.Requester.GetComponent<WorkplaceComponent>())
-                        : !carrier.CanAcceptRoutineJob(routineCarrierRole, out _)))
+                WalkingFreightWorkService service = services[serviceIndex];
+                if (service == null || !service.isActiveAndEnabled)
                     continue;
 
-                float cargoCapacity = Mathf.Max(0f,
-                    carrier.MaximumCargoQuantity - carrier.CargoInventory.GetOnHand(order.Resource));
                 for (int s = 0; s < supplies.Count; s++)
                 {
                     LogisticsStockComponent source = supplies[s];
@@ -424,25 +407,19 @@ namespace AsteroidColony
 
                     float destinationSpace = order.Requester.Inventory.GetFreeCapacity(order.Resource) -
                         GetCommittedCapacity(order.Requester.Inventory, order.Resource, null);
-                    float quantity = Mathf.Min(dispatchable,
-                        Mathf.Min(cargoCapacity,
-                            Mathf.Min(source.Inventory.GetAvailable(order.Resource), destinationSpace)));
+                    float desiredQuantity = Mathf.Min(dispatchable,
+                        Mathf.Min(source.Inventory.GetAvailable(order.Resource), destinationSpace));
+                    if (desiredQuantity + QuantityEpsilon < GetMinimumPickup(order) ||
+                        !service.TryQuote(source, order.Requester, order.Resource,
+                            desiredQuantity, emergencyOnly, out FreightWorkQuote quote))
+                        continue;
+
+                    float quantity = Mathf.Min(desiredQuantity, quote.MaximumUsefulQuantity);
                     if (quantity + QuantityEpsilon < GetMinimumPickup(order))
                         continue;
 
-                    PersonnelRoutingManager personnelRouting = PersonnelRoutingManager.Instance;
-                    if (personnelRouting == null || carrier.Identity == null ||
-                        source.FreightAnchor == null || order.Requester.FreightAnchor == null ||
-                        !personnelRouting.TryEstimate(carrier.Identity, source.FreightAnchor,
-                            out PersonnelRouteEstimate pickupEstimate) ||
-                        !personnelRouting.TryEstimateFrom(carrier.Identity, source.FreightAnchor.position,
-                            order.Requester.FreightAnchor, out PersonnelRouteEstimate deliveryEstimate))
-                        continue;
-
-                    Candidate candidate = new Candidate(carrier, source, quantity,
-                        pickupEstimate, deliveryEstimate,
-                        PersonnelRouteIdentity.GetStableKey(carrier.Identity) + "/" +
-                        source.GetStableKey() + "/" + order.Id);
+                    Candidate candidate = new Candidate(service, quote, source, quantity,
+                        service.GetStableKey() + "/" + source.GetStableKey() + "/" + order.Id);
                     if (best == null || Candidate.Compare(candidate, best) < 0)
                         best = candidate;
                 }
@@ -452,20 +429,16 @@ namespace AsteroidColony
 
         private void AcceptCandidate(FreightOrder order, Candidate candidate, bool emergency)
         {
-            bool excursionStarted = false;
-            if (emergency)
-            {
-                excursionStarted = candidate.Carrier.BeginEmergencyExcursion(
-                    order.Requester.GetComponent<WorkplaceComponent>());
-                if (!excursionStarted)
-                    return;
-            }
-
             if (!candidate.Source.Inventory.TryReserveOwned(
                     order.Resource, candidate.Quantity, out InventoryReservationToken reservation))
             {
-                if (excursionStarted)
-                    candidate.Carrier.Brain.CompleteWorkExcursion();
+                return;
+            }
+
+            if (!candidate.Service.TryAcceptQuote(candidate.Quote, candidate.Quantity,
+                    out WalkingFreightExecution walkingExecution))
+            {
+                candidate.Source.Inventory.ReleaseOwned(reservation);
                 return;
             }
 
@@ -477,36 +450,30 @@ namespace AsteroidColony
                 {
                     new LogisticsRouteLeg(LogisticsRouteLegType.WalkingCarrier,
                         candidate.Source, order.Requester,
-                        candidate.DeliveryEstimate.Distance)
+                        candidate.Quote.LoadedCargoTravelCost)
                 });
             FreightAllocation allocation = new FreightAllocation(
                 jobId, order, candidate.Source, candidate.Quantity, routePlan);
-            WalkingFreightExecution walkingExecution = new WalkingFreightExecution(
-                candidate.Carrier, candidate.PickupEstimate.Distance, emergency);
             FreightDeliveryJob job = new FreightDeliveryJob(
                 allocation, walkingExecution, reservation);
-            if (candidate.Carrier.CargoInventory == null ||
-                !candidate.Carrier.CargoInventory.SetCapacity(
-                    order.Resource, candidate.Carrier.MaximumCargoQuantity))
+            if (!walkingExecution.PrepareCargo(order.Resource))
             {
                 candidate.Source.Inventory.ReleaseOwned(reservation);
-                if (excursionStarted)
-                    candidate.Carrier.Brain.CompleteWorkExcursion();
+                walkingExecution.CancelBeforeAssignment();
                 return;
             }
             order.Committed += candidate.Quantity;
             jobs.Add(job);
-            if (!candidate.Carrier.Assign(job))
+            if (!walkingExecution.Assign(job))
             {
                 candidate.Source.Inventory.ReleaseOwned(reservation);
                 order.Committed = Mathf.Max(0f, order.Committed - candidate.Quantity);
                 job.State = FreightJobState.Cancelled;
-                if (excursionStarted)
-                    candidate.Carrier.Brain.CompleteWorkExcursion();
+                walkingExecution.CancelBeforeAssignment();
                 return;
             }
 
-            Log("logistics.job_assigned", "Info", candidate.Carrier, order.Requester,
+            Log("logistics.job_assigned", "Info", candidate.Service, order.Requester,
                 new SimulationLogField("jobId", job.Id),
                 new SimulationLogField("allocationId", job.Id),
                 new SimulationLogField("demandId", order.Id),
@@ -514,12 +481,12 @@ namespace AsteroidColony
                 new SimulationLogField("quantity", candidate.Quantity),
                 new SimulationLogField("source", candidate.Source.name),
                 new SimulationLogField("distance", candidate.Distance),
-                new SimulationLogField("positioningDistance", candidate.PickupEstimate.Distance),
-                new SimulationLogField("loadedCargoDistance", candidate.DeliveryEstimate.Distance),
+                new SimulationLogField("positioningDistance", candidate.Quote.PositioningCost),
+                new SimulationLogField("loadedCargoDistance", candidate.Quote.LoadedCargoTravelCost),
                 new SimulationLogField("pickupAnchor", sourceAnchor.name),
-                new SimulationLogField("pickupDistance", candidate.PickupEstimate.Distance),
+                new SimulationLogField("pickupDistance", candidate.Quote.PositioningCost),
                 new SimulationLogField("dropoffAnchor", destinationAnchor.name),
-                new SimulationLogField("dropoffDistance", candidate.DeliveryEstimate.Distance),
+                new SimulationLogField("dropoffDistance", candidate.Quote.LoadedCargoTravelCost),
                 new SimulationLogField("routeLegs", job.RoutePlan.Legs.Count),
                 new SimulationLogField("emergency", emergency));
         }
@@ -646,16 +613,8 @@ namespace AsteroidColony
 
         private void FinishCarrier(FreightDeliveryJob job)
         {
-            WalkingFreightCarrierComponent worker = job != null && job.WalkingExecution != null
-                ? job.WalkingExecution.Worker
-                : null;
-            if (worker != null)
-            {
-                worker.RouteRunner?.StopRoute();
-                worker.Complete(job);
-                if (job.IsEmergencyExcursion && worker.Brain != null)
-                    worker.Brain.CompleteWorkExcursion();
-            }
+            if (job != null && job.WalkingExecution != null)
+                job.WalkingExecution.Complete(job);
         }
 
         private bool IsKnown(FreightDeliveryJob job) => job != null && jobs.Contains(job);
@@ -673,25 +632,22 @@ namespace AsteroidColony
 
         private sealed class Candidate
         {
-            public Candidate(WalkingFreightCarrierComponent carrier,
-                LogisticsStockComponent source, float quantity,
-                PersonnelRouteEstimate pickupEstimate,
-                PersonnelRouteEstimate deliveryEstimate, string stableKey)
+            public Candidate(WalkingFreightWorkService service,
+                FreightWorkQuote quote, LogisticsStockComponent source,
+                float quantity, string stableKey)
             {
-                Carrier = carrier;
+                Service = service;
+                Quote = quote;
                 Source = source;
                 Quantity = quantity;
-                PickupEstimate = pickupEstimate;
-                DeliveryEstimate = deliveryEstimate;
-                Distance = pickupEstimate.Distance + deliveryEstimate.Distance;
+                Distance = quote.TotalServiceCost;
                 StableKey = stableKey;
             }
 
-            public WalkingFreightCarrierComponent Carrier { get; }
+            public WalkingFreightWorkService Service { get; }
+            public FreightWorkQuote Quote { get; }
             public LogisticsStockComponent Source { get; }
             public float Quantity { get; }
-            public PersonnelRouteEstimate PickupEstimate { get; }
-            public PersonnelRouteEstimate DeliveryEstimate { get; }
             public float Distance { get; }
             public string StableKey { get; }
 

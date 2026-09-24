@@ -159,6 +159,18 @@ namespace AsteroidColony.Editor
             WorkplaceComponent porterWorkplace = EnsureComponent<WorkplaceComponent>(airlock);
             porterWorkplace.ConfigureMobileDuty(porterRole, 1, dutyAnchor);
             EditorUtility.SetDirty(porterWorkplace);
+            WalkingFreightWorkService porterService = EnsureComponent<WalkingFreightWorkService>(airlock);
+            porterService.ConfigureRoutineFreight(true, porterRole, 10f);
+            porterService.ConfigureEmergencyFreight(false, 5f, 0);
+            EditorUtility.SetDirty(porterService);
+
+            WorkplaceComponent cafeteriaWorkplace = cafeteria.GetComponent<WorkplaceComponent>();
+            if (cafeteriaWorkplace == null)
+                throw new InvalidOperationException("Cafeteria workplace is missing.");
+            WalkingFreightWorkService cafeteriaService = EnsureComponent<WalkingFreightWorkService>(cafeteria);
+            cafeteriaService.ConfigureRoutineFreight(false, null, 10f);
+            cafeteriaService.ConfigureEmergencyFreight(true, 5f, 0);
+            EditorUtility.SetDirty(cafeteriaService);
 
             ColonistIdentity alice = RequireColonist(scene, AliceName);
             ColonistIdentity dana = RequireColonist(scene, DanaName);
@@ -177,8 +189,6 @@ namespace AsteroidColony.Editor
             EditorUtility.SetDirty(workforce);
 
             FreightLogisticsManager freightManager = RequireOrCreateUnique<FreightLogisticsManager>(scene, "FreightLogisticsManager");
-            freightManager.ConfigureRoutineCarrierRole(porterRole);
-            EditorUtility.SetDirty(freightManager);
             EnsureComponent<SupplyChainDebugLog>(freightManager.gameObject);
 
             InventoryComponent legacyStore = FindNamedInventory(scene, "Station Food Store (Inert)");
@@ -373,16 +383,24 @@ namespace AsteroidColony.Editor
             JobRoleDefinition porterRole = AssetDatabase.LoadAssetAtPath<JobRoleDefinition>(PorterRolePath);
             FreightLogisticsManager freightManager = FindSceneComponent<FreightLogisticsManager>(scene);
             PersonnelRoutingManager routingManager = FindSceneComponent<PersonnelRoutingManager>(scene);
+            WalkingFreightWorkService porterService = airlock.GetComponent<WalkingFreightWorkService>();
+            WalkingFreightWorkService cafeteriaService = cafeteria.GetComponent<WalkingFreightWorkService>();
             if (porterWorkplace == null || porterWorkplace.ExecutionMode != WorkplaceExecutionMode.MobileDuty ||
                 porterWorkplace.DutyAnchor == null ||
-                freightManager == null || freightManager.RoutineCarrierRole != porterRole ||
-                GetSceneComponents<FreightLogisticsManager>(scene).Length != 1 ||
+                porterService == null || porterService.Workplace != porterWorkplace ||
+                !porterService.RoutineFreightEnabled || porterService.RoutineRole != porterRole ||
+                !Mathf.Approximately(porterService.RoutineCapacityPerWorker, 10f) ||
+                cafeteriaService == null || cafeteriaService.Workplace != cafeteria.GetComponent<WorkplaceComponent>() ||
+                cafeteriaService.RoutineFreightEnabled || !cafeteriaService.EmergencyFreightEnabled ||
+                !Mathf.Approximately(cafeteriaService.EmergencyCapacityPerWorker, 5f) ||
+                cafeteriaService.MinimumWorkersRemainingAfterEmergencyDispatch != 0 ||
+                freightManager == null || GetSceneComponents<FreightLogisticsManager>(scene).Length != 1 ||
                 routingManager == null || GetSceneComponents<PersonnelRoutingManager>(scene).Length != 1 ||
                 routingManager.GetComponent<PedestrianRouteProvider>() == null ||
                 GetSceneComponents<PedestrianRouteProvider>(scene).Length != 1 ||
                 FindSceneComponent<SupplyChainDebugLog>(scene) == null)
             {
-                Debug.LogError("Airlock Porter workplace, configured FreightLogisticsManager, or unique Personnel Routing infrastructure is missing.");
+                Debug.LogError("Airlock/Cafeteria walking freight services or unique Personnel Routing infrastructure are missing or misconfigured.");
                 errors++;
             }
 

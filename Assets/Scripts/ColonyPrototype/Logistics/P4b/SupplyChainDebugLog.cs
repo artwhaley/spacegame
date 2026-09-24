@@ -272,10 +272,9 @@ namespace AsteroidColony
                         Add(row, "resource", job.Resource != null ? job.Resource.name : string.Empty);
                         Add(row, "quantity", F(job.Quantity));
                         Add(row, "pickedUp", job.HasPickedUp.ToString());
-                        WalkingFreightCarrierComponent worker = job.WalkingExecution != null
-                            ? job.WalkingExecution.Worker
-                            : null;
-                        Add(row, "worker", worker != null ? worker.name : string.Empty);
+                        Add(row, "provider", job.WalkingExecution != null &&
+                            job.WalkingExecution.Service != null
+                                ? job.WalkingExecution.Service.name : string.Empty);
                         Add(row, "source", job.Source != null ? job.Source.name : string.Empty);
                         Add(row, "destination", job.Destination != null ? job.Destination.name : string.Empty);
                         Add(row, "emergency", job.IsEmergencyExcursion.ToString());
@@ -283,36 +282,20 @@ namespace AsteroidColony
                     }
                 }
 
-                IReadOnlyList<WalkingFreightCarrierComponent> carriers = WalkingFreightCarrierComponent.Active;
-                for (int i = 0; i < carriers.Count; i++)
+                IReadOnlyList<WalkingFreightWorkService> services = WalkingFreightWorkService.Active;
+                for (int i = 0; i < services.Count; i++)
                 {
-                    WalkingFreightCarrierComponent carrier = carriers[i];
-                    if (carrier == null)
+                    WalkingFreightWorkService service = services[i];
+                    if (service == null)
                         continue;
-                    TraceRow row = NewSnapshotRow(gameHour, reason, carrier.name);
-                    row.eventKey = "supply.snapshot.carrier";
-                    Add(row, "hasActiveJob", carrier.HasActiveJob.ToString());
-                    Add(row, "brainState", carrier.Brain != null ? carrier.Brain.State.ToString() : string.Empty);
-                    JobRoleDefinition routineRole = FreightLogisticsManager.Instance != null
-                        ? FreightLogisticsManager.Instance.RoutineCarrierRole
-                        : null;
-                    WorkAssignment currentDuty = null;
-                    if (carrier.Identity != null && WorkforceManager.Instance != null &&
-                        SimulationManager.Instance != null)
-                        WorkforceManager.Instance.TryGetCurrentDuty(
-                            carrier.Identity, gameHour, out currentDuty);
-                    Add(row, "routineRole", routineRole != null ? routineRole.StableId : string.Empty);
-                    Add(row, "currentDutyRole", currentDuty != null && currentDuty.Role != null
-                        ? currentDuty.Role.StableId : string.Empty);
-                    Add(row, "routineEligibleByDuty", carrier.CanAcceptRoutineJob(
-                        routineRole,
-                        out _).ToString());
-                    Add(row, "cargoCapacity", F(carrier.MaximumCargoQuantity));
-                    Add(row, "jobId", carrier.CurrentJob != null ? carrier.CurrentJob.Id : string.Empty);
-                    Add(row, "jobState", carrier.CurrentJob != null ? carrier.CurrentJob.State.ToString() : string.Empty);
-                    Add(row, "cargoFood", carrier.CargoInventory != null
-                        ? F(carrier.CargoInventory.GetOnHand(FindFoodResource()))
-                        : "0");
+                    TraceRow row = NewSnapshotRow(gameHour, reason, service.name);
+                    row.eventKey = "supply.snapshot.work_service";
+                    Add(row, "workplace", service.Workplace != null ? service.Workplace.name : string.Empty);
+                    Add(row, "routineEnabled", service.RoutineFreightEnabled.ToString());
+                    Add(row, "routineRole", service.RoutineRole != null
+                        ? service.RoutineRole.StableId : string.Empty);
+                    Add(row, "emergencyEnabled", service.EmergencyFreightEnabled.ToString());
+                    Add(row, "activeExecutions", service.ActiveExecutionCount.ToString());
                     Write(row);
                 }
             }

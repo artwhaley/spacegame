@@ -215,8 +215,13 @@ namespace AsteroidColony.Editor
             WorkforceManager fixtureWorkforce = FindUniqueSceneComponent<WorkforceManager>(scene);
             FreightLogisticsManager freightManager = FindUniqueSceneComponent<FreightLogisticsManager>(scene);
             WorkplaceComponent porterWorkplace = airlock != null ? airlock.GetComponent<WorkplaceComponent>() : null;
-            if (freightManager == null || porter == null || freightManager.RoutineCarrierRole != porter)
-            { Debug.LogError("Freight Logistics Manager needs the Porter routine carrier role."); errors++; }
+            WalkingFreightWorkService porterService = airlock != null
+                ? airlock.GetComponent<WalkingFreightWorkService>() : null;
+            if (freightManager == null || porter == null || porterService == null ||
+                porterService.Workplace != porterWorkplace || !porterService.RoutineFreightEnabled ||
+                porterService.RoutineRole != porter ||
+                !Mathf.Approximately(porterService.RoutineCapacityPerWorker, 10f))
+            { Debug.LogError("Farm Airlock needs a configured routine Porter freight service."); errors++; }
             if (farm == null || cafeteria == null || airlock == null)
             { Debug.LogError("B1 requires Farm, Cafeteria, and Airlock prefab instances."); errors++; }
             else

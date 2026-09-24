@@ -86,30 +86,6 @@ namespace AsteroidColony
         public float TotalEstimatedLoadedDistance { get; }
     }
 
-    /// <summary>
-    /// A worker binding and its empty positioning estimate for one current walking execution.
-    /// This belongs to execution/provider selection, never to cargo identity or cargo route legs.
-    /// </summary>
-    public sealed class WalkingFreightExecution
-    {
-        internal WalkingFreightExecution(WalkingFreightCarrierComponent worker,
-            float positioningDistance, bool emergency)
-        {
-            if (worker == null)
-                throw new ArgumentNullException(nameof(worker));
-            if (float.IsNaN(positioningDistance) || float.IsInfinity(positioningDistance) || positioningDistance < 0f)
-                throw new ArgumentOutOfRangeException(nameof(positioningDistance));
-
-            Worker = worker;
-            PositioningDistance = positioningDistance;
-            IsEmergency = emergency;
-        }
-
-        public WalkingFreightCarrierComponent Worker { get; }
-        public float PositioningDistance { get; }
-        public bool IsEmergency { get; }
-    }
-
     /// <summary>Demand/source/quantity/cargo route. It does not own a worker or execution.</summary>
     public sealed class FreightAllocation
     {

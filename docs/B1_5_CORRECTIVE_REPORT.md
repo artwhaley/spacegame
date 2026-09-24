@@ -26,6 +26,7 @@ Added compact API-boundary checks for allocation/route worker ownership, Brain f
 | B1.5-T00 | Complete | Baseline documented; architecture boundary tests added before the refactor. |
 | B1.5-T01 | Complete | Allocation and cargo-route data no longer contain a worker; the current walking binding and empty positioning estimate live in a separate execution record. |
 | B1.5-T02 | Complete | Added a generic owner/lease/release contract and narrow deferred-release owner tests. |
+| B1.5-T03 | Complete | Logistics now quotes and accepts workplace services; service-owned worker discovery and route cost calculation replace manager carrier enumeration. The service execution still delegates to legacy runner plumbing until T04/T05. |
 
 No Unity compile, Test Runner, or Play Mode run has been performed. The user performs the human Unity acceptance run.
 
@@ -45,3 +46,11 @@ No Unity compile, Test Runner, or Play Mode run has been performed. The user per
 - Shift-end and critical-need stops now request generic owner release. A `Deferred` reply leaves the lease active; the Brain does not stop the service's route or finish the work lifecycle until the owner releases the lease.
 - Added two owner-level tests for immediate and deferred lease release. These test the durable generic release contract; they were not run. Brain/scene interactions remain Unity human acceptance.
 - **B2 locked rule:** Pilot work must defer release until its assigned Shuttle is physically docked at that Shuttle's home Shuttle Base. This sprint adds only the generic release seam and records the rule; no Shuttle, Pilot executor, or Charlie behavior was added or changed here.
+
+## B1.5-T03 — Workplace freight providers
+
+- Added `WalkingFreightWorkService`, `FreightWorkQuote`, and a provider-owned `WalkingFreightExecution` binding. Services register through `OnEnable`/`OnDisable`; the logistics manager iterates active providers and stock sources, then compares quote quantity, service cost, and a stable provider/source key.
+- Routine Porter eligibility, emergency Cafeteria eligibility, worker capacity, minimum remaining emergency staffing, and both PersonnelRouting estimates are evaluated by the workplace service. The quote exposes the provider and cost data; its selected worker is internal to the service.
+- P4b fixture authoring configures the Airlock routine service (Porter, capacity 10) and Cafeteria emergency service (capacity 5, minimum remaining staff 0). B1/P4b validation now checks the provider setup.
+- The legacy carrier/runner remains only as a temporary execution adapter for T03. T04/T05 move route execution and release decisions into the provider; T06 removes those old colonist components and updates the shared prefab.
+- `SupplyChainDebugLog` reports active workplace services and job provider instead of enumerating colonist freight components. Added API-boundary checks for the provider-facing logistics seam. No Unity compile, Test Runner, or Play Mode run has been performed.
