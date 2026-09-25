@@ -223,8 +223,8 @@ namespace AsteroidColony.Editor
                 Transform child = node.GetChild(i);
                 if (child.name == "WalkAnchor")
                 {
-                    anchor = child;
-                    break;
+                    // Existing endpoint placement is authored geometry. Preserve it.
+                    return child;
                 }
             }
 

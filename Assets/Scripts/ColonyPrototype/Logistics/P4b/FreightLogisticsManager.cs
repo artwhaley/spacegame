@@ -257,6 +257,7 @@ namespace AsteroidColony
             long tick = CurrentTick;
             ExpireUnpublishedOrders(tick);
             CloseFulfilledOrders();
+            AssignAwaitingLegs();
             DispatchEmergencyExcursions();
             DispatchRoutineJobs();
         }
@@ -282,8 +283,11 @@ namespace AsteroidColony
                     return true;
 
                 case FreightExecutionReport.ProviderAtSource:
-                    if (job.State != FreightJobState.TravelingToPickup || job.HasPickedUp ||
-                        !MatchesAndClearPersonnelRoute(job, correlation))
+                    bool shuttlePickup = execution is ShuttleFreightExecution;
+                    if ((!shuttlePickup && (job.State != FreightJobState.TravelingToPickup ||
+                         !MatchesAndClearPersonnelRoute(job, correlation))) ||
+                        (shuttlePickup && job.State != FreightJobState.Assigned) ||
+                        job.HasPickedUp)
                         return false;
                     return PickupAtCurrentLeg(job);
 
@@ -299,9 +303,15 @@ namespace AsteroidColony
                     return true;
 
                 case FreightExecutionReport.LoadedLegArrived:
-                    if (!job.HasPickedUp || job.State != FreightJobState.TravelingToDropoff ||
-                        !MatchesAndClearPersonnelRoute(job, correlation))
+                    bool shuttleArrival = execution is ShuttleFreightExecution;
+                    if (!job.HasPickedUp ||
+                        (shuttleArrival
+                            ? job.State != FreightJobState.PickingUp
+                            : job.State != FreightJobState.TravelingToDropoff ||
+                              !MatchesAndClearPersonnelRoute(job, correlation)))
                         return false;
+                    if (shuttleArrival)
+                        TransitionJob(job, FreightJobState.TravelingToDropoff);
                     return CompleteCurrentLeg(job);
 
                 case FreightExecutionReport.Failed:
@@ -707,6 +717,90 @@ namespace AsteroidColony
             }
         }
 
+        private void AssignAwaitingLegs()
+        {
+            for (int index = 0; index < jobs.Count; index++)
+            {
+                FreightDeliveryJob job = jobs[index];
+                LogisticsRouteLeg leg = job != null ? job.CurrentLeg : null;
+                if (job == null || !job.IsAwaitingLegAssignment || leg == null)
+                    continue;
+
+                if (leg.Type == LogisticsRouteLegType.ShuttleFreight)
+                {
+                    AssignShuttleLeg(job, leg);
+                    continue;
+                }
+
+                if (leg.Type == LogisticsRouteLegType.WalkingCarrier)
+                    AssignWalkingLeg(job, leg);
+            }
+        }
+
+        private void AssignShuttleLeg(FreightDeliveryJob job, LogisticsRouteLeg leg)
+        {
+            ShuttleManager shuttleManager = ShuttleManager.Instance;
+            if (shuttleManager == null || leg.OriginEndpoint == null || leg.DestinationEndpoint == null)
+                return;
+
+            string executionId = "freight-execution-" +
+                (++nextExecutionId).ToString("D6", CultureInfo.InvariantCulture);
+            ShuttleFreightExecution execution = new ShuttleFreightExecution(this, job, executionId);
+            job.SetActiveLegExecution(jobMutationAuthority, execution);
+            ShuttleTransportRequest request = shuttleManager.GetOrCreateFreightRequest(
+                job.Allocation, job.CurrentLegIndex, leg, execution);
+            if (request == null)
+            {
+                job.SetActiveLegExecution(jobMutationAuthority, null);
+                return;
+            }
+
+            execution.BindRequest(request);
+            if (execution.IsReadyForShuttle)
+                shuttleManager.MarkPayloadReady(request);
+        }
+
+        private void AssignWalkingLeg(FreightDeliveryJob job, LogisticsRouteLeg leg)
+        {
+            Candidate candidate = FindWalkingLegCandidate(job, leg);
+            if (candidate == null || candidate.Quote.MaximumUsefulQuantity + QuantityEpsilon < job.Quantity)
+                return;
+
+            string executionId = "freight-execution-" +
+                (++nextExecutionId).ToString("D6", CultureInfo.InvariantCulture);
+            if (!candidate.Service.TryAcceptQuote(candidate.Quote, job.Quantity, executionId,
+                    out WalkingFreightExecution execution))
+                return;
+            if (!execution.PrepareCargo(job.Resource) || !execution.Assign(job))
+            {
+                execution.CancelBeforeAssignment();
+                return;
+            }
+            job.SetActiveLegExecution(jobMutationAuthority, execution);
+        }
+
+        private Candidate FindWalkingLegCandidate(FreightDeliveryJob job, LogisticsRouteLeg leg)
+        {
+            if (job == null || leg == null || leg.Origin == null || leg.Destination == null)
+                return null;
+
+            Candidate best = null;
+            IReadOnlyList<WalkingFreightWorkService> services = WalkingFreightWorkService.Active;
+            for (int serviceIndex = 0; serviceIndex < services.Count; serviceIndex++)
+            {
+                WalkingFreightWorkService service = services[serviceIndex];
+                if (service == null || !service.isActiveAndEnabled ||
+                    !service.TryQuote(leg.Origin, leg.Destination, job.Resource, job.Quantity,
+                        job.IsEmergencyWork, out FreightWorkQuote quote))
+                    continue;
+                Candidate candidate = new Candidate(service, quote, leg.Origin, job.Quantity,
+                    service.GetStableKey() + "/" + leg.Origin.GetStableKey() + "/" + job.Allocation.Id);
+                if (best == null || Candidate.Compare(candidate, best) < 0)
+                    best = candidate;
+            }
+            return best;
+        }
+
         private void DispatchEmergencyExcursions()
         {
             List<FreightOrder> pending = GetDispatchOrderPriority();
@@ -761,22 +855,92 @@ namespace AsteroidColony
                         GetCommittedCapacity(order.Requester.Inventory, order.Resource, null);
                     float desiredQuantity = Mathf.Min(dispatchable,
                         Mathf.Min(source.Inventory.GetAvailable(order.Resource), destinationSpace));
-                    if (desiredQuantity + QuantityEpsilon < GetMinimumPickup(order) ||
-                        !service.TryQuote(source, order.Requester, order.Resource,
+                    if (desiredQuantity + QuantityEpsilon < GetMinimumPickup(order))
+                        continue;
+
+                    if (service.TryQuote(source, order.Requester, order.Resource,
                             desiredQuantity, emergencyOnly, out FreightWorkQuote quote))
-                        continue;
+                    {
+                        float quantity = Mathf.Min(desiredQuantity, quote.MaximumUsefulQuantity);
+                        if (quantity + QuantityEpsilon >= GetMinimumPickup(order))
+                        {
+                            LogisticsRoutePlan directPlan = new LogisticsRoutePlan(order,
+                                new[] { new LogisticsRouteLeg(LogisticsRouteLegType.WalkingCarrier,
+                                    source, order.Requester, quote.LoadedCargoTravelCost) });
+                            Candidate candidate = new Candidate(service, quote, source, quantity,
+                                service.GetStableKey() + "/" + source.GetStableKey() + "/" + order.Id,
+                                directPlan);
+                            if (best == null || Candidate.Compare(candidate, best) < 0)
+                                best = candidate;
+                        }
+                    }
 
-                    float quantity = Mathf.Min(desiredQuantity, quote.MaximumUsefulQuantity);
-                    if (quantity + QuantityEpsilon < GetMinimumPickup(order))
-                        continue;
-
-                    Candidate candidate = new Candidate(service, quote, source, quantity,
-                        service.GetStableKey() + "/" + source.GetStableKey() + "/" + order.Id);
-                    if (best == null || Candidate.Compare(candidate, best) < 0)
-                        best = candidate;
+                    if (TryFindMultimodalCandidate(order, source, desiredQuantity,
+                            emergencyOnly, service, out Candidate multimodal) &&
+                        (best == null || Candidate.Compare(multimodal, best) < 0))
+                        best = multimodal;
                 }
             }
             return best;
+        }
+
+        private bool TryFindMultimodalCandidate(
+            FreightOrder order,
+            LogisticsStockComponent source,
+            float desiredQuantity,
+            bool emergency,
+            WalkingFreightWorkService service,
+            out Candidate candidate)
+        {
+            candidate = null;
+            ShuttleManager shuttleManager = ShuttleManager.Instance;
+            PersonnelRoutingManager routing = PersonnelRoutingManager.Instance;
+            if (shuttleManager == null || routing == null || service == null)
+                return false;
+
+            IReadOnlyList<ShuttleTransferEndpoint> endpoints = shuttleManager.Endpoints;
+            for (int originIndex = 0; originIndex < endpoints.Count; originIndex++)
+            {
+                ShuttleTransferEndpoint origin = endpoints[originIndex];
+                LogisticsStockComponent originStock = origin != null ? origin.DepotStock : null;
+                if (originStock == null || originStock == source)
+                    continue;
+                if (!service.TryQuote(source, originStock, order.Resource, desiredQuantity,
+                        emergency, out FreightWorkQuote firstQuote))
+                    continue;
+
+                for (int destinationIndex = 0; destinationIndex < endpoints.Count; destinationIndex++)
+                {
+                    ShuttleTransferEndpoint destination = endpoints[destinationIndex];
+                    LogisticsStockComponent destinationStock = destination != null
+                        ? destination.DepotStock : null;
+                    if (destination == null || destination == origin || destinationStock == null ||
+                        !shuttleManager.CanService(origin, destination, ShuttlePayloadType.Freight) ||
+                        destination.TransferAnchor == null || order.Requester.FreightAnchor == null ||
+                        !routing.TryEstimateWalkOnly(firstQuote.SelectedWorker,
+                            destination.TransferAnchor.position, order.Requester.FreightAnchor,
+                            out PersonnelRouteEstimate finalEstimate, out _))
+                        continue;
+
+                    float quantity = Mathf.Min(desiredQuantity, firstQuote.MaximumUsefulQuantity);
+                    if (quantity + QuantityEpsilon < GetMinimumPickup(order))
+                        continue;
+                    LogisticsRoutePlan route = new LogisticsRoutePlan(order, new[]
+                    {
+                        new LogisticsRouteLeg(LogisticsRouteLegType.WalkingCarrier,
+                            source, originStock, firstQuote.LoadedCargoTravelCost),
+                        LogisticsRouteLeg.Shuttle(originStock, destinationStock,
+                            origin, destination, 0f),
+                        new LogisticsRouteLeg(LogisticsRouteLegType.WalkingCarrier,
+                            destinationStock, order.Requester, finalEstimate.Distance)
+                    });
+                    candidate = new Candidate(service, firstQuote, source, quantity,
+                        service.GetStableKey() + "/" + source.GetStableKey() + "/" + order.Id,
+                        route);
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void AcceptCandidate(FreightOrder order, Candidate candidate, bool emergency)
@@ -800,15 +964,8 @@ namespace AsteroidColony
                 (++nextAllocationId).ToString("D6", CultureInfo.InvariantCulture);
             Transform sourceAnchor = candidate.Source.FreightAnchor;
             Transform destinationAnchor = order.Requester.FreightAnchor;
-            LogisticsRoutePlan routePlan = new LogisticsRoutePlan(order,
-                new[]
-                {
-                    new LogisticsRouteLeg(LogisticsRouteLegType.WalkingCarrier,
-                        candidate.Source, order.Requester,
-                        candidate.Quote.LoadedCargoTravelCost)
-                });
             FreightAllocation allocation = new FreightAllocation(
-                allocationId, order, candidate.Source, candidate.Quantity, routePlan);
+                allocationId, order, candidate.Source, candidate.Quantity, candidate.RoutePlan);
             FreightDeliveryJob job = new FreightDeliveryJob(
                 allocation, walkingExecution, reservation, jobMutationAuthority);
             if (!walkingExecution.PrepareCargo(order.Resource))
@@ -843,7 +1000,7 @@ namespace AsteroidColony
                 new SimulationLogField("pickupDistance", candidate.Quote.PositioningCost),
                 new SimulationLogField("dropoffAnchor", destinationAnchor.name),
                 new SimulationLogField("dropoffDistance", candidate.Quote.LoadedCargoTravelCost),
-                new SimulationLogField("routeLegs", job.RoutePlan.Legs.Count),
+                 new SimulationLogField("routeLegs", job.RoutePlan.Legs.Count),
                 new SimulationLogField("emergency", emergency));
         }
 
@@ -990,7 +1147,7 @@ namespace AsteroidColony
         {
             public Candidate(WalkingFreightWorkService service,
                 FreightWorkQuote quote, LogisticsStockComponent source,
-                float quantity, string stableKey)
+                float quantity, string stableKey, LogisticsRoutePlan routePlan = null)
             {
                 Service = service;
                 Quote = quote;
@@ -998,6 +1155,7 @@ namespace AsteroidColony
                 Quantity = quantity;
                 Distance = quote.TotalServiceCost;
                 StableKey = stableKey;
+                RoutePlan = routePlan;
             }
 
             public WalkingFreightWorkService Service { get; }
@@ -1006,6 +1164,7 @@ namespace AsteroidColony
             public float Quantity { get; }
             public float Distance { get; }
             public string StableKey { get; }
+            public LogisticsRoutePlan RoutePlan { get; }
 
             public static int Compare(Candidate left, Candidate right)
             {

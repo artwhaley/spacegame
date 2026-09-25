@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace AsteroidColony
 {
@@ -8,13 +9,19 @@ namespace AsteroidColony
     public sealed class ShuttleBaseComponent : MonoBehaviour
     {
         [SerializeField] private DockingPortComponent dockingPort;
-        [SerializeField] private WorkplaceComponent pilotWorkplace;
+        [FormerlySerializedAs("pilotWorkplace")]
+        [SerializeField] private WorkplaceComponent operationsWorkplace;
         [SerializeField] private InventoryComponent depotInventory;
         [SerializeField] private LogisticsStockComponent depotStock;
         [SerializeField] private Transform dutyAnchor;
 
         public DockingPortComponent DockingPort => dockingPort;
-        public WorkplaceComponent PilotWorkplace => pilotWorkplace;
+        public WorkplaceComponent OperationsWorkplace => operationsWorkplace;
+        public WorkplaceComponent Workplace => operationsWorkplace;
+        // Compatibility alias for existing editor tooling and prefab data. B2
+        // treats this as one multi-role operations workplace, not a Pilot-only
+        // authority.
+        public WorkplaceComponent PilotWorkplace => operationsWorkplace;
         public InventoryComponent DepotInventory => depotInventory;
         public LogisticsStockComponent DepotStock => depotStock;
         public Transform DutyAnchor => dutyAnchor;
@@ -27,7 +34,7 @@ namespace AsteroidColony
             Transform anchor)
         {
             dockingPort = port;
-            pilotWorkplace = workplace;
+            operationsWorkplace = workplace;
             depotInventory = inventory;
             depotStock = stock;
             dutyAnchor = anchor;
@@ -37,7 +44,7 @@ namespace AsteroidColony
         private void OnValidate()
         {
             if (dockingPort == null) dockingPort = GetComponent<DockingPortComponent>();
-            if (pilotWorkplace == null) pilotWorkplace = GetComponent<WorkplaceComponent>();
+            if (operationsWorkplace == null) operationsWorkplace = GetComponent<WorkplaceComponent>();
             if (depotInventory == null) depotInventory = GetComponent<InventoryComponent>();
             if (depotStock == null) depotStock = GetComponent<LogisticsStockComponent>();
         }

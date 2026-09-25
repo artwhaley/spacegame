@@ -34,6 +34,7 @@ namespace AsteroidColony
         private string currentRouteId;
         private int currentLegIndex = -1;
         private bool motorEventsSubscribed;
+        private ShuttleTransportRequest activeShuttleRequest;
 
         public ColonistIdentity Person => person;
         public Transform FinalDestination => currentPlan != null
@@ -56,6 +57,12 @@ namespace AsteroidColony
         public string LastFailureReason { get; private set; } = string.Empty;
         public bool IsExecuting => State == PersonnelRouteExecutionState.Executing;
         public string CurrentRouteId => currentRouteId;
+        public string ActiveShuttleRequestId => activeShuttleRequest != null
+            ? activeShuttleRequest.Id : string.Empty;
+        public bool IsAboardShuttle => activeShuttleRequest != null &&
+            (activeShuttleRequest.State == ShuttleTransportRequestState.LoadingOrBoarding ||
+             activeShuttleRequest.State == ShuttleTransportRequestState.InTransit);
+        public string Failure => LastFailureReason;
 
         public event Action<PersonnelRoutePlan> RouteCompleted;
         public event Action<PersonnelRoutePlan, string> RouteFailed;
@@ -87,6 +94,23 @@ namespace AsteroidColony
             ResolveReferences();
             SubscribeMotorEvents();
             BindActivityRunner();
+        }
+
+        private void Update()
+        {
+            if (!IsExecuting || CurrentLeg?.Type != PersonnelRouteLegType.Shuttle ||
+                activeShuttleRequest == null)
+                return;
+
+            if (activeShuttleRequest.State == ShuttleTransportRequestState.Completed)
+            {
+                activeShuttleRequest = null;
+                AdvanceAfterLeg();
+            }
+            else if (activeShuttleRequest.State == ShuttleTransportRequestState.Cancelled)
+            {
+                Fail("shuttle_transport_cancelled");
+            }
         }
 
         private void OnDisable()
@@ -193,6 +217,9 @@ namespace AsteroidColony
                 return;
 
             motor?.Stop();
+            if (activeShuttleRequest != null && !activeShuttleRequest.IsPhysicallyTransferred)
+                ShuttleManager.Instance?.CancelRequest(activeShuttleRequest);
+            activeShuttleRequest = null;
             State = PersonnelRouteExecutionState.Cancelled;
             currentLegIndex = -1;
             LastFailureReason = string.Empty;
@@ -206,6 +233,26 @@ namespace AsteroidColony
                 Fail("personnel_route_leg_missing");
                 return false;
             }
+            if (leg.Type == PersonnelRouteLegType.Shuttle)
+            {
+                ShuttleManager manager = ShuttleManager.Instance;
+                if (manager == null || leg.OriginEndpoint == null || leg.DestinationEndpoint == null)
+                {
+                    Fail("shuttle_manager_missing");
+                    return false;
+                }
+
+                activeShuttleRequest = manager.GetOrCreatePassengerRequest(
+                    currentPlan, currentLegIndex, leg, person);
+                if (activeShuttleRequest == null ||
+                    !manager.MarkPayloadReady(activeShuttleRequest))
+                {
+                    Fail("shuttle_passenger_request_failed");
+                    return false;
+                }
+                return true;
+            }
+
             if (leg.Type != PersonnelRouteLegType.Walk)
             {
                 Fail("personnel_route_leg_not_supported");
@@ -228,11 +275,18 @@ namespace AsteroidColony
             if (!IsExecuting || currentPlan == null)
                 return;
 
+            AdvanceAfterLeg();
+        }
+
+        private void AdvanceAfterLeg()
+        {
+            if (!IsExecuting || currentPlan == null)
+                return;
+
             currentLegIndex++;
             if (currentLegIndex < currentPlan.Legs.Count)
             {
-                if (!StartCurrentLeg())
-                    return;
+                StartCurrentLeg();
                 return;
             }
 

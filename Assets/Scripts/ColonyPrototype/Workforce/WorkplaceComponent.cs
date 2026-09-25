@@ -128,12 +128,40 @@ namespace AsteroidColony
             int capacity,
             Transform anchor)
         {
+            ConfigureMobileDuty(
+                role == null ? Array.Empty<WorkplaceRoleBinding>() :
+                new[] { new WorkplaceRoleBinding(role, string.Empty, capacity) },
+                anchor);
+        }
+
+        /// <summary>
+        /// Configures one mobile-duty workplace with multiple authored roles.
+        /// This is the B2 extension; the original single-role helper remains a
+        /// wrapper so existing facilities retain their serialized behavior.
+        /// </summary>
+        public void ConfigureMobileDuty(
+            WorkplaceRoleBinding[] roleBindings,
+            Transform anchor)
+        {
             executionMode = WorkplaceExecutionMode.MobileDuty;
             facility = null;
             dutyAnchor = anchor;
-            roles = role == null
-                ? Array.Empty<WorkplaceRoleBinding>()
-                : new[] { new WorkplaceRoleBinding(role, string.Empty, capacity) };
+            roles = roleBindings ?? Array.Empty<WorkplaceRoleBinding>();
+        }
+
+        public void ConfigureMobileDuty(
+            JobRoleDefinition pilotRole,
+            int pilotCapacity,
+            JobRoleDefinition porterRole,
+            int porterCapacity,
+            Transform anchor)
+        {
+            List<WorkplaceRoleBinding> bindings = new List<WorkplaceRoleBinding>();
+            if (pilotRole != null)
+                bindings.Add(new WorkplaceRoleBinding(pilotRole, string.Empty, pilotCapacity));
+            if (porterRole != null && porterRole != pilotRole)
+                bindings.Add(new WorkplaceRoleBinding(porterRole, string.Empty, porterCapacity));
+            ConfigureMobileDuty(bindings.ToArray(), anchor);
         }
 
         public void ConfigureFacilityActivity(

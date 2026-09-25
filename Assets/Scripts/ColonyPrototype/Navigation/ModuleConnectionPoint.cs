@@ -215,6 +215,12 @@ namespace AsteroidColony
                     connectedCount++;
             }
 
+            Debug.Log(
+                "[B2Nav] Module connection discovery: registered=" + s_RegisteredPoints.Count +
+                ", candidates=" + candidates.Count +
+                ", nearbyPairs=" + pairs.Count +
+                ", connected=" + connectedCount + ".");
+
             return connectedCount;
         }
 
@@ -384,13 +390,16 @@ namespace AsteroidColony
                 return false;
             }
 
-            // Connection nodes sit at doorway height. Their WalkAnchors are inset
-            // into the rooms, but may still be above the floor; snap them to a
-            // Walkable polygon for the module's agent type before registering the link.
-            // The anchors remain parented to their module points, so the link's
-            // auto-update continues to follow modules after a later reposition.
-            a.walkAnchor.position = aHit.position;
-            b.walkAnchor.position = bHit.position;
+            Debug.Log(
+                "[B2Nav] Connecting candidate pair " + a.GetStableHierarchyKey() +
+                " <-> " + b.GetStableHierarchyKey() +
+                "; nodeDistance=" + Mathf.Sqrt(distanceSquared).ToString("F3") +
+                "; walkA=" + aHit.position +
+                "; walkB=" + bHit.position +
+                "; agentType=" + a.ownerSurface.agentTypeID + ".");
+
+            // Authored anchors define the link. Sampling above is diagnostic only:
+            // discovery must never rewrite module geometry or anchor transforms.
 
             GameObject linkObject = new GameObject("ModuleNavMeshLink_" + a.name + "_" + b.name);
             linkObject.hideFlags = HideFlags.HideAndDontSave;
@@ -424,7 +433,58 @@ namespace AsteroidColony
             a.connection = newConnection;
             b.connection = newConnection;
             s_Connections.Add(newConnection);
+
+            LogConnectionGeometry(a, b, "created");
+            if (Application.isPlaying)
+                a.StartCoroutine(LogConnectionNextFrame(a, b));
+
+            Debug.Log(
+                "[B2Nav] Module connection link created: " + a.GetStableHierarchyKey() +
+                " <-> " + b.GetStableHierarchyKey() +
+                "; linkObject=" + linkObject.name +
+                "; linkEnabled=" + link.enabled +
+                "; activated=" + link.activated +
+                "; endpointPathStatus=" + connectionPath.status +
+                "; endpointPathCorners=" + connectionPath.corners.Length + ".",
+                link);
             return true;
+        }
+
+        private static System.Collections.IEnumerator LogConnectionNextFrame(
+            ModuleConnectionPoint a, ModuleConnectionPoint b)
+        {
+            yield return null;
+            if (a != null && b != null && a.CurrentPartner == b)
+                LogConnectionGeometry(a, b, "next-frame");
+        }
+
+        private static void LogConnectionGeometry(ModuleConnectionPoint a,
+            ModuleConnectionPoint b, string phase)
+        {
+            NavMeshQueryFilter filter = CreateWalkableFilter(a.ownerSurface.agentTypeID);
+            bool sampledA = NavMesh.SamplePosition(a.walkAnchor.position, out NavMeshHit hitA,
+                WalkAnchorSnapDistance, filter);
+            bool sampledB = NavMesh.SamplePosition(b.walkAnchor.position, out NavMeshHit hitB,
+                WalkAnchorSnapDistance, filter);
+            NavMeshPath path = new NavMeshPath();
+            bool calculated = sampledA && sampledB &&
+                NavMesh.CalculatePath(hitA.position, hitB.position, filter, path);
+            List<string> corners = new List<string>();
+            foreach (Vector3 corner in path.corners)
+                corners.Add(corner.ToString("F4"));
+            Debug.Log("[B2LinkGeometry] phase=" + phase +
+                "; A=" + a.ownerSurface.name + "/" + a.name + "/" + a.walkAnchor.name +
+                "; authoredA=" + a.walkAnchor.position.ToString("F4") +
+                "; localA=" + a.walkAnchor.localPosition.ToString("F4") +
+                "; sampledA=" + sampledA + ":" + hitA.position.ToString("F4") +
+                "; sampleDistanceA=" + Vector3.Distance(a.walkAnchor.position, hitA.position) +
+                "; B=" + b.ownerSurface.name + "/" + b.name + "/" + b.walkAnchor.name +
+                "; authoredB=" + b.walkAnchor.position.ToString("F4") +
+                "; localB=" + b.walkAnchor.localPosition.ToString("F4") +
+                "; sampledB=" + sampledB + ":" + hitB.position.ToString("F4") +
+                "; sampleDistanceB=" + Vector3.Distance(b.walkAnchor.position, hitB.position) +
+                "; calculated=" + calculated + "; status=" + path.status +
+                "; corners=" + string.Join(" -> ", corners), a);
         }
 
         private static bool TrySampleWalkableEndpoint(

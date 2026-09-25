@@ -386,8 +386,8 @@ namespace AsteroidColony
             return routing != null && worker != null && source != null && destination != null &&
                    source.FreightAnchor != null && destination.FreightAnchor != null &&
                    routing.TryEstimate(worker, source.FreightAnchor, out positioning) &&
-                   routing.TryEstimateFrom(worker, source.FreightAnchor.position,
-                       destination.FreightAnchor, out loaded);
+                   routing.TryEstimateWalkOnly(worker, source.FreightAnchor.position,
+                       destination.FreightAnchor, out loaded, out _);
         }
 
         private static int CompareWorkerQuotes(FreightWorkQuote left, FreightWorkQuote right)

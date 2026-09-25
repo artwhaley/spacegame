@@ -7,11 +7,12 @@ namespace AsteroidColony
 {
     /// <summary>
     /// Physical movement modes understood by the personnel route model. B1 plans
-    /// only local walking; later transport planners may add another explicit kind.
+    /// local walking plus the explicit B2 Shuttle transfer leg.
     /// </summary>
     public enum PersonnelRouteLegType
     {
-        Walk
+        Walk,
+        Shuttle
     }
 
     /// <summary>
@@ -64,6 +65,16 @@ namespace AsteroidColony
             PersonnelRouteLegType type,
             Transform destination,
             float estimatedDistance)
+            : this(type, destination, estimatedDistance, null, null)
+        {
+        }
+
+        public PersonnelRouteLeg(
+            PersonnelRouteLegType type,
+            Transform destination,
+            float estimatedDistance,
+            ShuttleTransferEndpoint originEndpoint,
+            ShuttleTransferEndpoint destinationEndpoint)
         {
             if (destination == null)
                 throw new ArgumentNullException(nameof(destination));
@@ -73,11 +84,35 @@ namespace AsteroidColony
             Type = type;
             Destination = destination;
             EstimatedDistance = estimatedDistance;
+            OriginEndpoint = originEndpoint;
+            DestinationEndpoint = destinationEndpoint;
+            if (type == PersonnelRouteLegType.Shuttle &&
+                (originEndpoint == null || destinationEndpoint == null))
+            {
+                throw new ArgumentException("A Shuttle personnel leg requires both transfer endpoints.");
+            }
+        }
+
+        public static PersonnelRouteLeg Shuttle(
+            ShuttleTransferEndpoint origin,
+            ShuttleTransferEndpoint destination,
+            float estimatedDistance)
+        {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+            return new PersonnelRouteLeg(
+                PersonnelRouteLegType.Shuttle,
+                destination.TransferAnchor,
+                estimatedDistance,
+                origin,
+                destination);
         }
 
         public PersonnelRouteLegType Type { get; }
         public Transform Destination { get; }
         public float EstimatedDistance { get; }
+        public ShuttleTransferEndpoint OriginEndpoint { get; }
+        public ShuttleTransferEndpoint DestinationEndpoint { get; }
     }
 
     /// <summary>
@@ -135,6 +170,15 @@ namespace AsteroidColony
                 stableId.Append(legs[index].Type);
                 stableId.Append(':');
                 stableId.Append(PersonnelRouteIdentity.GetStableKey(legs[index].Destination));
+                if (legs[index].OriginEndpoint != null || legs[index].DestinationEndpoint != null)
+                {
+                    stableId.Append(':');
+                    stableId.Append(legs[index].OriginEndpoint != null
+                        ? legs[index].OriginEndpoint.StableId : string.Empty);
+                    stableId.Append('>');
+                    stableId.Append(legs[index].DestinationEndpoint != null
+                        ? legs[index].DestinationEndpoint.StableId : string.Empty);
+                }
             }
             return stableId.ToString();
         }

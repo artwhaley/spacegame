@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace AsteroidColony
 {
-    /// <summary>Loaded cargo movement kinds. Only walking has an executor in B1.6.</summary>
+    /// <summary>Loaded cargo movement kinds. B2 adds a physical Shuttle leg.</summary>
     public enum LogisticsRouteLegType
     {
         WalkingCarrier,
@@ -32,6 +32,14 @@ namespace AsteroidColony
     {
         public LogisticsRouteLeg(LogisticsRouteLegType type, LogisticsStockComponent origin,
             LogisticsStockComponent destination, float estimatedLoadedDistance)
+            : this(type, origin, destination, estimatedLoadedDistance, null, null)
+        {
+        }
+
+        public LogisticsRouteLeg(LogisticsRouteLegType type, LogisticsStockComponent origin,
+            LogisticsStockComponent destination, float estimatedLoadedDistance,
+            ShuttleTransferEndpoint originEndpoint,
+            ShuttleTransferEndpoint destinationEndpoint)
         {
             if (origin == null)
                 throw new ArgumentNullException(nameof(origin));
@@ -47,12 +55,27 @@ namespace AsteroidColony
             Origin = origin;
             Destination = destination;
             EstimatedLoadedDistance = estimatedLoadedDistance;
+            OriginEndpoint = originEndpoint;
+            DestinationEndpoint = destinationEndpoint;
+        }
+
+        public static LogisticsRouteLeg Shuttle(
+            LogisticsStockComponent origin,
+            LogisticsStockComponent destination,
+            ShuttleTransferEndpoint originEndpoint,
+            ShuttleTransferEndpoint destinationEndpoint,
+            float estimatedLoadedDistance)
+        {
+            return new LogisticsRouteLeg(LogisticsRouteLegType.ShuttleFreight,
+                origin, destination, estimatedLoadedDistance, originEndpoint, destinationEndpoint);
         }
 
         public LogisticsRouteLegType Type { get; }
         public LogisticsStockComponent Origin { get; }
         public LogisticsStockComponent Destination { get; }
         public float EstimatedLoadedDistance { get; }
+        public ShuttleTransferEndpoint OriginEndpoint { get; }
+        public ShuttleTransferEndpoint DestinationEndpoint { get; }
     }
 
     /// <summary>Ordered cargo movement chosen for one freight allocation.</summary>

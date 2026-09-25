@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -11,6 +13,9 @@ namespace AsteroidColony
     [AddComponentMenu("Colony/Navigation/Pedestrian Route Provider")]
     public sealed class PedestrianRouteProvider : MonoBehaviour, IPersonnelRouteProvider
     {
+        private static readonly HashSet<string> s_Diagnostics =
+            new HashSet<string>(StringComparer.Ordinal);
+
         [SerializeField, Min(0.01f)]
         private float destinationSampleDistance = 1f;
 
@@ -47,17 +52,27 @@ namespace AsteroidColony
             }
 
             int effectiveAreaMask = ResolveAreaMask(person);
+            NavMeshHit startHit;
             if (!NavMesh.SamplePosition(
                     hypotheticalStart,
-                    out NavMeshHit startHit,
-                    destinationSampleDistance,
-                    effectiveAreaMask) ||
-                !NavMesh.SamplePosition(
-                    destination.position,
-                    out NavMeshHit destinationHit,
+                    out startHit,
                     destinationSampleDistance,
                     effectiveAreaMask))
             {
+                LogDiagnostic(person, hypotheticalStart, destination, effectiveAreaMask,
+                    "start_sample_failed", destinationSampleDistance);
+                return false;
+            }
+
+            NavMeshHit destinationHit;
+            if (!NavMesh.SamplePosition(
+                    destination.position,
+                    out destinationHit,
+                    destinationSampleDistance,
+                    effectiveAreaMask))
+            {
+                LogDiagnostic(person, hypotheticalStart, destination, effectiveAreaMask,
+                    "destination_sample_failed", destinationSampleDistance);
                 return false;
             }
 
@@ -70,6 +85,8 @@ namespace AsteroidColony
                 path.status != NavMeshPathStatus.PathComplete ||
                 path.corners == null)
             {
+                LogDiagnostic(person, hypotheticalStart, destination, effectiveAreaMask,
+                    "path_incomplete", destinationSampleDistance, path, startHit.position, destinationHit.position);
                 return false;
             }
 
@@ -93,6 +110,53 @@ namespace AsteroidColony
         {
             NavMeshAgent agent = person.GetComponent<NavMeshAgent>();
             return agent != null ? agent.areaMask : areaMask;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetDiagnostics()
+        {
+            s_Diagnostics.Clear();
+        }
+
+        private static void LogDiagnostic(
+            ColonistIdentity person,
+            Vector3 hypotheticalStart,
+            Transform destination,
+            int effectiveAreaMask,
+            string stage,
+            float sampleRadius,
+            NavMeshPath path = null,
+            Vector3? sampledStart = null,
+            Vector3? sampledDestination = null)
+        {
+            string key = person.GetEntityId().ToString() + ":" +
+                destination.GetEntityId().ToString() + ":" +
+                hypotheticalStart.ToString() + ":" + stage;
+            if (!s_Diagnostics.Add(key))
+                return;
+
+            string pathState = path == null
+                ? "none"
+                : path.status + "/corners=" + (path.corners == null ? 0 : path.corners.Length);
+            string destinationPath = destination.name;
+            for (Transform parent = destination.parent; parent != null; parent = parent.parent)
+                destinationPath = parent.name + "/" + destinationPath;
+            List<string> corners = new List<string>();
+            if (path != null)
+                foreach (Vector3 corner in path.corners)
+                    corners.Add(corner.ToString("F4"));
+            Debug.LogWarning(
+                "[B2Walk] pedestrian route failed: person=" + person.name +
+                ", destination=" + destinationPath +
+                ", stage=" + stage +
+                ", start=" + hypotheticalStart +
+                ", destinationPosition=" + destination.position +
+                ", sampleRadius=" + sampleRadius +
+                ", areaMask=" + effectiveAreaMask +
+                ", path=" + pathState +
+                ", sampledStart=" + sampledStart + ", sampledDestination=" + sampledDestination +
+                ", corners=[" + string.Join(" -> ", corners) + "].",
+                destination);
         }
 
         private static bool IsFinite(Vector3 value)
