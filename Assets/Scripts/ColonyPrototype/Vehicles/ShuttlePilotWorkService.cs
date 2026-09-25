@@ -20,6 +20,8 @@ namespace AsteroidColony
         private WorkExecutionLease lease;
         private bool releasePending;
         private string lastAcquisitionDiagnostic;
+        private ColonistIdentity lastDutyPilot;
+        private bool lastDutyPilotWasReady;
 
         public ShuttleBaseComponent HomeBase => homeBase;
         public WorkplaceComponent Workplace => workplace;
@@ -51,14 +53,22 @@ namespace AsteroidColony
         {
             ResolveReferences();
             if (lease != null && lease.IsActive)
-                return true;
-            if (workplace == null || pilotRole == null || WorkforceManager.Instance == null ||
-                SimulationManager.Instance == null)
             {
-                LogAcquisitionDiagnostic("missing dependency: workplace=" + (workplace != null) +
+                if (vehicle != null && vehicle.PilotAboard)
+                    return true;
+                if (!releasePending && IsHomeDocked() && vehicle.TryBoardPilot(Pilot))
+                    return true;
+                LogAcquisitionDiagnostic("active pilot lease exists but pilot is not physically aboard");
+                return false;
+            }
+            if (workplace == null || pilotRole == null || WorkforceManager.Instance == null ||
+                SimulationManager.Instance == null || vehicle == null || !IsHomeDocked())
+            {
+                LogAcquisitionDiagnostic("not ready: workplace=" + (workplace != null) +
                     ", role=" + (pilotRole != null) + ", workforce=" +
                     (WorkforceManager.Instance != null) + ", simulation=" +
-                    (SimulationManager.Instance != null));
+                    (SimulationManager.Instance != null) + ", shuttle=" + (vehicle != null) +
+                    ", homeDocked=" + IsHomeDocked());
                 return false;
             }
 
@@ -77,19 +87,32 @@ namespace AsteroidColony
                     worker, workplace, pilotRole, gameHour);
                 if (!onDuty)
                 {
+                    if (worker == lastDutyPilot)
+                        lastDutyPilotWasReady = false;
                     LogAcquisitionDiagnostic("candidate=" + worker.name +
                         ", brainState=" + (brain != null ? brain.State.ToString() : "missing") +
                         ", genuinelyOnDuty=false");
                     continue;
                 }
+                if (!lastDutyPilotWasReady || lastDutyPilot != worker)
+                {
+                    lastDutyPilot = worker;
+                    lastDutyPilotWasReady = true;
+                    ShuttleDiagnosticLog.Record("pilot_duty_reached",
+                        "pilot=" + worker.name + ", workplace=" + workplace.name +
+                        ", position=" + worker.transform.position);
+                }
                 if (brain != null && brain.TryAcquireWorkExecution(workplace, this, out lease))
                 {
                     releasePending = false;
                     lastAcquisitionDiagnostic = null;
-                    SimulationLog.Log("[B2Pilot] acquired " + worker.name +
-                        " for " + (vehicle != null ? vehicle.name : "unbound shuttle") +
-                        "; position=" + worker.transform.position);
-                    return true;
+                    ShuttleDiagnosticLog.Record("pilot_lease_acquired",
+                        "pilot=" + worker.name + ", shuttle=" + vehicle.StableId);
+                    if (vehicle.TryBoardPilot(worker))
+                        return true;
+                    LogAcquisitionDiagnostic("pilot lease acquired but physical boarding failed for " +
+                        worker.name);
+                    return false;
                 }
                 LogAcquisitionDiagnostic("candidate=" + worker.name +
                     ", genuinelyOnDuty=true, brainState=" +
@@ -116,20 +139,25 @@ namespace AsteroidColony
             if (requestedLease == null || requestedLease != lease || !requestedLease.IsActive)
                 return WorkReleaseDisposition.ReleasedNow;
 
-            bool home = vehicle != null && homeBase != null && vehicle.CurrentDock == homeBase.DockingPort &&
-                vehicle.Voyage != null && vehicle.Voyage.Phase == ShuttleVoyagePhase.Docked &&
-                vehicle.CurrentTrip == null;
-            if (!home)
+            if (!IsHomeDocked() || vehicle.CurrentTrip != null)
             {
                 releasePending = true;
-                if (vehicle != null && vehicle.CurrentTrip == null)
+                if (vehicle != null && vehicle.CurrentTrip == null &&
+                    vehicle.Voyage != null && vehicle.Voyage.Phase == ShuttleVoyagePhase.Docked)
                     vehicle.TryReturnHome();
                 return WorkReleaseDisposition.Deferred;
             }
 
+            if (vehicle.PilotAboard && !vehicle.TryDisembarkPilotAtHome(Pilot))
+            {
+                releasePending = true;
+                return WorkReleaseDisposition.Deferred;
+            }
             releasePending = false;
             requestedLease.Release();
             lease = null;
+            ShuttleDiagnosticLog.Record("pilot_lease_released_home",
+                "pilot=" + requestedLease.Worker.name + ", shuttle=" + vehicle.StableId);
             return WorkReleaseDisposition.ReleasedNow;
         }
 
@@ -142,11 +170,27 @@ namespace AsteroidColony
 
         public void SimulationTick(float deltaGameHours)
         {
-            if (lease == null || !lease.IsActive || !releasePending || vehicle == null)
+            ResolveReferences();
+            if (vehicle == null)
                 return;
+
+            if (lease == null || !lease.IsActive)
+            {
+                if (IsHomeDocked())
+                    TryAcquirePilot();
+                return;
+            }
+
+            if (!releasePending)
+            {
+                if (!vehicle.PilotAboard && IsHomeDocked())
+                    vehicle.TryBoardPilot(Pilot);
+                return;
+            }
+
             if (vehicle.CurrentTrip != null)
                 return;
-            if (vehicle.CurrentDock != homeBase?.DockingPort)
+            if (!IsHomeDocked())
             {
                 if (vehicle.Voyage != null && vehicle.Voyage.Phase == ShuttleVoyagePhase.Docked)
                     vehicle.TryReturnHome();
@@ -158,12 +202,25 @@ namespace AsteroidColony
         private void ReleaseAtHomeIfSafe()
         {
             if (lease == null || !lease.IsActive || vehicle == null || vehicle.CurrentTrip != null ||
-                vehicle.CurrentDock != homeBase?.DockingPort ||
-                vehicle.Voyage == null || vehicle.Voyage.Phase != ShuttleVoyagePhase.Docked)
+                !IsHomeDocked())
                 return;
+            ColonistIdentity pilot = Pilot;
+            if (pilot != null && vehicle.PilotAboard && !vehicle.TryDisembarkPilotAtHome(pilot))
+                return;
+            string pilotName = pilot != null ? pilot.name : "missing";
+            string shuttleId = vehicle.StableId;
             lease.Release();
             lease = null;
             releasePending = false;
+            ShuttleDiagnosticLog.Record("pilot_lease_released_home",
+                "pilot=" + pilotName + ", shuttle=" + shuttleId);
+        }
+
+        private bool IsHomeDocked()
+        {
+            return vehicle != null && homeBase != null && homeBase.DockingPort != null &&
+                vehicle.CurrentDock == homeBase.DockingPort && vehicle.Voyage != null &&
+                vehicle.Voyage.Phase == ShuttleVoyagePhase.Docked;
         }
 
         private void ResolveReferences()

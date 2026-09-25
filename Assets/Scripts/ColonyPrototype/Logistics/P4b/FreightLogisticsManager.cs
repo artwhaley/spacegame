@@ -591,15 +591,85 @@ namespace AsteroidColony
             int completedLegIndex = job.CurrentLegIndex;
             InventoryReservationToken carriedReservation = job.Reservation;
             InventoryReservationToken stagedReservation = null;
+            ShuttleTransferEndpoint destinationEndpoint = FindEndpointForStock(leg.Destination);
+            float sourceOnHandBefore = cargoInventory.GetOnHand(job.Resource);
+            float sourceReservedBefore = cargoInventory.GetReserved(job.Resource);
+            float sourceAvailableBefore = cargoInventory.GetAvailable(job.Resource);
+            float destinationOnHandBefore = destinationInventory.GetOnHand(job.Resource);
+            float destinationReservedBefore = destinationInventory.GetReserved(job.Resource);
+            float destinationAvailableBefore = destinationInventory.GetAvailable(job.Resource);
             float moved = finalLeg
                 ? cargoInventory.TransferOwnedTo(carriedReservation, destinationInventory, requestedTransfer)
                 : cargoInventory.TransferOwnedToAndReserveDestination(
                     carriedReservation, destinationInventory, requestedTransfer, out stagedReservation);
             if (moved <= QuantityEpsilon)
             {
+                Log("logistics.inventory_transfer_failed", "Warning", cargoInventory, destinationInventory,
+                    new SimulationLogField("allocationId", job.Allocation.Id),
+                    new SimulationLogField("demandId", job.Order.Id),
+                    new SimulationLogField("legIndex", completedLegIndex),
+                    new SimulationLogField("resource", job.Resource.name),
+                    new SimulationLogField("requested", requestedTransfer),
+                    new SimulationLogField("sourceInventoryKey", SceneStableIdentity.GetKey(cargoInventory)),
+                    new SimulationLogField("destinationInventoryKey", SceneStableIdentity.GetKey(destinationInventory)),
+                    new SimulationLogField("destinationStock", leg.Destination.name),
+                    new SimulationLogField("destinationEndpoint", destinationEndpoint != null
+                        ? destinationEndpoint.StableId : string.Empty),
+                    new SimulationLogField("endpointInventoryKey", destinationEndpoint != null &&
+                        destinationEndpoint.StagingInventory != null
+                            ? SceneStableIdentity.GetKey(destinationEndpoint.StagingInventory) : string.Empty),
+                    new SimulationLogField("endpointInventoryMatchesDestination",
+                        destinationEndpoint != null && destinationEndpoint.StagingInventory == destinationInventory),
+                    new SimulationLogField("sourceOnHandBefore", sourceOnHandBefore),
+                    new SimulationLogField("sourceReservedBefore", sourceReservedBefore),
+                    new SimulationLogField("sourceAvailableBefore", sourceAvailableBefore),
+                    new SimulationLogField("destinationOnHandBefore", destinationOnHandBefore),
+                    new SimulationLogField("destinationReservedBefore", destinationReservedBefore),
+                    new SimulationLogField("destinationAvailableBefore", destinationAvailableBefore),
+                    new SimulationLogField("carriedReservationActive", carriedReservation != null &&
+                        carriedReservation.IsActive),
+                    new SimulationLogField("carriedReservationOwnerMatchesSource",
+                        carriedReservation != null && carriedReservation.Owner == cargoInventory));
                 BlockJob(job, FreightFailureReason.DestinationHasNoCapacity);
                 return false;
             }
+
+            Log("logistics.inventory_transfer", "Info", cargoInventory, destinationInventory,
+                new SimulationLogField("allocationId", job.Allocation.Id),
+                new SimulationLogField("demandId", job.Order.Id),
+                new SimulationLogField("legIndex", completedLegIndex),
+                new SimulationLogField("resource", job.Resource.name),
+                new SimulationLogField("requested", requestedTransfer),
+                new SimulationLogField("transferred", moved),
+                new SimulationLogField("transferKind", finalLeg ? "final_delivery" : "staging"),
+                new SimulationLogField("sourceInventoryKey", SceneStableIdentity.GetKey(cargoInventory)),
+                new SimulationLogField("destinationInventoryKey", SceneStableIdentity.GetKey(destinationInventory)),
+                new SimulationLogField("destinationStock", leg.Destination.name),
+                new SimulationLogField("destinationEndpoint", destinationEndpoint != null
+                    ? destinationEndpoint.StableId : string.Empty),
+                new SimulationLogField("endpointInventoryKey", destinationEndpoint != null &&
+                    destinationEndpoint.StagingInventory != null
+                        ? SceneStableIdentity.GetKey(destinationEndpoint.StagingInventory) : string.Empty),
+                new SimulationLogField("endpointInventoryMatchesDestination",
+                    destinationEndpoint != null && destinationEndpoint.StagingInventory == destinationInventory),
+                new SimulationLogField("sourceOnHandBefore", sourceOnHandBefore),
+                new SimulationLogField("sourceReservedBefore", sourceReservedBefore),
+                new SimulationLogField("sourceAvailableBefore", sourceAvailableBefore),
+                new SimulationLogField("sourceOnHandAfter", cargoInventory.GetOnHand(job.Resource)),
+                new SimulationLogField("sourceReservedAfter", cargoInventory.GetReserved(job.Resource)),
+                new SimulationLogField("sourceAvailableAfter", cargoInventory.GetAvailable(job.Resource)),
+                new SimulationLogField("destinationOnHandBefore", destinationOnHandBefore),
+                new SimulationLogField("destinationReservedBefore", destinationReservedBefore),
+                new SimulationLogField("destinationAvailableBefore", destinationAvailableBefore),
+                new SimulationLogField("destinationOnHandAfter", destinationInventory.GetOnHand(job.Resource)),
+                new SimulationLogField("destinationReservedAfter", destinationInventory.GetReserved(job.Resource)),
+                new SimulationLogField("destinationAvailableAfter", destinationInventory.GetAvailable(job.Resource)),
+                new SimulationLogField("destinationReservationCreated", stagedReservation != null &&
+                    stagedReservation.IsActive),
+                new SimulationLogField("carriedReservationActive", carriedReservation != null &&
+                    carriedReservation.IsActive),
+                new SimulationLogField("carriedReservationOwnerMatchesSource",
+                    carriedReservation != null && carriedReservation.Owner == cargoInventory));
 
             if (!finalLeg)
             {
@@ -735,6 +805,22 @@ namespace AsteroidColony
                 if (leg.Type == LogisticsRouteLegType.WalkingCarrier)
                     AssignWalkingLeg(job, leg);
             }
+        }
+
+        private static ShuttleTransferEndpoint FindEndpointForStock(LogisticsStockComponent stock)
+        {
+            if (stock == null)
+                return null;
+
+            IReadOnlyList<ShuttleTransferEndpoint> endpoints = ShuttleTransferEndpoint.Active;
+            for (int index = 0; index < endpoints.Count; index++)
+            {
+                ShuttleTransferEndpoint endpoint = endpoints[index];
+                if (endpoint != null && endpoint.DepotStock == stock)
+                    return endpoint;
+            }
+
+            return null;
         }
 
         private void AssignShuttleLeg(FreightDeliveryJob job, LogisticsRouteLeg leg)

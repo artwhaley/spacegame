@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Colony.Interactions;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -23,10 +24,26 @@ namespace AsteroidColony
     [AddComponentMenu("Colony/Vehicles/Shuttle Service")]
     public sealed class ShuttleServiceComponent : MonoBehaviour
     {
-        private sealed class PassengerRecord
+        private sealed class PresentationComponentState
         {
+            public Component Component;
+            public bool Enabled;
+        }
+
+        private sealed class BoardedActorState
+        {
+            public ColonistIdentity Actor;
             public ShuttleTransportRequest Request;
-            public ColonistIdentity Person;
+            public bool IsPilot;
+            public NavMeshAgent Agent;
+            public bool AgentWasEnabled;
+            public bool AgentWasStopped;
+            public bool AgentUpdatedPosition;
+            public bool AgentUpdatedRotation;
+            public Vector3 LocalPosition;
+            public Quaternion LocalRotation;
+            public PresentationComponentState[] Renderers;
+            public PresentationComponentState[] Canvases;
         }
 
         [SerializeField] private string stableId;
@@ -38,7 +55,7 @@ namespace AsteroidColony
         [SerializeField] private InventoryComponent cargoInventory;
         [SerializeField] private ShuttlePilotWorkService pilotService;
 
-        private readonly List<PassengerRecord> passengers = new List<PassengerRecord>();
+        private readonly List<BoardedActorState> boardedActors = new List<BoardedActorState>();
         private ShuttleTrip currentTrip;
         private ShuttleTransferEndpoint activeOrigin;
         private string lastTripDiagnostic;
@@ -51,8 +68,10 @@ namespace AsteroidColony
         public DockingPortComponent CurrentDock => voyage != null ? voyage.CurrentDock : null;
         public ShuttlePilotWorkService PilotService => pilotService;
         public ColonistIdentity Pilot => pilotService != null ? pilotService.Pilot : null;
+        public bool PilotAboard => Pilot != null && IsActorAboard(Pilot, true);
         public bool PilotReleasePending => pilotService != null && pilotService.PilotReleasePending;
         public int PassengerCapacity => passengerCapacity;
+        public int PassengerCount => CountPassengers();
         public int FreightCapacity => freightCapacity;
         public InventoryComponent CargoInventory => cargoInventory;
         public ShuttleTrip CurrentTrip => currentTrip;
@@ -61,9 +80,10 @@ namespace AsteroidColony
             get
             {
                 List<ColonistIdentity> result = new List<ColonistIdentity>();
-                for (int index = 0; index < passengers.Count; index++)
-                    if (passengers[index]?.Person != null)
-                        result.Add(passengers[index].Person);
+                for (int index = 0; index < boardedActors.Count; index++)
+                    if (boardedActors[index] != null && !boardedActors[index].IsPilot &&
+                        boardedActors[index].Actor != null)
+                        result.Add(boardedActors[index].Actor);
                 return result;
             }
         }
@@ -86,17 +106,45 @@ namespace AsteroidColony
 
         private void Reset() => ResolveReferences();
 
-        private void Awake() => ResolveReferences();
+        private void Awake()
+        {
+            ResolveReferences();
+            pilotService?.BindVehicle(this);
+        }
 
         private void OnEnable()
         {
             ResolveReferences();
+            pilotService?.BindVehicle(this);
             ShuttleManager.Instance?.RegisterShuttle(this);
         }
 
-        private void Start() => ShuttleManager.Instance?.RegisterShuttle(this);
+        private void Start()
+        {
+            ResolveReferences();
+            pilotService?.BindVehicle(this);
+            ShuttleManager.Instance?.RegisterShuttle(this);
+        }
 
-        private void OnDisable() => ShuttleManager.Instance?.UnregisterShuttle(this);
+        private void OnDisable()
+        {
+            ShuttleManager.Instance?.UnregisterShuttle(this);
+            BlockTripForLostShuttle();
+            DetachAllBoardedActors();
+        }
+
+        private void LateUpdate()
+        {
+            for (int index = 0; index < boardedActors.Count; index++)
+            {
+                BoardedActorState state = boardedActors[index];
+                if (state?.Actor == null)
+                    continue;
+                state.Actor.transform.SetPositionAndRotation(
+                    transform.TransformPoint(state.LocalPosition),
+                    transform.rotation * state.LocalRotation);
+            }
+        }
 
         public bool CanCarry(ShuttlePayloadType type)
         {
@@ -134,6 +182,9 @@ namespace AsteroidColony
         {
             ResolveReferences();
             if (currentTrip == null || voyage == null)
+                return;
+            if (currentTrip.State == ShuttleTripState.Blocked ||
+                currentTrip.State == ShuttleTripState.Cancelled)
                 return;
 
             if (!TryEnsurePilot())
@@ -188,26 +239,53 @@ namespace AsteroidColony
             if (request == null || person == null || currentTrip == null ||
                 request.AssignedTrip != currentTrip || request.PayloadType != ShuttlePayloadType.Passenger ||
                 request.Origin != activeOrigin || CurrentDock != activeOrigin.DockingPort ||
-                passengers.Count >= passengerCapacity || !request.IsPayloadReady)
+                PassengerCount >= passengerCapacity || !request.IsPayloadReady)
                 return false;
 
-            NavMeshAgent agent = person.GetComponent<NavMeshAgent>();
-            if (agent != null && agent.enabled)
-            {
-                agent.isStopped = true;
-                agent.enabled = false;
-            }
-            Transform personTransform = person.transform;
-            personTransform.SetParent(transform, true);
-            Transform anchor = passengerAnchor != null ? passengerAnchor : transform;
-            personTransform.position = anchor.position + Vector3.up * (0.25f + passengers.Count * 0.35f);
-            passengers.Add(new PassengerRecord { Request = request, Person = person });
-            SimulationLog.Log("[B2Shuttle] boarded passenger=" + person.name +
-                ", pilot=" + (Pilot != null ? Pilot.name : "none") +
-                ", trip=" + currentTrip.Id);
+            if (!TryBoardActor(person, request, false))
+                return false;
             request.IsPhysicallyTransferred = true;
             request.SetState(ShuttleTransportRequestState.LoadingOrBoarding);
+            ShuttleDiagnosticLog.Record("passenger_physically_boarded",
+                "request=" + request.Id + ", actor=" + person.name +
+                ", trip=" + currentTrip.Id + ", pilotAboard=" + PilotAboard);
             return true;
+        }
+
+        internal bool TryBoardPilot(ColonistIdentity pilot)
+        {
+            if (pilot == null || pilotService == null || pilotService.Pilot != pilot ||
+                homeBase == null || voyage == null || CurrentDock != homeBase.DockingPort ||
+                voyage.Phase != ShuttleVoyagePhase.Docked)
+                return false;
+            if (IsActorAboard(pilot, true))
+                return true;
+            bool boarded = TryBoardActor(pilot, null, true);
+            if (boarded)
+                ShuttleDiagnosticLog.Record("pilot_physically_boarded",
+                    "pilot=" + pilot.name + ", shuttle=" + StableId);
+            return boarded;
+        }
+
+        internal bool TryDisembarkPilotAtHome(ColonistIdentity pilot)
+        {
+            if (pilot == null || homeBase == null || CurrentDock != homeBase.DockingPort ||
+                voyage == null || voyage.Phase != ShuttleVoyagePhase.Docked || currentTrip != null ||
+                homeBase.DutyAnchor == null)
+                return false;
+            for (int index = boardedActors.Count - 1; index >= 0; index--)
+            {
+                BoardedActorState state = boardedActors[index];
+                if (state == null || !state.IsPilot || state.Actor != pilot)
+                    continue;
+                if (!DisembarkActor(state, homeBase.DutyAnchor))
+                    return false;
+                boardedActors.RemoveAt(index);
+                ShuttleDiagnosticLog.Record("pilot_disembarked_home",
+                    "pilot=" + pilot.name + ", shuttle=" + StableId);
+                return true;
+            }
+            return false;
         }
 
         private bool BeginOrReposition()
@@ -245,7 +323,7 @@ namespace AsteroidColony
                     for (int payloadIndex = 0; payloadIndex < request.Payloads.Count; payloadIndex++)
                     {
                         ColonistIdentity person = request.Payloads[payloadIndex] as ColonistIdentity;
-                        if (person != null && !ContainsPassenger(person))
+                        if (person != null && !IsActorAboard(person, false))
                             TryBoardPassenger(request, person);
                     }
                 }
@@ -265,7 +343,7 @@ namespace AsteroidColony
             if (!allReady)
             {
                 LogTripDiagnostic("loading incomplete; trip=" + currentTrip.Id +
-                    ", passengers=" + passengers.Count +
+                    ", passengers=" + PassengerCount +
                     ", requests=" + currentTrip.Requests.Count);
                 return;
             }
@@ -283,8 +361,8 @@ namespace AsteroidColony
             }
 
             currentTrip.State = ShuttleTripState.InTransit;
-            SimulationLog.Log("[B2Shuttle] departed; trip=" + currentTrip.Id +
-                ", pilot=" + (Pilot != null ? Pilot.name : "none"));
+            ShuttleDiagnosticLog.Record("voyage_departure_accepted",
+                "trip=" + currentTrip.Id + ", pilot=" + (Pilot != null ? Pilot.name : "none"));
             OperationalState = ShuttleOperationalState.InTransit;
             for (int index = 0; index < currentTrip.Requests.Count; index++)
                 currentTrip.Requests[index].SetState(ShuttleTransportRequestState.InTransit);
@@ -294,14 +372,21 @@ namespace AsteroidColony
         {
             OperationalState = ShuttleOperationalState.UnloadingOrDisembarking;
             currentTrip.State = ShuttleTripState.UnloadingOrDisembarking;
-            for (int index = passengers.Count - 1; index >= 0; index--)
+            for (int index = boardedActors.Count - 1; index >= 0; index--)
             {
-                PassengerRecord passenger = passengers[index];
-                if (passenger == null || passenger.Request == null ||
-                    passenger.Request.Destination != currentTrip.Destination)
+                BoardedActorState actor = boardedActors[index];
+                if (actor == null || actor.IsPilot || actor.Request == null ||
+                    actor.Request.Destination != currentTrip.Destination)
                     continue;
-                Disembark(passenger);
-                passengers.RemoveAt(index);
+                if (!DisembarkActor(actor, currentTrip.Destination.TransferAnchor))
+                {
+                    currentTrip.State = ShuttleTripState.Blocked;
+                    OperationalState = ShuttleOperationalState.Blocked;
+                    LogTripDiagnostic("disembark blocked by missing destination NavMesh; trip=" +
+                        currentTrip.Id + ", actor=" + actor.Actor.name);
+                    return;
+                }
+                boardedActors.RemoveAt(index);
             }
 
             for (int index = 0; index < currentTrip.Requests.Count; index++)
@@ -331,35 +416,221 @@ namespace AsteroidColony
             SimulationLog.Log("[B2Shuttle] " + diagnostic);
         }
 
-        private void Disembark(PassengerRecord passenger)
+        private bool TryBoardActor(ColonistIdentity person,
+            ShuttleTransportRequest request, bool isPilot)
         {
-            if (passenger.Person == null)
-                return;
-            Transform target = currentTrip.Destination.TransferAnchor;
-            Transform personTransform = passenger.Person.transform;
-            personTransform.SetParent(null, true);
-            personTransform.position = target.position;
-            NavMeshAgent agent = passenger.Person.GetComponent<NavMeshAgent>();
-            if (agent != null)
+            if (person == null || IsActorAboard(person, isPilot))
+                return person != null;
+
+            Transform anchor = passengerAnchor != null ? passengerAnchor : transform;
+            int aboardIndex = boardedActors.Count;
+            Vector3 boardingPosition = anchor.position + anchor.up * (0.2f + aboardIndex * 0.18f);
+            Quaternion boardingRotation = anchor.rotation;
+            NavMeshAgent agent = person.GetComponent<NavMeshAgent>();
+            BoardedActorState state = new BoardedActorState
+            {
+                Actor = person,
+                Request = request,
+                IsPilot = isPilot,
+                Agent = agent,
+                AgentWasEnabled = agent != null && agent.enabled,
+                AgentWasStopped = agent == null || !agent.isActiveAndEnabled ||
+                    !agent.isOnNavMesh || agent.isStopped,
+                AgentUpdatedPosition = agent != null && agent.updatePosition,
+                AgentUpdatedRotation = agent != null && agent.updateRotation,
+                LocalPosition = transform.InverseTransformPoint(boardingPosition),
+                LocalRotation = Quaternion.Inverse(transform.rotation) * boardingRotation,
+                Renderers = CaptureEnabledStates(person.GetComponentsInChildren<Renderer>(true)),
+                Canvases = CaptureEnabledStates(person.GetComponentsInChildren<Canvas>(true))
+            };
+
+            person.GetComponent<ColonistMotor>()?.Stop();
+            if (agent != null && agent.enabled)
+            {
+                if (agent.isActiveAndEnabled && agent.isOnNavMesh)
+                    agent.isStopped = true;
+                agent.enabled = false;
+            }
+            person.transform.SetPositionAndRotation(boardingPosition, boardingRotation);
+            SetPresentationVisible(state, false);
+            boardedActors.Add(state);
+            return true;
+        }
+
+        private bool DisembarkActor(BoardedActorState state, Transform target)
+        {
+            if (state == null || state.Actor == null || target == null)
+                return false;
+
+            NavMeshAgent agent = state.Agent;
+            NavMeshHit hit = default;
+            bool shouldRestoreAgent = agent != null && state.AgentWasEnabled;
+            if (shouldRestoreAgent && !NavMesh.SamplePosition(target.position, out hit, 2f, agent.areaMask))
+            {
+                ShuttleDiagnosticLog.Record("actor_disembark_waiting_for_navmesh",
+                    "actor=" + state.Actor.name + ", target=" + target.position);
+                return false;
+            }
+
+            Vector3 destination = shouldRestoreAgent ? hit.position : target.position;
+            Vector3 priorPosition = state.Actor.transform.position;
+            Quaternion priorRotation = state.Actor.transform.rotation;
+            state.Actor.transform.SetPositionAndRotation(destination, target.rotation);
+            if (shouldRestoreAgent)
             {
                 agent.enabled = true;
-                if (NavMesh.SamplePosition(target.position, out NavMeshHit hit, 2f, agent.areaMask))
-                    agent.Warp(hit.position);
-                agent.isStopped = true;
+                if (!agent.Warp(destination))
+                {
+                    agent.enabled = false;
+                    state.Actor.transform.SetPositionAndRotation(priorPosition, priorRotation);
+                    ShuttleDiagnosticLog.Record("actor_disembark_waiting_for_navmesh",
+                        "actor=" + state.Actor.name + ", reason=warp_rejected");
+                    return false;
+                }
+                agent.updatePosition = state.AgentUpdatedPosition;
+                agent.updateRotation = state.AgentUpdatedRotation;
+                agent.isStopped = state.AgentWasStopped;
+            }
+            SetPresentationVisible(state, true);
+            return true;
+        }
+
+        private void DetachAllBoardedActors()
+        {
+            for (int index = boardedActors.Count - 1; index >= 0; index--)
+            {
+                BoardedActorState state = boardedActors[index];
+                if (state?.Actor == null)
+                    continue;
+                Vector3 lastPosition = state.Actor.transform.position;
+                RestoreNavigationAt(state, lastPosition);
+                SetPresentationVisible(state, true);
+                ShuttleDiagnosticLog.Record("boarded_actor_released_with_shuttle_disabled",
+                    "actor=" + state.Actor.name + ", pilot=" + state.IsPilot +
+                    ", position=" + lastPosition);
+            }
+            boardedActors.Clear();
+        }
+
+        private void RestoreNavigationAt(BoardedActorState state, Vector3 worldPosition)
+        {
+            NavMeshAgent agent = state != null ? state.Agent : null;
+            if (agent == null || !state.AgentWasEnabled)
+            {
+                if (agent != null)
+                    agent.enabled = false;
+                return;
+            }
+
+            if (!NavMesh.SamplePosition(worldPosition, out NavMeshHit hit, 2f, agent.areaMask))
+            {
+                agent.enabled = false;
+                ShuttleDiagnosticLog.Record("actor_navmesh_reattach_failed",
+                    "actor=" + state.Actor.name + ", position=" + worldPosition);
+                return;
+            }
+
+            state.Actor.transform.position = hit.position;
+            agent.enabled = true;
+            if (!agent.Warp(hit.position))
+            {
+                agent.enabled = false;
+                ShuttleDiagnosticLog.Record("actor_navmesh_reattach_failed",
+                    "actor=" + state.Actor.name + ", reason=warp_rejected, position=" + hit.position);
+                return;
+            }
+            agent.updatePosition = state.AgentUpdatedPosition;
+            agent.updateRotation = state.AgentUpdatedRotation;
+            agent.isStopped = state.AgentWasStopped;
+        }
+
+        private static PresentationComponentState[] CaptureEnabledStates(Renderer[] components)
+        {
+            PresentationComponentState[] states = new PresentationComponentState[components.Length];
+            for (int index = 0; index < components.Length; index++)
+            {
+                states[index] = new PresentationComponentState
+                {
+                    Component = components[index],
+                    Enabled = components[index] != null && components[index].enabled
+                };
+            }
+            return states;
+        }
+
+        private static PresentationComponentState[] CaptureEnabledStates(Canvas[] components)
+        {
+            PresentationComponentState[] states = new PresentationComponentState[components.Length];
+            for (int index = 0; index < components.Length; index++)
+            {
+                states[index] = new PresentationComponentState
+                {
+                    Component = components[index],
+                    Enabled = components[index] != null && components[index].enabled
+                };
+            }
+            return states;
+        }
+
+        private static void SetPresentationVisible(BoardedActorState state, bool visible)
+        {
+            SetComponentsEnabled(state != null ? state.Renderers : null, visible);
+            SetComponentsEnabled(state != null ? state.Canvases : null, visible);
+        }
+
+        private static void SetComponentsEnabled(PresentationComponentState[] states, bool visible)
+        {
+            if (states == null)
+                return;
+            for (int index = 0; index < states.Length; index++)
+            {
+                PresentationComponentState saved = states[index];
+                if (saved?.Component is Renderer renderer)
+                    renderer.enabled = visible && saved.Enabled;
+                else if (saved?.Component is Canvas canvas)
+                    canvas.enabled = visible && saved.Enabled;
             }
         }
 
-        private bool ContainsPassenger(ColonistIdentity person)
+        private bool IsActorAboard(ColonistIdentity person, bool pilot)
         {
-            for (int index = 0; index < passengers.Count; index++)
-                if (passengers[index] != null && passengers[index].Person == person)
+            for (int index = 0; index < boardedActors.Count; index++)
+                if (boardedActors[index] != null && boardedActors[index].Actor == person &&
+                    boardedActors[index].IsPilot == pilot)
                     return true;
             return false;
         }
 
+        private int CountPassengers()
+        {
+            int count = 0;
+            for (int index = 0; index < boardedActors.Count; index++)
+                if (boardedActors[index] != null && !boardedActors[index].IsPilot &&
+                    boardedActors[index].Actor != null)
+                    count++;
+            return count;
+        }
+
+        private void BlockTripForLostShuttle()
+        {
+            if (currentTrip == null || currentTrip.State == ShuttleTripState.Completed ||
+                currentTrip.State == ShuttleTripState.Cancelled)
+                return;
+            currentTrip.State = ShuttleTripState.Blocked;
+            for (int index = 0; index < currentTrip.Requests.Count; index++)
+            {
+                ShuttleTransportRequest request = currentTrip.Requests[index];
+                if (request != null && !request.IsTerminal)
+                    request.SetState(ShuttleTransportRequestState.Blocked);
+            }
+            OperationalState = ShuttleOperationalState.Blocked;
+            ShuttleDiagnosticLog.Record("active_trip_blocked_shuttle_disabled",
+                "trip=" + currentTrip.Id + ", shuttle=" + StableId);
+        }
+
         private bool TryEnsurePilot()
         {
-            return pilotService == null || pilotService.TryAcquirePilot();
+            return pilotService != null && pilotService.TryAcquirePilot() && PilotAboard;
         }
 
         private void ResolveReferences()

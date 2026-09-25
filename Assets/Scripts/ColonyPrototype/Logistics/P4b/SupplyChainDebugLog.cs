@@ -18,6 +18,8 @@ namespace AsteroidColony
         [SerializeField, Min(0.05f)] private float snapshotIntervalGameHours = 0.25f;
 
         private readonly Dictionary<string, float> lastNoOfferHour = new Dictionary<string, float>();
+        private readonly HashSet<InventoryComponent> subscribedInventories =
+            new HashSet<InventoryComponent>();
         private StreamWriter writer;
         private SimulationLogManager subscribedLogManager;
         private float nextSnapshotGameHour;
@@ -36,6 +38,7 @@ namespace AsteroidColony
             EnsureConnected();
             if (writer != null)
             {
+                RefreshInventorySubscriptions();
                 WriteSnapshot("initial");
                 nextSnapshotGameHour = CurrentGameHour + Mathf.Max(0.05f, snapshotIntervalGameHours);
             }
@@ -47,6 +50,10 @@ namespace AsteroidColony
             if (subscribedLogManager != null)
                 subscribedLogManager.EntryRecorded -= HandleEntryRecorded;
             subscribedLogManager = null;
+            foreach (InventoryComponent inventory in subscribedInventories)
+                if (inventory != null)
+                    inventory.OnChanged -= HandleInventoryChanged;
+            subscribedInventories.Clear();
             CloseWriter();
         }
 
@@ -55,6 +62,8 @@ namespace AsteroidColony
             EnsureConnected();
             if (writer == null)
                 return;
+
+            RefreshInventorySubscriptions();
 
             float gameHour = CurrentGameHour;
             if (gameHour + 0.0001f < nextSnapshotGameHour)
@@ -132,6 +141,48 @@ namespace AsteroidColony
                     if (field != null)
                         row.fields.Add(new SimulationLogField(field.Key, field.Value));
                 }
+                Write(row);
+
+                // A handoff is the moment inventory moves between independently
+                // owned stores. Capture the live stock/job state immediately;
+                // interval snapshots can otherwise miss a short test run's transfer.
+                if (entry.EventKey == "logistics.leg_staged")
+                    WriteSnapshot("after_leg_staged");
+            }
+            catch (Exception exception)
+            {
+                FailWriter(exception);
+            }
+        }
+
+        private void RefreshInventorySubscriptions()
+        {
+            IReadOnlyList<InventoryComponent> inventories = InventoryComponent.Inventories;
+            for (int i = 0; i < inventories.Count; i++)
+            {
+                InventoryComponent inventory = inventories[i];
+                if (inventory != null && subscribedInventories.Add(inventory))
+                    inventory.OnChanged += HandleInventoryChanged;
+            }
+        }
+
+        private void HandleInventoryChanged(InventoryComponent inventory, ResourceDefinition resource)
+        {
+            if (writer == null || inventory == null || resource == null)
+                return;
+
+            try
+            {
+                TraceRow row = NewRow("event", "supply.inventory_changed");
+                row.category = "Inventory";
+                row.subject = inventory.name;
+                Add(row, "inventoryKey", SceneStableIdentity.GetKey(inventory));
+                Add(row, "resource", resource.name);
+                Add(row, "onHand", F(inventory.GetOnHand(resource)));
+                Add(row, "reserved", F(inventory.GetReserved(resource)));
+                Add(row, "available", F(inventory.GetAvailable(resource)));
+                Add(row, "capacity", F(inventory.GetCapacity(resource)));
+                Add(row, "freeCapacity", F(inventory.GetFreeCapacity(resource)));
                 Write(row);
             }
             catch (Exception exception)

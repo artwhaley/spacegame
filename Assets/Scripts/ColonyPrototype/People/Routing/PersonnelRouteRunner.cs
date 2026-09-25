@@ -111,6 +111,10 @@ namespace AsteroidColony
             {
                 Fail("shuttle_transport_cancelled");
             }
+            else if (activeShuttleRequest.State == ShuttleTransportRequestState.Blocked)
+            {
+                Fail("shuttle_transport_blocked");
+            }
         }
 
         private void OnDisable()
@@ -264,7 +268,9 @@ namespace AsteroidColony
                 return false;
             }
 
-            bool accepted = motor.MoveTo(leg.Destination);
+            bool accepted = leg.ArrivalRadius > 0f
+                ? motor.MoveTo(leg.Destination, leg.ArrivalRadius)
+                : motor.MoveTo(leg.Destination);
             if (!accepted && IsExecuting)
                 Fail("personnel_route_motor_rejected_destination");
             return accepted && IsExecuting;
@@ -274,6 +280,16 @@ namespace AsteroidColony
         {
             if (!IsExecuting || currentPlan == null)
                 return;
+
+            int nextLegIndex = currentLegIndex + 1;
+            if (CurrentLeg?.Type == PersonnelRouteLegType.Walk &&
+                nextLegIndex < currentPlan.Legs.Count &&
+                currentPlan.Legs[nextLegIndex].Type == PersonnelRouteLegType.Shuttle)
+            {
+                ShuttleDiagnosticLog.Record("passenger_walk_completed",
+                    "person=" + (person != null ? person.name : "missing") +
+                    ", endpoint=" + currentPlan.Legs[nextLegIndex].OriginEndpoint.StableId);
+            }
 
             AdvanceAfterLeg();
         }

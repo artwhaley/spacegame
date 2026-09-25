@@ -36,6 +36,8 @@ namespace Colony.Interactions
         private bool activityFacingActive;
         private Quaternion activityFacingTarget;
         private bool hasTurnParameter;
+        private bool hasCustomStoppingDistance;
+        private float originalStoppingDistance;
         private float baseNavigationSpeed;
         private float baseNavigationAcceleration;
         private float baseNavigationAngularSpeed;
@@ -81,6 +83,11 @@ namespace Colony.Interactions
             }
         }
 
+        private void OnDisable()
+        {
+            Stop();
+        }
+
         private void Update()
         {
             ApplyPresentationSpeed();
@@ -117,8 +124,29 @@ namespace Colony.Interactions
             return MoveTo(target.position);
         }
 
+        public bool MoveTo(Transform target, float arrivalRadius)
+        {
+            if (target == null)
+                return Fail("MoveTo received a null target.");
+            return MoveTo(target.position, arrivalRadius);
+        }
+
         public bool MoveTo(Vector3 destination)
         {
+            return MoveToInternal(destination, false, 0f);
+        }
+
+        public bool MoveTo(Vector3 destination, float arrivalRadius)
+        {
+            if (float.IsNaN(arrivalRadius) || float.IsInfinity(arrivalRadius) || arrivalRadius <= 0f)
+                return Fail("MoveTo requires a finite positive arrival radius.");
+            return MoveToInternal(destination, true, arrivalRadius);
+        }
+
+        private bool MoveToInternal(Vector3 destination, bool useCustomArrivalRadius,
+            float arrivalRadius)
+        {
+            RestoreStoppingDistance();
             if (agent == null || !agent.isActiveAndEnabled)
             {
                 return Fail("MoveTo requires an enabled NavMeshAgent.");
@@ -149,6 +177,13 @@ namespace Colony.Interactions
                 return Fail("The NavMeshAgent rejected the destination.");
             }
 
+            if (useCustomArrivalRadius)
+            {
+                originalStoppingDistance = agent.stoppingDistance;
+                hasCustomStoppingDistance = true;
+                agent.stoppingDistance = arrivalRadius;
+            }
+
             hasDestination = true;
             IsNavigating = true;
             agent.isStopped = false;
@@ -165,6 +200,8 @@ namespace Colony.Interactions
                 agent.isStopped = true;
                 agent.ResetPath();
             }
+
+            RestoreStoppingDistance();
 
             SetAnimatorSpeed(0f);
             SetAnimatorTurn(0f);
@@ -391,6 +428,7 @@ namespace Colony.Interactions
             IsNavigating = false;
             agent.isStopped = true;
             agent.ResetPath();
+            RestoreStoppingDistance();
             SetAnimatorSpeed(0f);
             Arrived?.Invoke();
         }
@@ -399,6 +437,7 @@ namespace Colony.Interactions
         {
             hasDestination = false;
             IsNavigating = false;
+            RestoreStoppingDistance();
             SetAnimatorSpeed(0f);
             SetAnimatorTurn(0f);
             Debug.LogWarning($"{nameof(ColonistMotor)} on {name}: {reason}", this);
@@ -406,10 +445,26 @@ namespace Colony.Interactions
             return false;
         }
 
+        private void RestoreStoppingDistance()
+        {
+            if (!hasCustomStoppingDistance)
+                return;
+            if (agent != null)
+                agent.stoppingDistance = originalStoppingDistance;
+            hasCustomStoppingDistance = false;
+        }
+
         private void UpdateLocomotionAnimation()
         {
             if (animator == null || agent == null)
             {
+                return;
+            }
+
+            if (!agent.isActiveAndEnabled)
+            {
+                SetAnimatorSpeed(0f);
+                SetAnimatorTurn(0f);
                 return;
             }
 
@@ -479,7 +534,7 @@ namespace Colony.Interactions
 
         private void ApplyPresentationSpeed()
         {
-            if (agent == null)
+            if (agent == null || !agent.isActiveAndEnabled)
                 return;
 
             float factor = PresentationTime.SpeedFactor;

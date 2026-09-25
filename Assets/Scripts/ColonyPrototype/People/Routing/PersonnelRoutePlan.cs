@@ -65,7 +65,16 @@ namespace AsteroidColony
             PersonnelRouteLegType type,
             Transform destination,
             float estimatedDistance)
-            : this(type, destination, estimatedDistance, null, null)
+            : this(type, destination, estimatedDistance, null, null, 0f)
+        {
+        }
+
+        public PersonnelRouteLeg(
+            PersonnelRouteLegType type,
+            Transform destination,
+            float estimatedDistance,
+            float arrivalRadius)
+            : this(type, destination, estimatedDistance, null, null, arrivalRadius)
         {
         }
 
@@ -75,17 +84,31 @@ namespace AsteroidColony
             float estimatedDistance,
             ShuttleTransferEndpoint originEndpoint,
             ShuttleTransferEndpoint destinationEndpoint)
+            : this(type, destination, estimatedDistance, originEndpoint, destinationEndpoint, 0f)
+        {
+        }
+
+        public PersonnelRouteLeg(
+            PersonnelRouteLegType type,
+            Transform destination,
+            float estimatedDistance,
+            ShuttleTransferEndpoint originEndpoint,
+            ShuttleTransferEndpoint destinationEndpoint,
+            float arrivalRadius)
         {
             if (destination == null)
                 throw new ArgumentNullException(nameof(destination));
             if (!float.IsFinite(estimatedDistance) || estimatedDistance < 0f)
                 throw new ArgumentOutOfRangeException(nameof(estimatedDistance));
+            if (!float.IsFinite(arrivalRadius) || arrivalRadius < 0f)
+                throw new ArgumentOutOfRangeException(nameof(arrivalRadius));
 
             Type = type;
             Destination = destination;
             EstimatedDistance = estimatedDistance;
             OriginEndpoint = originEndpoint;
             DestinationEndpoint = destinationEndpoint;
+            ArrivalRadius = arrivalRadius;
             if (type == PersonnelRouteLegType.Shuttle &&
                 (originEndpoint == null || destinationEndpoint == null))
             {
@@ -111,6 +134,8 @@ namespace AsteroidColony
         public PersonnelRouteLegType Type { get; }
         public Transform Destination { get; }
         public float EstimatedDistance { get; }
+        /// <summary>Optional movement stopping radius; zero preserves motor defaults.</summary>
+        public float ArrivalRadius { get; }
         public ShuttleTransferEndpoint OriginEndpoint { get; }
         public ShuttleTransferEndpoint DestinationEndpoint { get; }
     }
@@ -170,6 +195,11 @@ namespace AsteroidColony
                 stableId.Append(legs[index].Type);
                 stableId.Append(':');
                 stableId.Append(PersonnelRouteIdentity.GetStableKey(legs[index].Destination));
+                if (legs[index].ArrivalRadius > 0f)
+                {
+                    stableId.Append("@arrival=");
+                    stableId.Append(legs[index].ArrivalRadius.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                }
                 if (legs[index].OriginEndpoint != null || legs[index].DestinationEndpoint != null)
                 {
                     stableId.Append(':');

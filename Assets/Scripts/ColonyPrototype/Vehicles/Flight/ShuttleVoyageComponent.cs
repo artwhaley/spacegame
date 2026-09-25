@@ -32,6 +32,7 @@ namespace AsteroidColony
     /// Deterministic Shuttle movement owner. It advances from SimulationManager time
     /// and is the sole writer of this Shuttle root's world position and rotation.
     /// </summary>
+    [DefaultExecutionOrder(-100)]
     public sealed class ShuttleVoyageComponent : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
     {
         private const float PoseEpsilon = 0.01f;
@@ -90,6 +91,9 @@ namespace AsteroidColony
         private bool wasSafetyHolding;
         private int brakingConstraintWaypointIndex = -1;
         private float brakingConstraintSpeed;
+        private Vector3 presentationFromPosition;
+        private Quaternion presentationFromRotation = Quaternion.identity;
+        private bool hasPresentationSegment;
 
         public int SimulationTickPriority => 250;
         public ShuttleVoyagePhase Phase => phase;
@@ -304,6 +308,8 @@ namespace AsteroidColony
             }
 
             double remainingSeconds = (double)deltaGameHours * 3600d;
+            Vector3 previousPosition = flightState.position;
+            Quaternion previousRotation = flightState.rotation;
             float maxSubstep = Mathf.Max(0.001f, profile.integrationSubstepSeconds);
             int iterations = 0;
             while (remainingSeconds > 0.000001d && IsFlightPhase(phase))
@@ -320,6 +326,35 @@ namespace AsteroidColony
 
             SyncRootTransform();
             UpdateDiagnostics();
+
+            // FlightState remains authoritative. Keep the previous committed pose
+            // so LateUpdate can render smoothly between deterministic logical ticks.
+            presentationFromPosition = previousPosition;
+            presentationFromRotation = previousRotation;
+            hasPresentationSegment = true;
+        }
+
+        private void LateUpdate()
+        {
+            if (!IsFlightPhase(phase))
+            {
+                hasPresentationSegment = false;
+                return;
+            }
+            if (!hasPresentationSegment)
+                return;
+
+            SimulationManager simulation = SimulationManager.Instance;
+            float interpolation = 1f;
+            if (simulation != null && simulation.LogicalStepSimulationSeconds > 0f)
+            {
+                interpolation = Mathf.Clamp01((float)(simulation.SimulationDebtSeconds /
+                    simulation.LogicalStepSimulationSeconds));
+            }
+
+            transform.SetPositionAndRotation(
+                Vector3.LerpUnclamped(presentationFromPosition, flightState.position, interpolation),
+                Quaternion.SlerpUnclamped(presentationFromRotation, flightState.rotation, interpolation));
         }
 
         private void AdvanceSubstep(float dt)

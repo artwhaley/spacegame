@@ -5,6 +5,24 @@ using UnityEngine;
 
 namespace AsteroidColony
 {
+    internal static class ShuttleDiagnosticLog
+    {
+        public static void Record(string transition, string details)
+        {
+            SimulationManager simulation = SimulationManager.Instance;
+            string timestamp = "[game time unavailable]";
+            if (simulation != null)
+            {
+                float absoluteHour = Mathf.Max(0f, simulation.CurrentGameHour);
+                int day = Mathf.FloorToInt(absoluteHour / 24f) + 1;
+                int minuteOfDay = Mathf.FloorToInt((absoluteHour % 24f) * 60f);
+                timestamp = string.Format(CultureInfo.InvariantCulture,
+                    "[Day {0} {1:00}:{2:00}]", day, minuteOfDay / 60, minuteOfDay % 60);
+            }
+            SimulationLog.Log(timestamp + " [B2Transit] " + transition + " " + details);
+        }
+    }
+
     public enum ShuttlePayloadType
     {
         Passenger,
@@ -315,10 +333,26 @@ namespace AsteroidColony
         {
             if (request == null || request.IsTerminal || request.IsPhysicallyTransferred)
                 return false;
+            bool wasReady = request.IsPayloadReady;
+            ShuttleTransportRequestState previousState = request.State;
             request.IsPayloadReady = true;
             if (request.State == ShuttleTransportRequestState.Queued ||
                 request.State == ShuttleTransportRequestState.WaitingForPayload)
                 request.SetState(ShuttleTransportRequestState.ReadyForPickup);
+            if (!wasReady)
+            {
+                object payload = request.Payload;
+                string actor = payload is ColonistIdentity person ? person.name : "payload";
+                ShuttleDiagnosticLog.Record("passenger_payload_ready",
+                    "request=" + request.Id + ", actor=" + actor +
+                    ", state=" + request.State + ", origin=" + request.Origin.StableId +
+                    ", destination=" + request.Destination.StableId);
+            }
+            if (previousState != ShuttleTransportRequestState.ReadyForPickup &&
+                request.State == ShuttleTransportRequestState.ReadyForPickup)
+                ShuttleDiagnosticLog.Record("passenger_request_ready_for_pickup",
+                    "request=" + request.Id + ", origin=" + request.Origin.StableId +
+                    ", destination=" + request.Destination.StableId);
             return true;
         }
 
@@ -415,6 +449,12 @@ namespace AsteroidColony
                     shuttle, request.Origin, request.Destination, currentTick);
                 AddCompatibleRequests(trip, candidates, index, shuttle);
                 trips.Add(trip);
+                ShuttleDiagnosticLog.Record("trip_created",
+                    "trip=" + trip.Id + ", shuttle=" + shuttle.StableId +
+                    ", origin=" + trip.Origin.StableId +
+                    ", destination=" + trip.Destination.StableId +
+                    ", passengers=" + trip.PassengerCount +
+                    ", freight=" + trip.FreightCount);
                 if (!shuttle.TryAcceptTrip(trip))
                 {
                     trip.State = ShuttleTripState.Blocked;

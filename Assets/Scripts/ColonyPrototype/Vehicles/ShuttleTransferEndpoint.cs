@@ -19,6 +19,7 @@ namespace AsteroidColony
         [SerializeField] private string stableId;
         [SerializeField] private DockingPortComponent dockingPort;
         [SerializeField] private Transform transferAnchor;
+        [SerializeField, Min(0.25f)] private float transferArrivalRadius = 1.25f;
         [SerializeField] private InventoryComponent stagingInventory;
         [SerializeField] private LogisticsStockComponent depotStock;
 
@@ -28,6 +29,7 @@ namespace AsteroidColony
             : stableId;
         public DockingPortComponent DockingPort => dockingPort;
         public Transform TransferAnchor => transferAnchor != null ? transferAnchor : transform;
+        public float TransferArrivalRadius => Mathf.Max(0.25f, transferArrivalRadius);
         public InventoryComponent StagingInventory => stagingInventory;
         public LogisticsStockComponent DepotStock => depotStock;
 

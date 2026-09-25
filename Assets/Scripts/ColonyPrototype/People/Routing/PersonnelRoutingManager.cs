@@ -165,7 +165,8 @@ namespace AsteroidColony
                     plan = new PersonnelRoutePlan(person, destination, new[]
                     {
                         new PersonnelRouteLeg(PersonnelRouteLegType.Walk,
-                            origin.TransferAnchor, toOrigin.Distance),
+                            origin.TransferAnchor, toOrigin.Distance,
+                            origin.TransferArrivalRadius),
                         PersonnelRouteLeg.Shuttle(origin, remote, 0f),
                         new PersonnelRouteLeg(PersonnelRouteLegType.Walk,
                             destination, fromRemote.Distance)
