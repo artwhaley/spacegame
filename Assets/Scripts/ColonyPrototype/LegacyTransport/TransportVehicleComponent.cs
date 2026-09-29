@@ -118,7 +118,7 @@ namespace AsteroidColony
             if (cargoInventory == null || resource == null)
                 return 0f;
 
-            float free = Mathf.Max(0f, cargoInventory.GetFreeCapacity(resource));
+            float free = Mathf.Max(0f, cargoInventory.FreeCapacity);
             return resource.IsDiscrete ? Mathf.Floor(free + ResourceQuantityRules.WholeNumberEpsilon) : free;
         }
 

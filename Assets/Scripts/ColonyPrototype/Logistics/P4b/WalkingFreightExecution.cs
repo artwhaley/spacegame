@@ -29,10 +29,10 @@ namespace AsteroidColony
             string executionId,
             WorkExecutionLease lease,
             JobRoleDefinition assignedRole,
-            float capacity,
+            float tripCapacity,
             float positioningDistance,
             float loadedCargoTravelCost,
-            bool emergency)
+            FreightWorkPurpose purpose)
         {
             Service = service;
             ExecutionId = executionId;
@@ -41,10 +41,10 @@ namespace AsteroidColony
             activityRunner = worker != null ? worker.GetComponent<ColonistActivityRunner>() : null;
             this.lease = lease;
             this.assignedRole = assignedRole;
-            MaximumCapacity = capacity;
+            TripCapacity = tripCapacity;
             PositioningDistance = positioningDistance;
             LoadedCargoTravelCost = loadedCargoTravelCost;
-            IsEmergency = emergency;
+            Purpose = purpose;
             IsActive = true;
             if (routeRunner != null)
             {
@@ -57,13 +57,22 @@ namespace AsteroidColony
         public string ExecutionId { get; }
         public int LegIndex { get; private set; }
         public UnityEngine.Object ProviderContext => Service;
+        public bool ProviderAvailable => Service != null && Service.isActiveAndEnabled;
+        public bool ExecutorAvailable => Service != null && worker != null && CargoInventory != null &&
+            (job == null || !job.HasPickedUp || routeRunner != null);
         public InventoryComponent CargoInventory => worker != null
             ? worker.GetComponent<InventoryComponent>()
             : null;
-        public float MaximumCapacity { get; }
+        public float TripCapacity { get; }
+        public bool RequiresPersonnelRouteForPickup => true;
+        public bool RequiresPersonnelRouteForLoadedArrival => true;
+        public bool CompletesAcceptedQuantityAcrossLoads => true;
+        public bool DefersReleaseUntilAcceptedWorkCompletes => true;
+        public bool HasPendingWorkerRelease => lease != null && lease.HasPendingReleaseRequest;
         public float PositioningDistance { get; }
         public float LoadedCargoTravelCost { get; }
-        public bool IsEmergency { get; }
+        public FreightWorkPurpose Purpose { get; }
+        public bool IsEmergency => Purpose == FreightWorkPurpose.ConsumerEmergencyPickup;
         public bool IsActive { get; private set; }
 
         internal bool IsForWorker(ColonistIdentity candidate) => worker == candidate;
@@ -74,7 +83,7 @@ namespace AsteroidColony
             if (!IsActive || CargoInventory == null || resource == null)
                 return false;
 
-            return CargoInventory.SetCapacity(resource, MaximumCapacity);
+            return TripCapacity > 0f && CargoInventory.FreeCapacity > 0f;
         }
 
         internal bool Assign(FreightDeliveryJob assignedJob)
@@ -92,7 +101,7 @@ namespace AsteroidColony
             if (!IsActive)
                 return;
 
-            if (IsEmergency && ShouldResumeFacilityWork())
+            if (ShouldResumeFacilityWork())
                 ResumeFacilityWork();
             Release();
         }
@@ -104,10 +113,9 @@ namespace AsteroidColony
             if (!IsActive || this.job != job)
                 return;
 
-            if (IsEmergency)
+            if (ShouldResumeFacilityWork())
             {
-                if (ShouldResumeFacilityWork())
-                    ResumeFacilityWork();
+                ResumeFacilityWork();
                 Release();
                 return;
             }
@@ -120,8 +128,15 @@ namespace AsteroidColony
 
         internal void SimulationTick()
         {
-            if (!IsActive)
+            if (!IsActive || Service == null || !Service.isActiveAndEnabled)
                 return;
+
+            if (!string.IsNullOrEmpty(pendingRouteCompletedId) ||
+                !string.IsNullOrEmpty(pendingRouteFailedId))
+            {
+                ProcessPendingRouteEvents(activeRouteId);
+                return;
+            }
 
             if (returningToDuty)
             {
@@ -136,15 +151,9 @@ namespace AsteroidColony
 
             if (job.State == FreightJobState.Assigned)
             {
-                if (lease != null && lease.HasPendingReleaseRequest)
-                {
-                    FreightLogisticsManager.Instance?.RequestExecutionRelease(
-                        job, this, CreateCorrelation(),
-                        lease.PendingReleaseReason ?? WorkReleaseReason.OtherWorkPolicy);
-                    return;
-                }
-
-                if (IsEmergency && activityRunner != null && activityRunner.HasActiveRequest)
+                if (Service != null && Service.Workplace != null &&
+                    Service.Workplace.ExecutionMode == WorkplaceExecutionMode.FacilityActivity &&
+                    activityRunner != null && activityRunner.HasActiveRequest)
                     return;
 
                 StartPickupRoute();
@@ -154,7 +163,10 @@ namespace AsteroidColony
             if (job.State == FreightJobState.Blocked && SimulationManager.Instance != null &&
                 SimulationManager.Instance.CurrentTick >= job.RetryAtTick)
             {
-                StartDeliveryRoute();
+                if (job.HasPickedUp)
+                    StartDeliveryRoute();
+                else
+                    StartPickupRoute();
             }
         }
 
@@ -339,6 +351,11 @@ namespace AsteroidColony
             if (!IsActive || string.IsNullOrEmpty(activeRouteId) ||
                 !string.Equals(activeRouteId, routeId, StringComparison.Ordinal))
                 return;
+            if (Service == null || !Service.isActiveAndEnabled)
+            {
+                pendingRouteCompletedId = routeId;
+                return;
+            }
 
             FreightExecutionCorrelation correlation = CreateCorrelation();
             ClearActiveRoute();
@@ -358,8 +375,10 @@ namespace AsteroidColony
             }
             else if (job.State == FreightJobState.TravelingToDropoff)
             {
-                FreightLogisticsManager.Instance.ReportExecution(
+                bool completedTrip = FreightLogisticsManager.Instance.ReportExecution(
                     job, this, correlation, FreightExecutionReport.LoadedLegArrived);
+                if (completedTrip && IsActive && job.State == FreightJobState.Assigned)
+                    StartPickupRoute();
             }
         }
 
@@ -374,6 +393,12 @@ namespace AsteroidColony
             if (!IsActive || string.IsNullOrEmpty(activeRouteId) ||
                 !string.Equals(activeRouteId, routeId, StringComparison.Ordinal))
                 return;
+            if (Service == null || !Service.isActiveAndEnabled)
+            {
+                pendingRouteFailedId = routeId;
+                pendingRouteFailedReason = reason;
+                return;
+            }
 
             FreightExecutionCorrelation correlation = CreateCorrelation();
             ClearActiveRoute();

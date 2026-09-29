@@ -165,4 +165,68 @@ namespace AsteroidColony.Tests
             entries.Add(new InventoryEntry { resource = resource, capacity = capacity, onHand = onHand });
         }
     }
+
+    [Category("Core")]
+    public class LogisticsStockPolicyCommandTests
+    {
+        private GameObject stockObject;
+        private LogisticsStockComponent stock;
+        private ResourceDefinition water;
+        private ResourceDefinition food;
+        private ResourceDefinition ore;
+
+        [SetUp]
+        public void SetUp()
+        {
+            stockObject = new GameObject("Validated Stock Policy Test");
+            InventoryComponent inventory = stockObject.AddComponent<InventoryComponent>();
+            Assert.That(inventory.SetCapacity(100f), Is.True);
+            stock = stockObject.AddComponent<LogisticsStockComponent>();
+            water = CreateResource("Policy Water");
+            food = CreateResource("Policy Food");
+            ore = CreateResource("Policy Ore");
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            Object.DestroyImmediate(stockObject);
+            Object.DestroyImmediate(water);
+            Object.DestroyImmediate(food);
+            Object.DestroyImmediate(ore);
+        }
+
+        [Test]
+        public void InvalidMixedCapacityPolicyLeavesPreviouslyAcceptedPoliciesUntouched()
+        {
+            Assert.That(TryConfigure(water, 40f, false), Is.True);
+            Assert.That(TryConfigure(food, 40f, false), Is.True);
+
+            Assert.That(TryConfigure(ore, 0f, true), Is.False,
+                "targetFull cannot make each resource independently claim the whole shared store");
+            Assert.That(TryConfigure(water, 80f, false), Is.False,
+                "the combined proposed target budget must fit before mutation");
+
+            Assert.That(stock.Policies.Count, Is.EqualTo(2));
+            Assert.That(stock.TryGetPolicy(water, out LogisticsStockPolicyEntry waterPolicy), Is.True);
+            Assert.That(stock.TryGetPolicy(food, out LogisticsStockPolicyEntry foodPolicy), Is.True);
+            Assert.That(waterPolicy.targetStock, Is.EqualTo(40f));
+            Assert.That(foodPolicy.targetStock, Is.EqualTo(40f));
+        }
+
+        private bool TryConfigure(ResourceDefinition resource, float target, bool full)
+        {
+            return stock.TryConfigurePolicy(resource, LogisticsStockRole.Consumer,
+                target, full, Mathf.Min(20f, target), Mathf.Min(10f, target), 1f,
+                out _, out _);
+        }
+
+        private static ResourceDefinition CreateResource(string id)
+        {
+            ResourceDefinition resource = ScriptableObject.CreateInstance<ResourceDefinition>();
+            resource.name = id;
+            resource.stableId = id;
+            return resource;
+        }
+    }
 }

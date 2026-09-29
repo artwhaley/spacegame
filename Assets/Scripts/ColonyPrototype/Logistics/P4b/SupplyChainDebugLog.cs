@@ -178,11 +178,14 @@ namespace AsteroidColony
                 row.subject = inventory.name;
                 Add(row, "inventoryKey", SceneStableIdentity.GetKey(inventory));
                 Add(row, "resource", resource.name);
+                Add(row, "inventoryCapacity", F(inventory.Capacity));
+                Add(row, "inventoryUsedCapacity", F(inventory.UsedCapacity));
+                Add(row, "inventoryFreeCapacity", F(inventory.FreeCapacity));
                 Add(row, "onHand", F(inventory.GetOnHand(resource)));
                 Add(row, "reserved", F(inventory.GetReserved(resource)));
                 Add(row, "available", F(inventory.GetAvailable(resource)));
-                Add(row, "capacity", F(inventory.GetCapacity(resource)));
-                Add(row, "freeCapacity", F(inventory.GetFreeCapacity(resource)));
+                Add(row, "capacity", F(inventory.Capacity));
+                Add(row, "freeCapacity", F(inventory.FreeCapacity));
                 Write(row);
             }
             catch (Exception exception)
@@ -196,7 +199,7 @@ namespace AsteroidColony
             if (entry.Category == "Logistics")
                 return true;
             if (entry.Category == "Production")
-                return entry.EventKey != "production.food_output";
+                return entry.EventKey != "production.recipe_output";
             if (entry.Category == "Food")
             {
                 switch (entry.EventKey)
@@ -258,15 +261,18 @@ namespace AsteroidColony
                         Add(row, "locationKey", stock.GetStableKey());
                         Add(row, "role", policy.role.ToString());
                         Add(row, "resource", policy.resource.name);
+                        Add(row, "inventoryCapacity", F(stock.Inventory.Capacity));
+                        Add(row, "inventoryUsedCapacity", F(stock.Inventory.UsedCapacity));
+                        Add(row, "inventoryFreeCapacity", F(stock.Inventory.FreeCapacity));
                         Add(row, "onHand", F(stock.Inventory.GetOnHand(policy.resource)));
                         Add(row, "available", F(stock.Inventory.GetAvailable(policy.resource)));
                         Add(row, "reserved", F(stock.Inventory.GetReserved(policy.resource)));
-                        Add(row, "capacity", F(stock.Inventory.GetCapacity(policy.resource)));
-                        Add(row, "freeCapacity", F(stock.Inventory.GetFreeCapacity(policy.resource)));
+                        Add(row, "capacity", F(stock.Inventory.Capacity));
+                        Add(row, "freeCapacity", F(stock.Inventory.FreeCapacity));
                         Add(row, "target", F(policy.ResolveTarget(stock.Inventory)));
                         Add(row, "reorderThreshold", F(policy.reorderThreshold));
                         Add(row, "emergencyThreshold", F(policy.emergencyThreshold));
-                        Add(row, "minimumPickup", F(policy.minimumPickup));
+                        Add(row, "minimumShipmentQuantity", F(policy.minimumShipmentQuantity));
                         if (converter != null)
                         {
                             Add(row, "productionState", converter.State.ToString());
@@ -310,6 +316,7 @@ namespace AsteroidColony
                         Add(row, "delivered", F(order.Delivered));
                         Add(row, "committed", F(order.Committed));
                         Add(row, "uncovered", F(order.Uncovered));
+                        Add(row, "assuredFinalIncoming", F(freight.GetAssuredFinalIncoming(order)));
                         Write(row);
                     }
                     for (int i = 0; i < freight.Jobs.Count; i++)
@@ -321,11 +328,32 @@ namespace AsteroidColony
                         row.eventKey = "supply.snapshot.job";
                         Add(row, "state", job.State.ToString());
                         Add(row, "resource", job.Resource != null ? job.Resource.name : string.Empty);
+                        Add(row, "shipmentQuantity", F(job.Allocation.Quantity));
                         Add(row, "quantity", F(job.Quantity));
                         Add(row, "pickedUp", job.HasPickedUp.ToString());
+                        Add(row, "legIndex", job.CurrentLegIndex.ToString(CultureInfo.InvariantCulture));
+                        Add(row, "orderCommitted", F(job.Order != null ? job.Order.Committed : 0f));
+                        Add(row, "assuredFinalIncoming", F(freight.GetAssuredFinalIncoming(job.Order)));
                         Add(row, "provider", job.ActiveLegExecution != null &&
                             job.ActiveLegExecution.ProviderContext != null
                                 ? job.ActiveLegExecution.ProviderContext.name : string.Empty);
+                        if (job.ActiveLegExecution is WalkingFreightExecution walkingExecution)
+                        {
+                            Add(row, "workPurpose", walkingExecution.Purpose.ToString());
+                            Add(row, "tripCapacity", F(walkingExecution.TripCapacity));
+                        }
+                        if (job.LegProgress != null)
+                        {
+                            Add(row, "tripNumber", job.LegProgress.TripsStarted.ToString(CultureInfo.InvariantCulture));
+                            Add(row, "remainingAtOrigin", F(job.LegProgress.RemainingAtOrigin));
+                            Add(row, "inCarrier", F(job.LegProgress.InCarrierQuantity));
+                            Add(row, "arrivedAtDestination", F(job.LegProgress.ArrivedAtDestination));
+                            Add(row, "legShipmentQuantity", F(job.LegProgress.TotalQuantity));
+                        }
+                        Add(row, "reservationOwner", job.Reservation != null && job.Reservation.Owner != null
+                            ? SceneStableIdentity.GetKey(job.Reservation.Owner) : string.Empty);
+                        Add(row, "reservationRemaining", F(job.Reservation != null
+                            ? job.Reservation.Remaining : 0f));
                         Add(row, "source", job.Source != null ? job.Source.name : string.Empty);
                         Add(row, "destination", job.Destination != null ? job.Destination.name : string.Empty);
                         Add(row, "emergency", job.IsEmergencyWork.ToString());

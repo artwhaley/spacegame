@@ -40,3 +40,8 @@ Thumbs.db
 
 # Local simulation diagnostics
 SimulationLogs/*.jsonl
+
+# Vendored third-party UI art kit (453 MB, mostly Unreal content).
+# Deliberately untracked; see UI_KIT_ASSET_INVENTORY.md for the full inventory.
+/Assets/SciFi - Modern Flat Themed GUI - UI Kit - 6 Themes + PSD, AI Sources/
+/Assets/SciFi - Modern Flat Themed GUI - UI Kit - 6 Themes + PSD, AI Sources.meta

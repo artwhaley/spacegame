@@ -102,6 +102,10 @@ namespace AsteroidColony
                 activeShuttleRequest == null)
                 return;
 
+            SimulationManager simulation = SimulationManager.Instance;
+            if (simulation != null && simulation.paused)
+                return;
+
             if (activeShuttleRequest.State == ShuttleTransportRequestState.Completed)
             {
                 activeShuttleRequest = null;

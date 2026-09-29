@@ -27,6 +27,33 @@ namespace AsteroidColony
         }
     }
 
+    /// <summary>Returns the largest legal child shipment for one provider quote.</summary>
+    public static class FreightShipmentSizing
+    {
+        private const float QuantityEpsilon = 0.0001f;
+
+        public static float LimitToCapacity(
+            float requested,
+            float sourceAvailable,
+            float destinationSpace,
+            float providerCapacity,
+            bool discrete)
+        {
+            if (!IsFinitePositive(requested) || !IsFinitePositive(sourceAvailable) ||
+                !IsFinitePositive(destinationSpace) || !IsFinitePositive(providerCapacity))
+                return 0f;
+
+            float quantity = Mathf.Min(requested,
+                Mathf.Min(sourceAvailable, Mathf.Min(destinationSpace, providerCapacity)));
+            if (discrete)
+                quantity = Mathf.Floor(quantity + QuantityEpsilon);
+            return Mathf.Max(0f, quantity);
+        }
+
+        private static bool IsFinitePositive(float value) =>
+            !float.IsNaN(value) && !float.IsInfinity(value) && value > 0f;
+    }
+
     /// <summary>A loaded movement segment in a freight route, between stock transfer points.</summary>
     public sealed class LogisticsRouteLeg
     {

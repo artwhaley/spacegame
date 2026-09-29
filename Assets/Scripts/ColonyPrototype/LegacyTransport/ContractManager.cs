@@ -192,7 +192,7 @@ namespace AsteroidColony
                 return null;
 
             float available = sourceInventory.GetAvailable(resource);
-            float destinationFree = destinationInventory.GetFreeCapacity(resource);
+            float destinationFree = destinationInventory.FreeCapacity;
             float toReserve = Mathf.Min(quantity, Mathf.Min(available, destinationFree));
             if (toReserve <= 0f)
                 return null;

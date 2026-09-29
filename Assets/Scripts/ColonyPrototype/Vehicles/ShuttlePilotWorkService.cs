@@ -29,6 +29,38 @@ namespace AsteroidColony
         public ColonistIdentity Pilot => lease != null && lease.IsActive ? lease.Worker : null;
         public WorkExecutionLease ActiveLease => lease;
         public bool PilotReleasePending => releasePending;
+        public bool CanProvidePilotNow
+        {
+            get
+            {
+                ResolveReferences();
+                if (lease != null && lease.IsActive)
+                    return !releasePending && vehicle != null &&
+                           (vehicle.PilotAboard || IsHomeDocked());
+                if (workplace == null || pilotRole == null || WorkforceManager.Instance == null ||
+                    SimulationManager.Instance == null || vehicle == null || !IsHomeDocked())
+                    return false;
+
+                var assignments = WorkforceManager.Instance.Assignments;
+                float gameHour = SimulationManager.Instance.CurrentGameHour;
+                for (int index = 0; index < assignments.Count; index++)
+                {
+                    WorkAssignment assignment = assignments[index];
+                    ColonistIdentity worker = assignment != null ? assignment.Colonist : null;
+                    if (worker == null || !worker.isActiveAndEnabled ||
+                        assignment.Workplace != workplace || assignment.Role != pilotRole ||
+                        !WorkforceManager.Instance.IsGenuinelyOnDuty(
+                            worker, workplace, pilotRole, gameHour))
+                        continue;
+
+                    ColonistBrain brain = worker.GetComponent<ColonistBrain>();
+                    if (brain != null && brain.State == ColonistBrainState.Working &&
+                        !brain.IsCriticallyHungry && brain.ActiveWorkExecutionLease == null)
+                        return true;
+                }
+                return false;
+            }
+        }
         public int SimulationTickPriority => 325;
 
         public void Configure(ShuttleBaseComponent baseComponent,

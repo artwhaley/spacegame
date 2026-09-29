@@ -338,7 +338,7 @@ namespace AsteroidColony
             float inbound = ContractManager.Instance.GetActiveFreightQuantityForDemand(demand.demandId);
             float uncovered = Mathf.Max(0f, demand.DesiredQuantity - inbound);
             float destinationFree = Mathf.Max(0f,
-                demand.destinationInventory.GetFreeCapacity(demand.resource) - inbound);
+                demand.destinationInventory.FreeCapacity - inbound);
             FreightSupply supply = FindBestSupply(demand.resource);
             if (uncovered <= QuantityEpsilon || destinationFree <= QuantityEpsilon || supply == null)
                 return null;
@@ -441,7 +441,7 @@ namespace AsteroidColony
                     : 0f;
                 float uncovered = Mathf.Max(0f, demand.DesiredQuantity - inbound);
                 float destinationFree = Mathf.Max(0f,
-                    demand.destinationInventory.GetFreeCapacity(demand.resource) - inbound);
+                    demand.destinationInventory.FreeCapacity - inbound);
                 string status = !demand.active || uncovered <= QuantityEpsilon
                     ? "Satisfied"
                     : destinationFree <= QuantityEpsilon

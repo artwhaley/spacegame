@@ -135,23 +135,36 @@ namespace AsteroidColony.Editor
             if (oldStore != null)
             {
                 oldStore.gameObject.name = "Station Food Store (Inert)";
-                oldStore.SetCapacity(food, oldStore.GetOnHand(food));
+                oldStore.SetCapacity(oldStore.GetOnHand(food));
                 EditorUtility.SetDirty(oldStore);
                 EditorUtility.SetDirty(oldStore.gameObject);
             }
 
             LogisticsStockComponent farmStock = EnsureComponent<LogisticsStockComponent>(farm);
-            farmStock.SetBindings(farmInventory, GetFreightAnchor(farm));
+            if (!farmStock.TrySetBindings(farmInventory, GetFreightAnchor(farm),
+                    out string farmBindingError))
+                throw new InvalidOperationException(farmBindingError);
             farmStock.ConfigurePolicy(food, LogisticsStockRole.Producer, 0f, false, 0f, 0f, 1f);
             EditorUtility.SetDirty(farmStock);
 
+            WorkplaceComponent farmWorkplace = farm.GetComponent<WorkplaceComponent>();
+            if (farmWorkplace == null)
+                throw new InvalidOperationException("Farm producer fallback requires its authored workplace.");
+            WalkingFreightWorkService producerService = EnsureComponent<WalkingFreightWorkService>(farm);
+            producerService.ConfigureProducerOutboundAssist(true, 5f);
+            EditorUtility.SetDirty(producerService);
+
             LogisticsStockComponent cafeteriaStock = EnsureComponent<LogisticsStockComponent>(cafeteria);
-            cafeteriaStock.SetBindings(cafeteriaInventory, GetFreightAnchor(cafeteria));
+            if (!cafeteriaStock.TrySetBindings(cafeteriaInventory, GetFreightAnchor(cafeteria),
+                    out string cafeteriaBindingError))
+                throw new InvalidOperationException(cafeteriaBindingError);
             cafeteriaStock.ConfigurePolicy(food, LogisticsStockRole.Consumer, 15f, true, 8f, 3f, 1f);
             EditorUtility.SetDirty(cafeteriaStock);
 
             LogisticsStockComponent depotStock = EnsureComponent<LogisticsStockComponent>(airlock);
-            depotStock.SetBindings(depotInventory, GetFreightAnchor(airlock));
+            if (!depotStock.TrySetBindings(depotInventory, GetFreightAnchor(airlock),
+                    out string depotBindingError))
+                throw new InvalidOperationException(depotBindingError);
             depotStock.ConfigurePolicy(food, LogisticsStockRole.Depot, 0f, false, 0f, 0f, 1f);
             EditorUtility.SetDirty(depotStock);
 
@@ -366,8 +379,8 @@ namespace AsteroidColony.Editor
                 errors++;
             }
 
-            if (farmInventory == null || farmInventory.GetCapacity(food) < 100f ||
-                cafeteriaInventory == null || cafeteriaInventory.GetCapacity(food) != 15f)
+            if (farmInventory == null || farmInventory.Capacity < 100f ||
+                cafeteriaInventory == null || cafeteriaInventory.Capacity != 15f)
             {
                 Debug.LogError("Farm/Cafeteria Food inventory capacities are not configured.");
                 errors++;
@@ -379,7 +392,7 @@ namespace AsteroidColony.Editor
                 farmEntry.role != LogisticsStockRole.Producer ||
                 cafeteriaPolicy == null || !cafeteriaPolicy.TryGetPolicy(food, out LogisticsStockPolicyEntry cafeEntry) ||
                 cafeEntry.role != LogisticsStockRole.Consumer || cafeEntry.reorderThreshold != 8f ||
-                cafeEntry.emergencyThreshold != 3f || cafeEntry.minimumPickup != 1f ||
+                cafeEntry.emergencyThreshold != 3f || cafeEntry.minimumShipmentQuantity != 1f ||
                 !cafeEntry.targetFull)
             {
                 Debug.LogError("Farm/Cafeteria logistics stock policies are incomplete.");
@@ -391,8 +404,13 @@ namespace AsteroidColony.Editor
             FreightLogisticsManager freightManager = FindSceneComponent<FreightLogisticsManager>(scene);
             PersonnelRoutingManager routingManager = FindSceneComponent<PersonnelRoutingManager>(scene);
             WalkingFreightWorkService porterService = airlock.GetComponent<WalkingFreightWorkService>();
+            WorkplaceComponent farmWorkplace = farm.GetComponent<WorkplaceComponent>();
+            WalkingFreightWorkService producerService = farm.GetComponent<WalkingFreightWorkService>();
             WalkingFreightWorkService cafeteriaService = cafeteria.GetComponent<WalkingFreightWorkService>();
-            if (porterWorkplace == null || porterWorkplace.ExecutionMode != WorkplaceExecutionMode.MobileDuty ||
+            if (farmWorkplace == null || producerService == null || producerService.Workplace != farmWorkplace ||
+                !producerService.ProducerOutboundAssistEnabled ||
+                !Mathf.Approximately(producerService.ProducerAssistCapacityPerWorker, 5f) ||
+                porterWorkplace == null || porterWorkplace.ExecutionMode != WorkplaceExecutionMode.MobileDuty ||
                 porterWorkplace.DutyAnchor == null ||
                 porterService == null || porterService.Workplace != porterWorkplace ||
                 !porterService.RoutineFreightEnabled || porterService.RoutineRole != porterRole ||
@@ -597,7 +615,7 @@ namespace AsteroidColony.Editor
             ResourceDefinition resource,
             float capacity)
         {
-            if (inventory == null || !inventory.SetCapacity(resource, capacity))
+            if (inventory == null || !inventory.SetCapacity(capacity))
                 throw new InvalidOperationException(
                     "Could not set " + (resource != null ? resource.name : "resource") +
                     " capacity on " + (inventory != null ? inventory.name : "a missing inventory") +

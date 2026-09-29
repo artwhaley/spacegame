@@ -28,7 +28,7 @@ namespace AsteroidColony
                 collectableResource == null || extractionRatePerGameHour <= 0f)
                 return 0f;
 
-            float freeCargo = destinationCargo.GetFreeCapacity(collectableResource);
+            float freeCargo = destinationCargo.FreeCapacity;
             if (freeCargo <= QuantityEpsilon)
                 return 0f;
 

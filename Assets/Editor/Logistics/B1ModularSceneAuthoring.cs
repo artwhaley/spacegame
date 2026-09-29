@@ -339,7 +339,7 @@ namespace AsteroidColony.Editor
         { return go.GetComponent<T>() ?? Undo.AddComponent<T>(go); }
 
         private static void RequireCapacity(InventoryComponent inventory, ResourceDefinition food, float capacity)
-        { if (inventory == null || !inventory.SetCapacity(food, capacity)) throw new InvalidOperationException("Could not configure Shuttle Base Food capacity while preserving stock."); }
+        { if (inventory == null || !inventory.SetCapacity(capacity)) throw new InvalidOperationException("Could not configure Shuttle Base shared capacity while preserving stock."); }
 
         private static bool HasDepotPolicy(GameObject module, ResourceDefinition resource)
         {

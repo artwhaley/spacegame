@@ -1,9 +1,8 @@
-# State of the Project (snapshot: 2026-09-20, local HEAD `5986e66`)
+# State of the Project (snapshot: 2026-09-25)
 
 ## Current local snapshot
 
-The repository is on `main` at the imported-interaction/art baseline. Current code and
-content include:
+The repository is on `main`. Current code and content include:
 
 - the simulation runtime under `Assets/Scripts/ColonyPrototype` and its existing
   inventory, staffing, facility-performance, population-consumption, logistics, and
@@ -16,18 +15,36 @@ content include:
 - the existing `Assets/SpaceSim.unity` scene and current content, which remain the
   authority for integration. The interaction package intentionally has no sample scene.
 
-The current repository still does not have the final player-facing camera/UI,
-construction loop, scenario bootstrap, personal-needs consequences, or final docking /
-boarding presentation. These are planning statements to verify against source before
-each future task, not permission to implement them in this documentation pass.
+The current vertical slice now connects personal needs, physical activities, staffing,
+production, inventory, local freight, and modern shuttle transport. Its key ownership
+boundaries are:
+
+- `InventoryComponent` owns shared capacity, stock, and reservation claims. Meals consume
+  their own owned inventory commitment; recipes apply as one inventory-owned transaction.
+- `LogisticsStockComponent` publishes explicit per-resource policies. A `FreightOrder`
+  remains the parent demand while `FreightAllocation` children are sized to a real source,
+  destination, and provider. A demand of 40 can be met by repeated capacity-10 shipments or
+  heterogeneous 20/10/5/5 children. Intermediate staging is custody, not delivery.
+- `FreightLogisticsManager` owns demand accounting and custody transitions. Walking porters,
+  producer assistance, emergency employee labor, and shuttles execute through semantic
+  provider contracts. A worker finishes the entire accepted final-leg quantity across trips;
+  a pending shift or need release does not abandon its assigned cargo.
+- `ShuttleManager` owns requests and trips; `ShuttleServiceComponent` owns physical manifest
+  custody; `ShuttleVoyageComponent` alone moves the vehicle. Unload waits remain active until
+  the destination inventory accepts the payload.
+- The modular and commute scenes are the modern integration fixtures. Legacy extraction and
+  transport remain separate and must not be activated to fill a modern logistics gap.
+
+The slice still lacks the minimal player-facing management controls needed to start and guide
+play, a construction loop, save/load, and authored observation of every physical logistics
+case. Physical drone/freighter implementations are not present. Those are clear follow-up
+areas rather than implied by the current provider-neutral contracts.
 
 ## Active planning state
 
-The old infrastructure-first ordering is superseded. The next window is:
-
-1. human avatar plus navigable Command Post/Farm blockouts;
-2. port the local interactable-facility prototype so an active Farm worker visibly works;
-3. make one shuttle dock physically with visible boarding/disembarking.
+The next step is a minimal but functional UI that lets a player start the simulation,
+inspect the colony, and operate the current slice. Add further content and features one at a
+time against the current runtime owners instead of building another infrastructure layer.
 
 The external audit packet is preserved under `planning/audits/2026-09-20/` as historical
 reference. Tentative notes do not override the current source or owner decisions.
@@ -45,9 +62,10 @@ reference. Tentative notes do not override the current source or owner decisions
 | Scene | `SpaceSim.unity`: CommandPod, Farm, Water Processor, Shuttle, Mining Ship 1, Ice Asteroid 1, one authored colonist (`Pilot 3`), primitives for visuals |
 | Unity | 6000.5.9f1, HDRP 17.5, Input System 1.20, uGUI 2.5 (UI Toolkit modules present) |
 
-### Historical What existed and was good
+### Historical What existed and was good (pre-vertical-slice snapshot)
 
-The simulation backend is complete for its scope and the docs match the code.
+The following inventory is preserved as a historical reference and does not describe the
+current modern logistics or people integration:
 
 - **Content layer** — `ResourceDefinition`, `RecipeDefinition`, `WorkerClassDefinition`,
   `SkillDefinition`, `StaffingRoleDefinition`, `ShiftPatternDefinition`,

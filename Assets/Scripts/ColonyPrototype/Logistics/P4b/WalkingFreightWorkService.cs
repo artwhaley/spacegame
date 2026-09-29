@@ -12,7 +12,8 @@ namespace AsteroidColony
     [DisallowMultipleComponent]
     [AddComponentMenu("Colony/Logistics/Walking Freight Work Service")]
     public sealed class WalkingFreightWorkService : MonoBehaviour,
-        IWorkExecutionOwner, ISimulationTickable, ISimulationTickPriority
+        IWorkExecutionOwner, ISimulationTickable, ISimulationTickPriority,
+        IFreightLegProvider
     {
         private static readonly List<WalkingFreightWorkService> active =
             new List<WalkingFreightWorkService>();
@@ -21,6 +22,8 @@ namespace AsteroidColony
         [SerializeField] private bool routineFreightEnabled;
         [SerializeField] private JobRoleDefinition routineRole;
         [SerializeField, Min(0.01f)] private float routineCapacityPerWorker = 10f;
+        [SerializeField] private bool producerOutboundAssistEnabled;
+        [SerializeField, Min(0.01f)] private float producerAssistCapacityPerWorker = 5f;
         [SerializeField] private bool emergencyFreightEnabled;
         [SerializeField, Min(0.01f)] private float emergencyCapacityPerWorker = 5f;
         [SerializeField, Min(0)] private int minimumWorkersRemainingAfterEmergencyDispatch;
@@ -33,6 +36,8 @@ namespace AsteroidColony
         public bool RoutineFreightEnabled => routineFreightEnabled;
         public JobRoleDefinition RoutineRole => routineRole;
         public float RoutineCapacityPerWorker => routineCapacityPerWorker;
+        public bool ProducerOutboundAssistEnabled => producerOutboundAssistEnabled;
+        public float ProducerAssistCapacityPerWorker => producerAssistCapacityPerWorker;
         public bool EmergencyFreightEnabled => emergencyFreightEnabled;
         public float EmergencyCapacityPerWorker => emergencyCapacityPerWorker;
         public int MinimumWorkersRemainingAfterEmergencyDispatch =>
@@ -80,6 +85,7 @@ namespace AsteroidColony
         {
             ResolveWorkplace();
             routineCapacityPerWorker = Mathf.Max(0.01f, routineCapacityPerWorker);
+            producerAssistCapacityPerWorker = Mathf.Max(0.01f, producerAssistCapacityPerWorker);
             emergencyCapacityPerWorker = Mathf.Max(0.01f, emergencyCapacityPerWorker);
             minimumWorkersRemainingAfterEmergencyDispatch =
                 Mathf.Max(0, minimumWorkersRemainingAfterEmergencyDispatch);
@@ -107,19 +113,51 @@ namespace AsteroidColony
             minimumWorkersRemainingAfterEmergencyDispatch = Mathf.Max(0, minimumWorkersRemaining);
         }
 
+        public void ConfigureProducerOutboundAssist(bool enabled, float capacityPerWorker)
+        {
+            ResolveWorkplace();
+            producerOutboundAssistEnabled = enabled;
+            producerAssistCapacityPerWorker = Mathf.Max(0.01f, capacityPerWorker);
+        }
+
         public bool TryQuote(
             LogisticsStockComponent source,
             LogisticsStockComponent destination,
+            LogisticsStockComponent finalDestination,
             ResourceDefinition resource,
             float desiredQuantity,
-            bool emergency,
+            FreightWorkPurpose purpose,
+            out FreightWorkQuote quote)
+        {
+            quote = null;
+            PersonnelRoutingManager routing = PersonnelRoutingManager.Instance;
+            if (routing == null || source == null || destination == null ||
+                source.FreightAnchor == null || destination.FreightAnchor == null ||
+                !routing.TryEstimateSharedWalkingPath(source.FreightAnchor,
+                    destination.FreightAnchor, out PersonnelRouteEstimate loaded, out _))
+                return false;
+
+            return TryQuote(source, destination, finalDestination, resource,
+                desiredQuantity, purpose, loaded, out quote);
+        }
+
+        public bool TryQuote(
+            LogisticsStockComponent source,
+            LogisticsStockComponent destination,
+            LogisticsStockComponent finalDestination,
+            ResourceDefinition resource,
+            float desiredQuantity,
+            FreightWorkPurpose purpose,
+            PersonnelRouteEstimate loaded,
             out FreightWorkQuote quote)
         {
             quote = null;
             ResolveWorkplace();
             if (!isActiveAndEnabled || workplace == null || source == null || destination == null ||
                 source == destination || resource == null || !IsFinitePositive(desiredQuantity) ||
-                !IsPolicyAvailable(destination, emergency) || WorkforceManager.Instance == null ||
+                !IsPolicyAvailableForLeg(source, destination, finalDestination,
+                    resource, purpose) ||
+                WorkforceManager.Instance == null ||
                 SimulationManager.Instance == null || PersonnelRoutingManager.Instance == null ||
                 source.FreightAnchor == null || destination.FreightAnchor == null)
             {
@@ -134,29 +172,23 @@ namespace AsteroidColony
                 WorkAssignment assignment = assignments[index];
                 if (assignment == null || assignment.Colonist == null ||
                     assignment.Workplace != workplace ||
-                    (!emergency && assignment.Role != routineRole))
+                    (purpose == FreightWorkPurpose.RoutinePorter && assignment.Role != routineRole))
                 {
                     continue;
                 }
 
                 ColonistIdentity worker = assignment.Colonist;
-                if (!IsWorkerAvailable(worker, assignment.Role, gameHour, emergency))
+                if (!IsWorkerAvailable(worker, assignment.Role, gameHour, purpose))
                     continue;
-                if (!TryEstimate(worker, source, destination,
-                        out PersonnelRouteEstimate positioning,
-                        out PersonnelRouteEstimate loaded))
+                if (!TryEstimatePositioning(worker, source,
+                        out PersonnelRouteEstimate positioning))
                 {
                     continue;
                 }
 
-                float capacity = emergency
-                    ? emergencyCapacityPerWorker
-                    : routineCapacityPerWorker;
                 InventoryComponent inventory = worker.GetComponent<InventoryComponent>();
-                float availableCapacity = Mathf.Max(0f,
-                    capacity - inventory.GetOnHand(resource));
-                float usefulQuantity = Mathf.Min(desiredQuantity, availableCapacity);
-                if (usefulQuantity <= 0.0001f)
+                float tripCapacity = Mathf.Min(GetTripCapacity(purpose), inventory.FreeCapacity);
+                if (tripCapacity <= 0.0001f)
                     continue;
 
                 FreightWorkQuote candidate = new FreightWorkQuote(
@@ -164,13 +196,13 @@ namespace AsteroidColony
                     worker,
                     source,
                     destination,
+                    finalDestination,
                     resource,
                     desiredQuantity,
-                    usefulQuantity,
                     positioning.Distance,
                     loaded.Distance,
-                    capacity,
-                    emergency);
+                    tripCapacity,
+                    purpose);
                 if (best == null || CompareWorkerQuotes(candidate, best) < 0)
                     best = candidate;
             }
@@ -189,9 +221,11 @@ namespace AsteroidColony
             ResolveWorkplace();
             if (quote == null || quote.Provider != this || string.IsNullOrWhiteSpace(executionId) ||
                 !isActiveAndEnabled ||
-                !IsFinitePositive(quantity) || quantity > quote.MaximumUsefulQuantity + 0.0001f ||
+                !IsFinitePositive(quantity) || quantity > quote.ShipmentQuantity + 0.0001f ||
                 quote.SelectedWorker == null || WorkforceManager.Instance == null ||
-                SimulationManager.Instance == null || !IsPolicyAvailable(quote.Destination, quote.IsEmergency))
+                SimulationManager.Instance == null ||
+                !IsPolicyAvailableForLeg(quote.Source, quote.Destination,
+                    quote.FinalDestination, quote.Resource, quote.Purpose))
             {
                 return false;
             }
@@ -200,21 +234,21 @@ namespace AsteroidColony
             float gameHour = SimulationManager.Instance.CurrentGameHour;
             if (!WorkforceManager.Instance.TryGetAssignment(worker, out WorkAssignment assignment) ||
                 assignment == null || assignment.Workplace != workplace ||
-                (!quote.IsEmergency && assignment.Role != routineRole) ||
-                !IsWorkerAvailable(worker, assignment.Role, gameHour, quote.IsEmergency) ||
-                !TryEstimate(worker, quote.Source, quote.Destination,
-                    out PersonnelRouteEstimate positioning,
-                    out PersonnelRouteEstimate loaded))
+                (quote.Purpose == FreightWorkPurpose.RoutinePorter && assignment.Role != routineRole) ||
+                !IsWorkerAvailable(worker, assignment.Role, gameHour, quote.Purpose) ||
+                !TryEstimatePositioning(worker, quote.Source,
+                    out PersonnelRouteEstimate positioning) ||
+                !PersonnelRoutingManager.Instance.TryEstimateSharedWalkingPath(
+                    quote.Source.FreightAnchor, quote.Destination.FreightAnchor,
+                    out PersonnelRouteEstimate loaded, out _))
             {
                 return false;
             }
 
-            float capacity = quote.IsEmergency
-                ? emergencyCapacityPerWorker
-                : routineCapacityPerWorker;
             InventoryComponent inventory = worker.GetComponent<InventoryComponent>();
-            float availableCapacity = Mathf.Max(0f, capacity - inventory.GetOnHand(quote.Resource));
-            if (quantity > availableCapacity + 0.0001f)
+            float tripCapacity = Mathf.Min(GetTripCapacity(quote.Purpose), inventory.FreeCapacity);
+            if (tripCapacity <= 0.0001f ||
+                Mathf.Min(tripCapacity, quantity) > quote.TripCapacity + 0.0001f)
                 return false;
 
             ColonistBrain brain = worker.GetComponent<ColonistBrain>();
@@ -225,7 +259,8 @@ namespace AsteroidColony
             }
 
             ColonistActivityRunner activityRunner = worker.GetComponent<ColonistActivityRunner>();
-            if (quote.IsEmergency)
+            bool suspendsFacilityActivity = workplace.ExecutionMode == WorkplaceExecutionMode.FacilityActivity;
+            if (suspendsFacilityActivity)
             {
                 if (activityRunner == null || !activityRunner.IsActivityActive)
                 {
@@ -241,10 +276,10 @@ namespace AsteroidColony
                 executionId,
                 lease,
                 assignment.Role,
-                capacity,
+                tripCapacity,
                 positioning.Distance,
                 loaded.Distance,
-                quote.IsEmergency);
+                quote.Purpose);
             acceptedExecutions.Add(execution);
             SimulationLogManager.RecordEvent(
                 "logistics.service_execution_assigned",
@@ -254,10 +289,72 @@ namespace AsteroidColony
                 this,
                 new SimulationLogField("workplace", workplace.name),
                 new SimulationLogField("role", assignment.Role.StableId),
-                new SimulationLogField("emergency", quote.IsEmergency),
+                new SimulationLogField("purpose", quote.Purpose.ToString()),
+                new SimulationLogField("tripCapacity", tripCapacity),
+                new SimulationLogField("shipmentQuantity", quantity),
+                new SimulationLogField("estimatedTripCount",
+                    Mathf.CeilToInt(quantity / Mathf.Max(0.0001f, tripCapacity))),
                 new SimulationLogField("positioningDistance", positioning.Distance),
                 new SimulationLogField("loadedCargoDistance", loaded.Distance));
             return true;
+        }
+
+        bool IFreightLegProvider.TryAcceptQuote(
+            IFreightLegQuote quote,
+            FreightDeliveryJob job,
+            string executionId,
+            out IFreightLegExecution execution)
+        {
+            execution = null;
+            if (!(quote is FreightWorkQuote walkingQuote) || walkingQuote.Provider != this || job == null ||
+                job.CurrentLeg == null || job.CurrentLeg.Type != LogisticsRouteLegType.WalkingCarrier ||
+                job.CurrentLeg.Origin != walkingQuote.Source ||
+                job.CurrentLeg.Destination != walkingQuote.Destination ||
+                job.Destination != walkingQuote.FinalDestination ||
+                job.Resource != walkingQuote.Resource ||
+                !TryAcceptQuote(walkingQuote, job.Quantity, executionId,
+                    out WalkingFreightExecution walkingExecution))
+                return false;
+
+            if (!walkingExecution.PrepareCargo(job.Resource) || !walkingExecution.Assign(job))
+            {
+                walkingExecution.CancelBeforeAssignment();
+                return false;
+            }
+
+            execution = walkingExecution;
+            return true;
+        }
+
+        internal bool TryEstimateWalkingPathFrom(
+            Vector3 startPosition,
+            Transform destination,
+            out PersonnelRouteEstimate estimate)
+        {
+            estimate = default;
+            if (destination == null || workplace == null || WorkforceManager.Instance == null ||
+                PersonnelRoutingManager.Instance == null)
+                return false;
+
+            bool found = false;
+            IReadOnlyList<WorkAssignment> assignments = WorkforceManager.Instance.Assignments;
+            for (int index = 0; index < assignments.Count; index++)
+            {
+                WorkAssignment assignment = assignments[index];
+                if (assignment == null || assignment.Workplace != workplace ||
+                    assignment.Colonist == null)
+                    continue;
+                if (!PersonnelRoutingManager.Instance.TryEstimateWalkOnly(
+                        assignment.Colonist, startPosition, destination,
+                        out PersonnelRouteEstimate candidate, out _))
+                    continue;
+                if (!found || candidate.Distance < estimate.Distance)
+                {
+                    estimate = candidate;
+                    found = true;
+                }
+            }
+            return found;
         }
 
         internal void ReleaseExecution(WalkingFreightExecution execution)
@@ -285,28 +382,56 @@ namespace AsteroidColony
             return SceneStableIdentity.GetKey(this);
         }
 
-        private bool IsPolicyAvailable(LogisticsStockComponent destination, bool emergency)
+        internal bool IsPolicyAvailableForLeg(
+            LogisticsStockComponent source,
+            LogisticsStockComponent legDestination,
+            LogisticsStockComponent finalDestination,
+            ResourceDefinition resource,
+            FreightWorkPurpose purpose)
+        {
+            ResolveWorkplace();
+            if (source == null || legDestination == null || source == legDestination)
+                return false;
+            return IsPolicyAvailable(source, finalDestination, resource, purpose);
+        }
+
+        private bool IsPolicyAvailable(
+            LogisticsStockComponent source,
+            LogisticsStockComponent finalDestination,
+            ResourceDefinition resource,
+            FreightWorkPurpose purpose)
         {
             if (workplace == null)
                 return false;
 
-            if (emergency)
+            if (purpose == FreightWorkPurpose.ConsumerEmergencyPickup)
             {
                 return emergencyFreightEnabled &&
                        workplace.ExecutionMode == WorkplaceExecutionMode.FacilityActivity &&
-                       destination != null &&
-                       destination.GetComponent<WorkplaceComponent>() == workplace;
+                       finalDestination != null &&
+                       finalDestination.GetComponentInParent<WorkplaceComponent>() == workplace &&
+                       finalDestination.TryGetPolicy(resource,
+                           out LogisticsStockPolicyEntry consumerPolicy) &&
+                       consumerPolicy.role == LogisticsStockRole.Consumer;
             }
 
-            return routineFreightEnabled && routineRole != null &&
-                   workplace.ExecutionMode == WorkplaceExecutionMode.MobileDuty;
+            if (purpose == FreightWorkPurpose.ProducerOutboundAssist)
+            {
+                return producerOutboundAssistEnabled && source != null &&
+                       source.GetComponentInParent<WorkplaceComponent>() == workplace &&
+                       source.TryGetPolicy(resource, out LogisticsStockPolicyEntry producerPolicy) &&
+                       producerPolicy.role == LogisticsStockRole.Producer;
+            }
+
+            return purpose == FreightWorkPurpose.RoutinePorter && routineFreightEnabled &&
+                   routineRole != null && workplace.ExecutionMode == WorkplaceExecutionMode.MobileDuty;
         }
 
         private bool IsWorkerAvailable(
             ColonistIdentity worker,
             JobRoleDefinition role,
             float gameHour,
-            bool emergency)
+            FreightWorkPurpose purpose)
         {
             if (worker == null || role == null || !worker.isActiveAndEnabled ||
                 WorkforceManager.Instance == null || workplace == null ||
@@ -318,20 +443,36 @@ namespace AsteroidColony
             ColonistBrain brain = worker.GetComponent<ColonistBrain>();
             InventoryComponent inventory = worker.GetComponent<InventoryComponent>();
             PersonnelRouteRunner routeRunner = worker.GetComponent<PersonnelRouteRunner>();
-            if (brain == null || brain.State != ColonistBrainState.Working ||
-                brain.IsCriticallyHungry || brain.ActiveWorkExecutionLease != null ||
+            ColonistActivityRunner activityRunner = worker.GetComponent<ColonistActivityRunner>();
+            if (brain == null || !brain.CanAcquireWorkExecution(workplace) ||
                 inventory == null || routeRunner == null || routeRunner.IsExecuting ||
-                emergency && worker.GetComponent<ColonistActivityRunner>() == null ||
+                workplace.ExecutionMode == WorkplaceExecutionMode.FacilityActivity &&
+                    (activityRunner == null || !activityRunner.IsActivityActive) ||
                 IsAlreadyAccepted(worker))
             {
                 return false;
             }
 
-            if (!emergency)
+            if (purpose != FreightWorkPurpose.ConsumerEmergencyPickup)
                 return true;
 
             return CountActiveWorkplaceStaff(gameHour) - 1 >=
                    minimumWorkersRemainingAfterEmergencyDispatch;
+        }
+
+        private float GetTripCapacity(FreightWorkPurpose purpose)
+        {
+            switch (purpose)
+            {
+                case FreightWorkPurpose.RoutinePorter:
+                    return routineCapacityPerWorker;
+                case FreightWorkPurpose.ProducerOutboundAssist:
+                    return producerAssistCapacityPerWorker;
+                case FreightWorkPurpose.ConsumerEmergencyPickup:
+                    return emergencyCapacityPerWorker;
+                default:
+                    return 0f;
+            }
         }
 
         private int CountActiveWorkplaceStaff(float gameHour)
@@ -373,28 +514,26 @@ namespace AsteroidColony
             return false;
         }
 
-        private static bool TryEstimate(
+        private static bool TryEstimatePositioning(
             ColonistIdentity worker,
             LogisticsStockComponent source,
-            LogisticsStockComponent destination,
-            out PersonnelRouteEstimate positioning,
-            out PersonnelRouteEstimate loaded)
+            out PersonnelRouteEstimate positioning)
         {
             positioning = default;
-            loaded = default;
             PersonnelRoutingManager routing = PersonnelRoutingManager.Instance;
-            return routing != null && worker != null && source != null && destination != null &&
-                   source.FreightAnchor != null && destination.FreightAnchor != null &&
-                   routing.TryEstimate(worker, source.FreightAnchor, out positioning) &&
-                   routing.TryEstimateWalkOnly(worker, source.FreightAnchor.position,
-                       destination.FreightAnchor, out loaded, out _);
+            if (routing == null || worker == null || source == null || source.FreightAnchor == null ||
+                !routing.TryPlanRoute(worker, source.FreightAnchor,
+                    out PersonnelRoutePlan positioningPlan, out _) ||
+                positioningPlan == null)
+                return false;
+
+            positioning = new PersonnelRouteEstimate(worker.transform.position,
+                source.FreightAnchor.position, positioningPlan.TotalEstimatedDistance);
+            return true;
         }
 
         private static int CompareWorkerQuotes(FreightWorkQuote left, FreightWorkQuote right)
         {
-            int usefulQuantity = right.MaximumUsefulQuantity.CompareTo(left.MaximumUsefulQuantity);
-            if (usefulQuantity != 0)
-                return usefulQuantity;
             int serviceCost = left.TotalServiceCost.CompareTo(right.TotalServiceCost);
             if (serviceCost != 0)
                 return serviceCost;

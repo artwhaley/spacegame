@@ -114,6 +114,14 @@ namespace AsteroidColony
                 if (origin == null)
                     continue;
 
+                if (!ModuleNavigationTopology.AreInSameRegion(person.transform, origin.TransferAnchor))
+                {
+                    originWalkFailures++;
+                    candidateDiagnostics.Add("origin=" + origin.StableId +
+                        " toOrigin=FAIL(different_walking_regions)");
+                    continue;
+                }
+
                 string originReason;
                 if (!TryEstimateWalkOnly(person, person.transform.position,
                     origin.TransferAnchor, out PersonnelRouteEstimate toOrigin, out originReason))
@@ -131,6 +139,15 @@ namespace AsteroidColony
                     ShuttleTransferEndpoint remote = endpoints[destinationIndex];
                     if (remote == null || remote == origin)
                         continue;
+
+                    if (!ModuleNavigationTopology.AreInSameRegion(remote.TransferAnchor, destination))
+                    {
+                        remoteWalkFailures++;
+                        candidateDiagnostics.Add("origin=" + origin.StableId +
+                            " remote=" + remote.StableId +
+                            " toOrigin=OK fromRemote=FAIL(different_walking_regions)");
+                        continue;
+                    }
 
                     candidateCount++;
                     bool canService = shuttleManager.CanService(
@@ -181,6 +198,23 @@ namespace AsteroidColony
                 serviceFailures + remoteWalkFailures, candidateDiagnostics);
             reason = NoShuttleRouteReason;
             return false;
+        }
+
+        /// <summary>Resolves fixed-anchor geography without selecting a colonist.</summary>
+        public bool TryEstimateSharedWalkingPath(
+            Transform start,
+            Transform destination,
+            out PersonnelRouteEstimate estimate,
+            out string reason)
+        {
+            estimate = default;
+            if (pedestrianProvider == null)
+            {
+                reason = MissingProviderReason;
+                return false;
+            }
+            return pedestrianProvider.TryEstimateSharedPath(
+                start, destination, out estimate, out reason);
         }
 
         private static void LogRouteDiagnostic(

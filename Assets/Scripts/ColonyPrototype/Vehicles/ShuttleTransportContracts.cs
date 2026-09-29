@@ -39,6 +39,7 @@ namespace AsteroidColony
         LoadingOrBoarding,
         InTransit,
         UnloadingOrDisembarking,
+        Paused,
         Completed,
         Cancelled,
         Blocked
@@ -51,6 +52,7 @@ namespace AsteroidColony
         LoadingOrBoarding,
         InTransit,
         UnloadingOrDisembarking,
+        Paused,
         Completed,
         Blocked,
         Cancelled
@@ -90,6 +92,7 @@ namespace AsteroidColony
         public long Age => ShuttleManager.CurrentTick - CreatedTick;
         public ShuttleTransportRequestState State { get; internal set; }
         public ShuttleTrip AssignedTrip { get; internal set; }
+        public string WaitReason { get; internal set; } = string.Empty;
         public object Payload => payloads.Count == 0 ? null : payloads[0];
         public IReadOnlyList<object> Payloads => payloads;
         public bool IsPayloadReady { get; internal set; }
@@ -114,7 +117,7 @@ namespace AsteroidColony
 
         internal void SetState(ShuttleTransportRequestState state)
         {
-            if (State == state)
+            if (IsTerminal || State == state)
                 return;
             State = state;
             StateChanged?.Invoke(this);
@@ -124,6 +127,8 @@ namespace AsteroidColony
 
         internal void Complete()
         {
+            if (IsTerminal)
+                return;
             IsPhysicallyTransferred = true;
             SetState(ShuttleTransportRequestState.Completed);
         }
@@ -162,6 +167,7 @@ namespace AsteroidColony
         public ShuttleTransferEndpoint Destination { get; }
         public long CreatedTick { get; }
         public ShuttleTripState State { get; internal set; }
+        public string WaitReason { get; internal set; } = string.Empty;
         public IReadOnlyList<ShuttleTransportRequest> Requests => requests;
         public int PassengerCount { get; internal set; }
         public int FreightCount { get; internal set; }
@@ -180,8 +186,19 @@ namespace AsteroidColony
     public interface IShuttleTransportPayload
     {
         bool IsReadyForShuttle { get; }
+        float RequiredCargoCapacity { get; }
+        float MinimumUsableCargoCapacity { get; }
+        bool CanUseMultipleTrips { get; }
         bool TryLoad(ShuttleServiceComponent shuttle, ShuttleTransportRequest request);
-        void OnShuttleArrived(ShuttleServiceComponent shuttle, ShuttleTransportRequest request);
+        ShuttlePayloadArrivalResult OnShuttleArrived(
+            ShuttleServiceComponent shuttle, ShuttleTransportRequest request);
+    }
+
+    public enum ShuttlePayloadArrivalResult
+    {
+        Completed,
+        RetryableWait,
+        RecoveryRequired
     }
 
     /// <summary>
@@ -191,8 +208,10 @@ namespace AsteroidColony
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("Colony/Vehicles/Shuttle Manager")]
-    public sealed class ShuttleManager : MonoBehaviour, ISimulationTickable, ISimulationTickPriority
+    public sealed class ShuttleManager : MonoBehaviour, ISimulationTickable, ISimulationTickPriority,
+        IFreightLegProvider
     {
+        private const int TerminalHistoryLimit = 128;
         private static long nextRequestId;
         private static long nextTripId;
         private static long currentTick;
@@ -214,6 +233,10 @@ namespace AsteroidColony
         public IReadOnlyList<ShuttleServiceComponent> Shuttles => shuttles;
         public IReadOnlyList<ShuttleTransportRequest> Requests => requests;
         public IReadOnlyList<ShuttleTrip> Trips => trips;
+        public IReadOnlyList<ShuttleTransportRequest> ActiveRequests => SelectRequests(true);
+        public IReadOnlyList<ShuttleTransportRequest> RecentRequests => SelectRequests(false);
+        public IReadOnlyList<ShuttleTrip> ActiveTrips => SelectTrips(true);
+        public IReadOnlyList<ShuttleTrip> RecentTrips => SelectTrips(false);
         public ShuttleTrip CurrentTrip
         {
             get
@@ -293,9 +316,82 @@ namespace AsteroidColony
             ShuttleTransferEndpoint destination, ShuttlePayloadType payloadType)
         {
             return origin != null && destination != null && origin != destination &&
-                endpoints.Contains(origin) && endpoints.Contains(destination) &&
-                shuttles.Count > 0;
+                endpoints.Contains(origin) && endpoints.Contains(destination);
         }
+
+        public string GetStableKey() => SceneStableIdentity.GetKey(this);
+
+        public bool TryQuoteFreightLeg(
+            LogisticsRouteLeg leg,
+            float shipmentQuantity,
+            out ShuttleFreightQuote quote)
+        {
+            quote = null;
+            if (leg == null || leg.Type != LogisticsRouteLegType.ShuttleFreight ||
+                !IsFinitePositive(shipmentQuantity) || leg.OriginEndpoint == null ||
+                leg.DestinationEndpoint == null ||
+                !CanService(leg.OriginEndpoint, leg.DestinationEndpoint, ShuttlePayloadType.Freight))
+                return false;
+
+            float tripCapacity = GetAvailableFreightCapacity();
+            if (tripCapacity + 0.0001f < shipmentQuantity)
+                return false;
+            quote = new ShuttleFreightQuote(this, leg, shipmentQuantity, tripCapacity);
+            return true;
+        }
+
+        bool IFreightLegProvider.TryAcceptQuote(
+            IFreightLegQuote quote,
+            FreightDeliveryJob job,
+            string executionId,
+            out IFreightLegExecution execution)
+        {
+            execution = null;
+            if (!(quote is ShuttleFreightQuote shuttleQuote) || shuttleQuote.Provider != this ||
+                job == null || job.CurrentLeg == null || job.CurrentLeg != shuttleQuote.Leg ||
+                job.CurrentLeg.Type != LogisticsRouteLegType.ShuttleFreight ||
+                job.Quantity > shuttleQuote.ShipmentQuantity + 0.0001f ||
+                string.IsNullOrWhiteSpace(executionId) || FreightLogisticsManager.Instance == null)
+                return false;
+
+            var shuttleExecution = new ShuttleFreightExecution(
+                FreightLogisticsManager.Instance, job, executionId);
+            ShuttleTransportRequest request = GetOrCreateFreightRequest(
+                job.Allocation, job.CurrentLegIndex, job.CurrentLeg, shuttleExecution);
+            if (request == null)
+            {
+                shuttleExecution.Complete(job);
+                return false;
+            }
+
+            shuttleExecution.BindRequest(request);
+            if (shuttleExecution.IsReadyForShuttle)
+                MarkPayloadReady(request);
+            execution = shuttleExecution;
+            return true;
+        }
+
+        private float GetAvailableFreightCapacity()
+        {
+            float capacity = 0f;
+            for (int index = 0; index < shuttles.Count; index++)
+            {
+                ShuttleServiceComponent shuttle = shuttles[index];
+                if (shuttle == null || !shuttle.isActiveAndEnabled ||
+                    !shuttle.CanCarry(ShuttlePayloadType.Freight) || shuttle.CargoInventory == null)
+                    continue;
+                // Quote against configured hold size. Pilot, trip occupancy and
+                // current cargo are dispatch-time conditions; accepted freight
+                // requests remain queued while those conditions clear.
+                capacity = Mathf.Max(capacity, shuttle.CargoInventory.Capacity);
+            }
+            // A missing fleet is a dispatch wait, not a reason to erase the
+            // shuttle leg. Freight execution can use multiple shuttle trips.
+            return capacity > 0f ? capacity : float.MaxValue;
+        }
+
+        private static bool IsFinitePositive(float value) =>
+            !float.IsNaN(value) && !float.IsInfinity(value) && value > 0f;
 
         public ShuttleTransportRequest GetOrCreatePassengerRequest(
             PersonnelRoutePlan plan, int legIndex, PersonnelRouteLeg leg,
@@ -314,13 +410,15 @@ namespace AsteroidColony
 
         public ShuttleTransportRequest GetOrCreateFreightRequest(
             FreightAllocation allocation, int legIndex, LogisticsRouteLeg leg,
-            IShuttleTransportPayload payload, int priority = 0)
+            IShuttleTransportPayload payload, int priority = 0, int haulIndex = 0)
         {
             if (allocation == null || leg == null || leg.Type != LogisticsRouteLegType.ShuttleFreight ||
-                leg.OriginEndpoint == null || leg.DestinationEndpoint == null)
+                leg.OriginEndpoint == null || leg.DestinationEndpoint == null || haulIndex < 0)
                 return null;
 
             string key = allocation.Id + ":leg:" + legIndex.ToString(CultureInfo.InvariantCulture);
+            if (haulIndex > 0)
+                key += ":haul:" + haulIndex.ToString(CultureInfo.InvariantCulture);
             ShuttleTransportRequest request = FindOrCreate(key, ShuttlePayloadType.Freight,
                 leg.OriginEndpoint, leg.DestinationEndpoint, priority);
             request.AddPayload(payload);
@@ -343,14 +441,14 @@ namespace AsteroidColony
             {
                 object payload = request.Payload;
                 string actor = payload is ColonistIdentity person ? person.name : "payload";
-                ShuttleDiagnosticLog.Record("passenger_payload_ready",
+                ShuttleDiagnosticLog.Record("transport_payload_ready",
                     "request=" + request.Id + ", actor=" + actor +
                     ", state=" + request.State + ", origin=" + request.Origin.StableId +
                     ", destination=" + request.Destination.StableId);
             }
             if (previousState != ShuttleTransportRequestState.ReadyForPickup &&
                 request.State == ShuttleTransportRequestState.ReadyForPickup)
-                ShuttleDiagnosticLog.Record("passenger_request_ready_for_pickup",
+                ShuttleDiagnosticLog.Record("transport_request_ready_for_pickup",
                     "request=" + request.Id + ", origin=" + request.Origin.StableId +
                     ", destination=" + request.Destination.StableId);
             return true;
@@ -365,6 +463,8 @@ namespace AsteroidColony
             for (int index = 0; index < shuttles.Count; index++)
                 shuttles[index]?.SimulationTickTransport();
             ScheduleReadyRequests();
+            PruneTerminalRequests();
+            PruneTerminalTrips();
         }
 
         internal void NotifyRequestCompleted(ShuttleTransportRequest request)
@@ -442,13 +542,18 @@ namespace AsteroidColony
 
                 ShuttleServiceComponent shuttle = FindAvailableShuttle(request);
                 if (shuttle == null)
+                {
+                    request.WaitReason = GetWaitReason(request);
                     continue; // Persistent need: remain ReadyForPickup/Queued.
+                }
 
                 ShuttleTrip trip = new ShuttleTrip(
                     "shuttle-trip-" + (++nextTripId).ToString("D6", CultureInfo.InvariantCulture),
                     shuttle, request.Origin, request.Destination, currentTick);
                 AddCompatibleRequests(trip, candidates, index, shuttle);
                 trips.Add(trip);
+                for (int requestIndex = 0; requestIndex < trip.Requests.Count; requestIndex++)
+                    trip.Requests[requestIndex].WaitReason = string.Empty;
                 ShuttleDiagnosticLog.Record("trip_created",
                     "trip=" + trip.Id + ", shuttle=" + shuttle.StableId +
                     ", origin=" + trip.Origin.StableId +
@@ -457,11 +562,15 @@ namespace AsteroidColony
                     ", freight=" + trip.FreightCount);
                 if (!shuttle.TryAcceptTrip(trip))
                 {
-                    trip.State = ShuttleTripState.Blocked;
+                    string waitReason = shuttle.TripWaitReason;
+                    shuttle.RollbackRejectedTrip(trip, waitReason);
+                    trip.State = ShuttleTripState.Cancelled;
+                    trip.WaitReason = waitReason;
                     for (int requestIndex = 0; requestIndex < trip.Requests.Count; requestIndex++)
                     {
                         ShuttleTransportRequest failed = trip.Requests[requestIndex];
                         failed.AssignedTrip = null;
+                        failed.WaitReason = waitReason;
                         failed.SetState(ShuttleTransportRequestState.ReadyForPickup);
                     }
                 }
@@ -475,6 +584,9 @@ namespace AsteroidColony
             ShuttleTransportRequest first = candidates[firstIndex];
             int passengerCapacity = Mathf.Max(0, shuttle.PassengerCapacity);
             int freightCapacity = Mathf.Max(0, shuttle.FreightCapacity);
+            float cargoCapacity = shuttle.CargoInventory != null
+                ? shuttle.CargoInventory.FreeCapacity : 0f;
+            float freightCargoUsed = 0f;
             int passengers = 0;
             int freight = 0;
             for (int index = firstIndex; index < candidates.Count; index++)
@@ -487,13 +599,32 @@ namespace AsteroidColony
                     continue;
                 if (request.PayloadType == ShuttlePayloadType.Freight && freight >= freightCapacity)
                     continue;
+                IShuttleTransportPayload freightPayload =
+                    request.Payload as IShuttleTransportPayload;
+                float freightLoadCapacity = 0f;
+                if (request.PayloadType == ShuttlePayloadType.Freight)
+                {
+                    if (freightPayload == null)
+                        continue;
+                    float remainingHold = Mathf.Max(0f, cargoCapacity - freightCargoUsed);
+                    freightLoadCapacity = freightPayload.CanUseMultipleTrips
+                        ? Mathf.Min(freightPayload.RequiredCargoCapacity, remainingHold)
+                        : freightPayload.RequiredCargoCapacity;
+                    if (freightLoadCapacity + 0.0001f <
+                            freightPayload.MinimumUsableCargoCapacity ||
+                        freightCargoUsed + freightLoadCapacity > cargoCapacity + 0.0001f)
+                        continue;
+                }
                 trip.Add(request);
                 request.AssignedTrip = trip;
                 request.SetState(ShuttleTransportRequestState.Assigned);
                 if (request.PayloadType == ShuttlePayloadType.Passenger)
                     passengers++;
                 else
+                {
                     freight++;
+                    freightCargoUsed += freightLoadCapacity;
+                }
             }
             trip.PassengerCount = passengers;
             trip.FreightCount = freight;
@@ -502,23 +633,163 @@ namespace AsteroidColony
         private ShuttleServiceComponent FindAvailableShuttle(ShuttleTransportRequest request)
         {
             ShuttleServiceComponent best = null;
+            float bestAvailableCargo = -1f;
             for (int index = 0; index < shuttles.Count; index++)
             {
                 ShuttleServiceComponent candidate = shuttles[index];
-                if (candidate == null || !candidate.isActiveAndEnabled || candidate.CurrentTrip != null ||
-                    candidate.Voyage == null || candidate.Voyage.Phase != ShuttleVoyagePhase.Docked ||
-                    candidate.PilotReleasePending || !candidate.CanCarry(request.PayloadType))
+                if (candidate == null || !candidate.CanStartTripNow ||
+                    !candidate.CanCarry(request.PayloadType))
                     continue;
-                if (best == null || string.CompareOrdinal(candidate.StableId, best.StableId) < 0)
+                if (request.PayloadType == ShuttlePayloadType.Freight &&
+                    request.Payload is IShuttleTransportPayload freightPayload &&
+                    (candidate.CargoInventory == null ||
+                     candidate.CargoInventory.FreeCapacity + 0.0001f <
+                        (freightPayload.CanUseMultipleTrips
+                            ? freightPayload.MinimumUsableCargoCapacity
+                            : freightPayload.RequiredCargoCapacity)))
+                    continue;
+                float availableCargo = request.PayloadType == ShuttlePayloadType.Freight &&
+                    candidate.CargoInventory != null
+                    ? candidate.CargoInventory.FreeCapacity
+                    : 0f;
+                if (best == null || availableCargo > bestAvailableCargo + 0.0001f ||
+                    Mathf.Abs(availableCargo - bestAvailableCargo) <= 0.0001f &&
+                    string.CompareOrdinal(candidate.StableId, best.StableId) < 0)
+                {
                     best = candidate;
+                    bestAvailableCargo = availableCargo;
+                }
             }
             return best;
+        }
+
+        private string GetWaitReason(ShuttleTransportRequest request)
+        {
+            bool compatibleVehicleExists = false;
+            bool pilotAvailable = false;
+            bool vehicleBusy = false;
+            bool cargoCapacityAvailable = false;
+            for (int index = 0; index < shuttles.Count; index++)
+            {
+                ShuttleServiceComponent shuttle = shuttles[index];
+                if (shuttle == null || !shuttle.isActiveAndEnabled ||
+                    !shuttle.CanCarry(request.PayloadType))
+                    continue;
+                compatibleVehicleExists = true;
+                pilotAvailable |= shuttle.PilotService != null &&
+                                  shuttle.PilotService.CanProvidePilotNow;
+                vehicleBusy |= shuttle.CurrentTrip != null || shuttle.Voyage == null ||
+                               shuttle.Voyage.Phase != ShuttleVoyagePhase.Docked;
+                if (request.PayloadType != ShuttlePayloadType.Freight ||
+                    !(request.Payload is IShuttleTransportPayload payload))
+                    cargoCapacityAvailable = true;
+                else if (shuttle.CargoInventory != null &&
+                         shuttle.CargoInventory.FreeCapacity + 0.0001f >=
+                            (payload.CanUseMultipleTrips
+                                ? payload.MinimumUsableCargoCapacity
+                                : payload.RequiredCargoCapacity))
+                    cargoCapacityAvailable = true;
+            }
+
+            if (!compatibleVehicleExists)
+            {
+                IReadOnlyList<ShuttleServiceComponent> knownServices =
+                    ShuttleServiceComponent.KnownServices;
+                for (int index = 0; index < knownServices.Count; index++)
+                    if (knownServices[index] != null && knownServices[index].CanCarry(request.PayloadType))
+                        return "waiting_for_service";
+                return "no_compatible_vehicle";
+            }
+            if (!pilotAvailable)
+                return "waiting_for_pilot";
+            if (!cargoCapacityAvailable)
+                return "waiting_for_cargo_capacity";
+            return vehicleBusy ? "waiting_for_vehicle" : "waiting_for_service";
         }
 
         private void CleanupDestroyedRegistrations()
         {
             endpoints.RemoveAll(item => item == null);
             shuttles.RemoveAll(item => item == null);
+        }
+
+        private void PruneTerminalRequests()
+        {
+            int terminalCount = 0;
+            for (int index = 0; index < requests.Count; index++)
+                if (requests[index] != null && requests[index].IsTerminal)
+                    terminalCount++;
+            int excess = terminalCount - TerminalHistoryLimit;
+            for (int index = 0; index < requests.Count && excess > 0;)
+            {
+                ShuttleTransportRequest request = requests[index];
+                if (request != null && request.IsTerminal)
+                {
+                    requests.RemoveAt(index);
+                    request.StateChanged -= HandleRequestStateChanged;
+                    if (byCorrelation.TryGetValue(request.CorrelationKey,
+                            out ShuttleTransportRequest correlated) && correlated == request)
+                        byCorrelation.Remove(request.CorrelationKey);
+                    excess--;
+                }
+                else
+                {
+                    index++;
+                }
+            }
+        }
+
+        private void PruneTerminalTrips()
+        {
+            int terminalCount = 0;
+            for (int index = 0; index < trips.Count; index++)
+                if (trips[index] != null &&
+                    (trips[index].State == ShuttleTripState.Completed ||
+                     trips[index].State == ShuttleTripState.Cancelled))
+                    terminalCount++;
+            int excess = terminalCount - TerminalHistoryLimit;
+            for (int index = 0; index < trips.Count && excess > 0;)
+            {
+                ShuttleTrip trip = trips[index];
+                if (trip != null &&
+                    (trip.State == ShuttleTripState.Completed ||
+                     trip.State == ShuttleTripState.Cancelled))
+                {
+                    trips.RemoveAt(index);
+                    excess--;
+                }
+                else
+                {
+                    index++;
+                }
+            }
+        }
+
+        private IReadOnlyList<ShuttleTransportRequest> SelectRequests(bool activeOnly)
+        {
+            List<ShuttleTransportRequest> selected = new List<ShuttleTransportRequest>();
+            for (int index = 0; index < requests.Count; index++)
+            {
+                ShuttleTransportRequest request = requests[index];
+                bool activeRequest = request != null && !request.IsTerminal;
+                if (request != null && activeRequest == activeOnly)
+                    selected.Add(request);
+            }
+            return selected.ToArray();
+        }
+
+        private IReadOnlyList<ShuttleTrip> SelectTrips(bool activeOnly)
+        {
+            List<ShuttleTrip> selected = new List<ShuttleTrip>();
+            for (int index = 0; index < trips.Count; index++)
+            {
+                ShuttleTrip trip = trips[index];
+                bool activeTrip = trip != null && trip.State != ShuttleTripState.Completed &&
+                                  trip.State != ShuttleTripState.Cancelled;
+                if (trip != null && activeTrip == activeOnly)
+                    selected.Add(trip);
+            }
+            return selected.ToArray();
         }
 
         private static int CompareRequests(ShuttleTransportRequest left, ShuttleTransportRequest right)

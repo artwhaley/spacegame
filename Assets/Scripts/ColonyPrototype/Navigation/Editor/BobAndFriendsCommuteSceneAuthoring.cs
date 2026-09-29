@@ -149,8 +149,9 @@ namespace AsteroidColony.Editor
             WalkingFreightWorkService freight = EnsureComponent<WalkingFreightWorkService>(stationObject);
             ShuttleTransferEndpoint endpoint = EnsureComponent<ShuttleTransferEndpoint>(stationObject);
 
-            inventory.SetCapacity(food, 100f);
-            stock.SetBindings(inventory, dutyAnchor);
+            inventory.SetCapacity(100f);
+            if (!stock.TrySetBindings(inventory, dutyAnchor, out string bindingError))
+                throw new InvalidOperationException(bindingError);
             stock.ConfigurePolicy(food, LogisticsStockRole.Depot, 0f, false, 0f, 0f, 1f);
 
             if (isMainBase)
@@ -251,7 +252,7 @@ namespace AsteroidColony.Editor
             ShuttleDockingProbeComponent probe = service.GetComponent<ShuttleDockingProbeComponent>();
             InventoryComponent cargo = EnsureComponent<InventoryComponent>(service.gameObject);
             ResourceDefinition food = RequireAsset<ResourceDefinition>(FoodPath);
-            cargo.SetCapacity(food, 50f);
+            cargo.SetCapacity(50f);
             Transform passengerAnchor = EnsureChild(service.gameObject, "PassengerAnchor", new Vector3(0f, 0.75f, 0f));
             ShuttlePilotWorkService pilotService = shuttleBase.GetComponent<ShuttlePilotWorkService>();
             ShuttleBaseComponent baseComponent = shuttleBase.GetComponent<ShuttleBaseComponent>();
@@ -397,9 +398,10 @@ namespace AsteroidColony.Editor
                 Debug.LogError(station.name + " has no valid interior MobileDuty anchor.", station);
                 errors++;
             }
-            if (endpoint == null || endpoint.TransferAnchor == null || endpoint.StagingInventory == null || endpoint.DepotStock == null)
+            string endpointError = "endpoint_missing";
+            if (endpoint == null || !endpoint.Validate(out endpointError))
             {
-                Debug.LogError(station.name + " has an incomplete Shuttle transfer endpoint.", station);
+                Debug.LogError(station.name + " has an invalid Shuttle transfer endpoint: " + endpointError, station);
                 errors++;
             }
             if (requirePilot && (workplace == null || !workplace.OffersRole(RequireAsset<JobRoleDefinition>(PilotPath))))

@@ -220,7 +220,9 @@ namespace AsteroidColony
 
             FoodServiceComponent service = offer.Opportunity.Service;
             if (!service.HasUsableFoodInventory ||
-                !service.FoodInventory.Reserve(service.FoodResource, service.FoodPerMeal))
+                !service.FoodInventory.TryReserveOwned(
+                    service.FoodResource, service.FoodPerMeal,
+                    out InventoryReservationToken inventoryReservation))
             {
                 SimulationLogManager.RecordEvent(
                     "food.inventory_reservation_failed",
@@ -240,7 +242,8 @@ namespace AsteroidColony
                 service.FoodResource,
                 service.FoodPerMeal)
             {
-                Reserved = true
+                Reserved = true,
+                InventoryReservation = inventoryReservation
             };
             SimulationLogManager.RecordEvent(
                 "food.inventory_reserved",
@@ -259,13 +262,12 @@ namespace AsteroidColony
             if (commitment.Consumed)
                 return true;
 
-            float withdrawn = commitment.Inventory != null
-                ? commitment.Inventory.WithdrawReserved(commitment.Resource, commitment.Amount)
-                : 0f;
-            if (withdrawn + 0.0001f < commitment.Amount)
+            bool consumed = commitment.Inventory != null &&
+                commitment.InventoryReservation != null &&
+                commitment.Inventory.ConsumeOwned(
+                    commitment.InventoryReservation, commitment.Amount);
+            if (!consumed)
             {
-                if (withdrawn > 0f)
-                    commitment.Inventory.Add(commitment.Resource, withdrawn);
                 ReleaseMeal(commitment);
                 return false;
             }
@@ -287,8 +289,9 @@ namespace AsteroidColony
             if (commitment == null || commitment.Consumed || commitment.Released)
                 return;
 
-            if (commitment.Reserved && commitment.Inventory != null)
-                commitment.Inventory.ReleaseReservation(commitment.Resource, commitment.Amount);
+            if (commitment.Reserved && commitment.Inventory != null &&
+                commitment.InventoryReservation != null)
+                commitment.Inventory.ReleaseOwned(commitment.InventoryReservation);
             commitment.Reserved = false;
             commitment.Released = true;
             SimulationLogManager.RecordEvent(

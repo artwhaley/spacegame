@@ -147,8 +147,8 @@ namespace AsteroidColony
             float destinationOnHand = unloadInventory.GetOnHand(collector.collectableResource);
             float cargoOnHand = CurrentCargoQuantity;
             float needed = desiredStock - destinationOnHand - cargoOnHand;
-            float freeCargo = collector.destinationCargo.GetFreeCapacity(collector.collectableResource);
-            float freeDestination = unloadInventory.GetFreeCapacity(collector.collectableResource);
+            float freeCargo = collector.destinationCargo.FreeCapacity;
+            float freeDestination = unloadInventory.FreeCapacity;
             float missionQuantity = Mathf.Min(needed,
                 Mathf.Min(freeCargo, Mathf.Min(freeDestination, targetDeposit.RemainingQuantity)));
 
@@ -174,8 +174,8 @@ namespace AsteroidColony
             }
 
             float remainingMission = missionTargetQuantity - missionCollectedQuantity;
-            float freeCargo = collector.destinationCargo.GetFreeCapacity(collector.collectableResource);
-            float freeDestination = unloadInventory.GetFreeCapacity(collector.collectableResource);
+            float freeCargo = collector.destinationCargo.FreeCapacity;
+            float freeDestination = unloadInventory.FreeCapacity;
             if (remainingMission <= QuantityEpsilon || freeCargo <= QuantityEpsilon ||
                 freeDestination <= QuantityEpsilon || targetDeposit.RemainingQuantity <= QuantityEpsilon)
             {
@@ -186,9 +186,9 @@ namespace AsteroidColony
             float collected = collector.Collect(targetDeposit, deltaGameHours);
             missionCollectedQuantity += collected;
             if (missionCollectedQuantity + QuantityEpsilon >= missionTargetQuantity ||
-                collector.destinationCargo.GetFreeCapacity(collector.collectableResource) <= QuantityEpsilon ||
+                collector.destinationCargo.FreeCapacity <= QuantityEpsilon ||
                 targetDeposit.RemainingQuantity <= QuantityEpsilon ||
-                unloadInventory.GetFreeCapacity(collector.collectableResource) <= QuantityEpsilon)
+                unloadInventory.FreeCapacity <= QuantityEpsilon)
                 FinishExtractionTrip();
         }
 
@@ -218,7 +218,7 @@ namespace AsteroidColony
                 return;
             }
 
-            float amount = Mathf.Min(cargo, unloadInventory.GetFreeCapacity(collector.collectableResource));
+            float amount = Mathf.Min(cargo, unloadInventory.FreeCapacity);
             if (amount <= QuantityEpsilon)
                 return;
 

@@ -113,8 +113,24 @@ station. `ColonistTargetResolver` converts that discovery into an `ActivityTarge
 exit, and release. The Cafeteria's `InteractableFacility` owns Eat choreography,
 and Hunger recovery is applied only during a genuinely active matching Eat.
 
-Food inventory integration is intentionally deferred. `PopulationResourceConsumer`
-migration is not part of this slice.
+Meals use owned inventory claims and consume only the accepted meal's reservation.
+`PopulationResourceConsumer` remains a separate aggregate consumer.
+
+## Logistics labor boundary
+
+`WalkingFreightWorkService` is a provider of committed freight work, not an employment
+manager. Routine porters, producer-outbound assistance, and consumer emergency pickup keep
+separate eligibility and per-trip capacity. An accepted worker assignment has a fixed total
+quantity; if carry capacity is smaller, the worker completes the remaining quantity over
+multiple trips. A shift-end or critical-need release request remains pending until the full
+accepted final-leg quantity reaches its destination. The worker is not offered additional
+freight after release is pending.
+
+The logistics manager retains the parent demand and source/staging claim while the provider
+owns the active route and borrowed-worker lease. A temporarily disabled walking provider
+holds route completion callbacks until it resumes. A permanently lost executor leaves an
+explicit recovery-required child; the system does not invent stock recovery for a destroyed
+carrier inventory.
 
 ## OffDuty, biological priority, and canonical history
 

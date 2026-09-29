@@ -173,9 +173,10 @@ namespace AsteroidColony
                     SetState(ResourceConverterState.InputBlocked, "Complete batch inputs unavailable");
                     return;
                 }
-                if (!HasOutputCapacity(recipe))
+                if (!HasBatchStartCapacity(recipe))
                 {
-                    SetState(ResourceConverterState.OutputBlocked, "Complete batch output does not fit");
+                    SetState(ResourceConverterState.OutputBlocked,
+                        "Batch inputs cannot free enough shared capacity for outputs");
                     return;
                 }
                 if (!ConsumeBatchInputs(recipe))
@@ -220,31 +221,32 @@ namespace AsteroidColony
         private float GetInputLimit(RecipeDefinition recipe)
         {
             float limit = float.MaxValue;
-            for (int i = 0; i < recipe.inputs.Count; i++)
+            Dictionary<ResourceDefinition, float> inputs = AggregateAmounts(recipe.inputs);
+            foreach (KeyValuePair<ResourceDefinition, float> input in inputs)
             {
-                ResourceAmount input = recipe.inputs[i];
-                limit = Mathf.Min(limit, inventory.GetAvailable(input.resource) / input.amount);
+                limit = Mathf.Min(limit, inventory.GetAvailable(input.Key) / input.Value);
             }
             return limit;
         }
 
         private float GetOutputLimit(RecipeDefinition recipe)
         {
-            float limit = float.MaxValue;
+            float inputPerBatch = SumAmounts(AggregateAmounts(recipe.inputs));
+            float capacityPerBatch = 0f;
             for (int i = 0; i < recipe.outputs.Count; i++)
-            {
-                ResourceAmount output = recipe.outputs[i];
-                limit = Mathf.Min(limit, inventory.GetFreeCapacity(output.resource) / output.amount);
-            }
-            return limit;
+                capacityPerBatch += Mathf.Max(0f, recipe.outputs[i].amount);
+            float netGrowth = capacityPerBatch - inputPerBatch;
+            return netGrowth > QuantityEpsilon
+                ? inventory.FreeCapacity / netGrowth
+                : float.MaxValue;
         }
 
         private bool HasCompleteInputs(RecipeDefinition recipe)
         {
-            for (int i = 0; i < recipe.inputs.Count; i++)
+            Dictionary<ResourceDefinition, float> inputs = AggregateAmounts(recipe.inputs);
+            foreach (KeyValuePair<ResourceDefinition, float> input in inputs)
             {
-                ResourceAmount input = recipe.inputs[i];
-                if (inventory.GetAvailable(input.resource) + QuantityEpsilon < input.amount)
+                if (inventory.GetAvailable(input.Key) + QuantityEpsilon < input.Value)
                     return false;
             }
             return true;
@@ -252,93 +254,58 @@ namespace AsteroidColony
 
         private bool HasOutputCapacity(RecipeDefinition recipe)
         {
+            float capacityPerBatch = 0f;
             for (int i = 0; i < recipe.outputs.Count; i++)
-            {
-                ResourceAmount output = recipe.outputs[i];
-                if (inventory.GetFreeCapacity(output.resource) + QuantityEpsilon < output.amount)
-                    return false;
-            }
-            return true;
+                capacityPerBatch += Mathf.Max(0f, recipe.outputs[i].amount);
+            return inventory.FreeCapacity + QuantityEpsilon >= capacityPerBatch;
+        }
+
+        private bool HasBatchStartCapacity(RecipeDefinition recipe)
+        {
+            float inputs = SumAmounts(AggregateAmounts(recipe.inputs));
+            float outputs = SumAmounts(AggregateAmounts(recipe.outputs));
+            return inventory.FreeCapacity + inputs + QuantityEpsilon >= outputs;
         }
 
         private bool ConsumeBatchInputs(RecipeDefinition recipe)
         {
-            List<ResourceAmount> removed = new List<ResourceAmount>();
-            for (int i = 0; i < recipe.inputs.Count; i++)
-            {
-                ResourceAmount input = recipe.inputs[i];
-                float amount = inventory.Remove(input.resource, input.amount);
-                if (amount < input.amount - QuantityEpsilon)
-                {
-                    for (int j = 0; j < removed.Count; j++)
-                        inventory.Add(removed[j].resource, removed[j].amount);
-                    if (amount > 0f)
-                        inventory.Add(input.resource, amount);
-                    return false;
-                }
-                removed.Add(new ResourceAmount { resource = input.resource, amount = amount });
-            }
-            return true;
+            return inventory.TryApplyRecipe(recipe.inputs, null, 1f, out _);
         }
 
         private bool ApplyContinuous(RecipeDefinition recipe, float recipeProgress)
         {
-            List<ResourceAmount> removed = new List<ResourceAmount>();
-            for (int i = 0; i < recipe.inputs.Count; i++)
-            {
-                ResourceAmount input = recipe.inputs[i];
-                float requested = input.amount * recipeProgress;
-                float amount = inventory.Remove(input.resource, requested);
-                if (amount < requested - QuantityEpsilon)
-                {
-                    for (int j = 0; j < removed.Count; j++)
-                        inventory.Add(removed[j].resource, removed[j].amount);
-                    if (amount > 0f)
-                        inventory.Add(input.resource, amount);
-                    return false;
-                }
-                removed.Add(new ResourceAmount { resource = input.resource, amount = amount });
-            }
-
-            List<ResourceAmount> added = new List<ResourceAmount>();
-            for (int i = 0; i < recipe.outputs.Count; i++)
-            {
-                ResourceAmount output = recipe.outputs[i];
-                float requested = output.amount * recipeProgress;
-                float amount = inventory.Add(output.resource, requested);
-                if (amount < requested - QuantityEpsilon)
-                {
-                    for (int j = 0; j < added.Count; j++)
-                        inventory.Remove(added[j].resource, added[j].amount);
-                    if (amount > 0f)
-                        inventory.Remove(output.resource, amount);
-                    for (int j = 0; j < removed.Count; j++)
-                        inventory.Add(removed[j].resource, removed[j].amount);
-                    return false;
-                }
-                added.Add(new ResourceAmount { resource = output.resource, amount = amount });
-            }
-            return true;
+            return inventory.TryApplyRecipe(recipe.inputs, recipe.outputs, recipeProgress, out _);
         }
 
         private bool EmitBatchOutputs(RecipeDefinition recipe)
         {
-            List<ResourceAmount> added = new List<ResourceAmount>();
-            for (int i = 0; i < recipe.outputs.Count; i++)
+            return inventory.TryApplyRecipe(null, recipe.outputs, 1f, out _);
+        }
+
+        private static Dictionary<ResourceDefinition, float> AggregateAmounts(
+            IReadOnlyList<ResourceAmount> amounts)
+        {
+            var totals = new Dictionary<ResourceDefinition, float>();
+            if (amounts == null)
+                return totals;
+            for (int index = 0; index < amounts.Count; index++)
             {
-                ResourceAmount output = recipe.outputs[i];
-                float amount = inventory.Add(output.resource, output.amount);
-                if (amount < output.amount - QuantityEpsilon)
-                {
-                    for (int j = 0; j < added.Count; j++)
-                        inventory.Remove(added[j].resource, added[j].amount);
-                    if (amount > 0f)
-                        inventory.Remove(output.resource, amount);
-                    return false;
-                }
-                added.Add(new ResourceAmount { resource = output.resource, amount = amount });
+                ResourceAmount amount = amounts[index];
+                if (amount.resource == null || amount.amount <= 0f)
+                    continue;
+                totals.TryGetValue(amount.resource, out float current);
+                totals[amount.resource] = current + amount.amount;
             }
-            return true;
+            return totals;
+        }
+
+        private static float SumAmounts(Dictionary<ResourceDefinition, float> amounts)
+        {
+            float total = 0f;
+            if (amounts != null)
+                foreach (float amount in amounts.Values)
+                    total += amount;
+            return total;
         }
 
         private void SetState(ResourceConverterState newState, string reason)
@@ -393,7 +360,7 @@ namespace AsteroidColony
                     continue;
 
                 SimulationLogManager.RecordEvent(
-                    "production.food_output",
+                    "production.recipe_output",
                     "Production",
                     "Info",
                     this,

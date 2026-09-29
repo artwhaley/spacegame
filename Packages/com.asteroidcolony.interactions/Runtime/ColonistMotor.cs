@@ -510,7 +510,7 @@ namespace Colony.Interactions
 
         private void SetAnimatorSpeed(float speed)
         {
-            if (animator != null)
+            if (CanSetAnimatorParameters)
             {
                 animator.SetFloat(
                     SpeedParameter,
@@ -522,7 +522,7 @@ namespace Colony.Interactions
 
         private void SetAnimatorTurn(float turn)
         {
-            if (animator != null && hasTurnParameter)
+            if (CanSetAnimatorParameters && hasTurnParameter)
             {
                 animator.SetFloat(
                     TurnParameter,
@@ -531,6 +531,10 @@ namespace Colony.Interactions
                     PresentationTime.DeltaTime);
             }
         }
+
+        private bool CanSetAnimatorParameters => animator != null &&
+            animator.isActiveAndEnabled && animator.isInitialized &&
+            animator.runtimeAnimatorController != null;
 
         private void ApplyPresentationSpeed()
         {

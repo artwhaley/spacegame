@@ -91,7 +91,15 @@ namespace AsteroidColony.Tests
             public string ExecutionId { get; }
             public int LegIndex => 0;
             public bool IsActive { get; private set; } = true;
+            public bool ProviderAvailable => true;
+            public bool ExecutorAvailable => true;
             public bool IsEmergency => false;
+            public bool RequiresPersonnelRouteForPickup => true;
+            public bool RequiresPersonnelRouteForLoadedArrival => true;
+            public bool CompletesAcceptedQuantityAcrossLoads => true;
+            public bool DefersReleaseUntilAcceptedWorkCompletes => true;
+            public bool HasPendingWorkerRelease => false;
+            public float TripCapacity => 1f;
             public float PositioningDistance => 0f;
             public InventoryComponent CargoInventory => null;
             public Object ProviderContext => null;

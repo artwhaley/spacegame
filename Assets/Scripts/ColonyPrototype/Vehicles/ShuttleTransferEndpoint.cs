@@ -83,6 +83,16 @@ namespace AsteroidColony
                 reason = "depot_stock_missing";
                 return false;
             }
+            if (depotStock.Inventory == null)
+            {
+                reason = "depot_inventory_missing";
+                return false;
+            }
+            if (stagingInventory != depotStock.Inventory)
+            {
+                reason = "staging_inventory_does_not_match_depot_stock";
+                return false;
+            }
 
             reason = "valid";
             return true;
@@ -92,11 +102,37 @@ namespace AsteroidColony
             Transform anchor, InventoryComponent inventory,
             LogisticsStockComponent stock)
         {
+            if (!TryConfigure(id, port, anchor, inventory, stock, out string reason))
+                throw new InvalidOperationException(reason);
+        }
+
+        public bool TryConfigure(string id, DockingPortComponent port,
+            Transform anchor, InventoryComponent inventory,
+            LogisticsStockComponent stock, out string reason)
+        {
+            reason = string.Empty;
+            if (stock != null && stock.Inventory != inventory)
+            {
+                reason = "endpoint staging inventory must match its depot stock inventory";
+                return false;
+            }
+
+            bool bindingsChanged = (stableId ?? string.Empty) != (id ?? string.Empty) || dockingPort != port ||
+                                   transferAnchor != anchor || stagingInventory != inventory || depotStock != stock;
+            FreightLogisticsManager manager = FreightLogisticsManager.Instance;
+            if (bindingsChanged && manager != null &&
+                (manager.HasLiveJobsForStock(depotStock) || manager.HasLiveJobsForStock(stock)))
+            {
+                reason = "endpoint cannot be rebound while accepted freight obligations use its depot";
+                return false;
+            }
+
             stableId = id ?? string.Empty;
             dockingPort = port;
             transferAnchor = anchor;
             stagingInventory = inventory;
             depotStock = stock;
+            return true;
         }
 
         private void ResolveReferences()

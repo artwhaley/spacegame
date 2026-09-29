@@ -12,6 +12,7 @@ namespace AsteroidColony
         LoadingOrBoarding,
         InTransit,
         UnloadingOrDisembarking,
+        Paused,
         Blocked
     }
 
@@ -24,6 +25,8 @@ namespace AsteroidColony
     [AddComponentMenu("Colony/Vehicles/Shuttle Service")]
     public sealed class ShuttleServiceComponent : MonoBehaviour
     {
+        private static readonly List<ShuttleServiceComponent> knownServices =
+            new List<ShuttleServiceComponent>();
         private sealed class PresentationComponentState
         {
             public Component Component;
@@ -57,8 +60,12 @@ namespace AsteroidColony
 
         private readonly List<BoardedActorState> boardedActors = new List<BoardedActorState>();
         private ShuttleTrip currentTrip;
+        private ShuttleTripState pausedFromState;
         private ShuttleTransferEndpoint activeOrigin;
         private string lastTripDiagnostic;
+        private bool pausedVoyageByService;
+        public string TripWaitReason { get; private set; }
+        internal static IReadOnlyList<ShuttleServiceComponent> KnownServices => knownServices;
 
         public string StableId => string.IsNullOrWhiteSpace(stableId)
             ? SceneStableIdentity.GetKey(this)
@@ -75,6 +82,17 @@ namespace AsteroidColony
         public int FreightCapacity => freightCapacity;
         public InventoryComponent CargoInventory => cargoInventory;
         public ShuttleTrip CurrentTrip => currentTrip;
+        /// <summary>
+        /// True when this active, piloted shuttle can service queued work after its
+        /// current trip. Planning may quote future capacity; scheduling still uses
+        /// CanStartTripNow before assigning a physical trip.
+        /// </summary>
+        public bool CanPlanFutureTrip => isActiveAndEnabled && voyage != null &&
+            voyage.Phase != ShuttleVoyagePhase.Blocked && pilotService != null &&
+            !pilotService.PilotReleasePending && pilotService.CanProvidePilotNow &&
+            (currentTrip == null || currentTrip.State != ShuttleTripState.Blocked);
+        public bool CanStartTripNow => CanPlanFutureTrip && currentTrip == null &&
+            voyage.Phase == ShuttleVoyagePhase.Docked;
         public IReadOnlyList<ColonistIdentity> Passengers
         {
             get
@@ -110,13 +128,21 @@ namespace AsteroidColony
         {
             ResolveReferences();
             pilotService?.BindVehicle(this);
+            if (!knownServices.Contains(this))
+                knownServices.Add(this);
         }
 
         private void OnEnable()
         {
             ResolveReferences();
+            if (pausedVoyageByService && voyage != null)
+            {
+                voyage.enabled = true;
+                pausedVoyageByService = false;
+            }
             pilotService?.BindVehicle(this);
             ShuttleManager.Instance?.RegisterShuttle(this);
+            ResumePausedTrip();
         }
 
         private void Start()
@@ -129,9 +155,32 @@ namespace AsteroidColony
         private void OnDisable()
         {
             ShuttleManager.Instance?.UnregisterShuttle(this);
-            BlockTripForLostShuttle();
-            DetachAllBoardedActors();
+            PauseTripForProviderDisable();
+            if (voyage != null && voyage.enabled)
+            {
+                voyage.enabled = false;
+                pausedVoyageByService = true;
+            }
         }
+
+        private void OnDestroy()
+        {
+            knownServices.Remove(this);
+            if (currentTrip == null)
+                return;
+            BlockTripForLostShuttle("shuttle_destroyed_custody_unknown");
+            for (int index = 0; index < boardedActors.Count; index++)
+            {
+                BoardedActorState state = boardedActors[index];
+                if (state?.Actor == null)
+                    continue;
+                SetPresentationVisible(state, true);
+                RestoreNavigationAt(state, state.Actor.transform.position);
+            }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetKnownServices() => knownServices.Clear();
 
         private void LateUpdate()
         {
@@ -163,9 +212,14 @@ namespace AsteroidColony
             currentTrip = trip;
             activeOrigin = trip.Origin;
             lastTripDiagnostic = null;
+            TripWaitReason = string.Empty;
+            for (int index = 0; index < trip.Requests.Count; index++)
+                if (trip.Requests[index]?.Payload is ShuttleFreightExecution freightExecution)
+                    freightExecution.BindShuttle(this);
             pilotService?.BindVehicle(this);
             if (!TryEnsurePilot())
             {
+                TripWaitReason = "waiting_for_pilot";
                 LogTripDiagnostic("waiting for pilot at trip acceptance; pilotService=" +
                     (pilotService != null ? pilotService.name : "missing"));
                 trip.State = ShuttleTripState.Queued;
@@ -178,6 +232,21 @@ namespace AsteroidColony
             return BeginOrReposition();
         }
 
+        internal void RollbackRejectedTrip(ShuttleTrip rejectedTrip, string waitReason)
+        {
+            if (rejectedTrip == null || currentTrip != rejectedTrip)
+                return;
+            for (int index = 0; index < rejectedTrip.Requests.Count; index++)
+                if (rejectedTrip.Requests[index] != null &&
+                    rejectedTrip.Requests[index].IsPhysicallyTransferred)
+                    return;
+
+            currentTrip = null;
+            activeOrigin = null;
+            OperationalState = ShuttleOperationalState.Idle;
+            TripWaitReason = waitReason ?? string.Empty;
+        }
+
         public void SimulationTickTransport()
         {
             ResolveReferences();
@@ -187,25 +256,63 @@ namespace AsteroidColony
                 currentTrip.State == ShuttleTripState.Cancelled)
                 return;
 
+            if (currentTrip.State == ShuttleTripState.UnloadingOrDisembarking &&
+                CurrentDock == currentTrip.Destination.DockingPort)
+            {
+                CompleteTripAtDestination();
+                return;
+            }
+
             if (!TryEnsurePilot())
             {
                 LogTripDiagnostic("waiting for pilot; trip=" + currentTrip.Id);
                 for (int index = 0; index < currentTrip.Requests.Count; index++)
-                    currentTrip.Requests[index].SetState(ShuttleTransportRequestState.WaitingForPilot);
+                {
+                    ShuttleTransportRequest request = currentTrip.Requests[index];
+                    if (request != null && !request.IsTerminal)
+                        request.SetState(ShuttleTransportRequestState.WaitingForPilot);
+                }
                 return;
             }
 
             if (voyage.Phase == ShuttleVoyagePhase.Blocked)
             {
+                TripWaitReason = string.IsNullOrWhiteSpace(voyage.BlockReason)
+                    ? "voyage_recovery_required" : voyage.BlockReason;
+                currentTrip.WaitReason = TripWaitReason;
                 OperationalState = ShuttleOperationalState.Blocked;
                 currentTrip.State = ShuttleTripState.Blocked;
+                for (int index = 0; index < currentTrip.Requests.Count; index++)
+                {
+                    ShuttleTransportRequest request = currentTrip.Requests[index];
+                    if (request != null && !request.IsTerminal)
+                    {
+                        request.WaitReason = TripWaitReason;
+                        request.SetState(ShuttleTransportRequestState.Blocked);
+                    }
+                }
                 return;
             }
 
             if (voyage.Phase != ShuttleVoyagePhase.Docked)
             {
-                OperationalState = ShuttleOperationalState.InTransit;
-                currentTrip.State = ShuttleTripState.InTransit;
+                bool repositioning = currentTrip.State == ShuttleTripState.Repositioning;
+                OperationalState = repositioning
+                    ? ShuttleOperationalState.Repositioning
+                    : ShuttleOperationalState.InTransit;
+                currentTrip.State = repositioning
+                    ? ShuttleTripState.Repositioning
+                    : ShuttleTripState.InTransit;
+                if (repositioning)
+                    SetLiveRequestState(ShuttleTransportRequestState.Assigned);
+                return;
+            }
+
+            if (CurrentDock == currentTrip.Destination.DockingPort &&
+                currentTrip.State != ShuttleTripState.InTransit &&
+                currentTrip.State != ShuttleTripState.UnloadingOrDisembarking)
+            {
+                BeginOrReposition();
                 return;
             }
 
@@ -222,7 +329,8 @@ namespace AsteroidColony
                 return;
             }
 
-            if (CurrentDock == currentTrip.Destination.DockingPort)
+            if (CurrentDock == currentTrip.Destination.DockingPort &&
+                currentTrip.State == ShuttleTripState.InTransit)
                 CompleteTripAtDestination();
         }
 
@@ -294,7 +402,11 @@ namespace AsteroidColony
             {
                 OperationalState = ShuttleOperationalState.Repositioning;
                 currentTrip.State = ShuttleTripState.Repositioning;
-                return voyage.TryRequestVoyage(activeOrigin.DockingPort, out _);
+                bool started = voyage.TryRequestVoyage(activeOrigin.DockingPort, out string reason);
+                TripWaitReason = started ? string.Empty :
+                    string.IsNullOrWhiteSpace(reason) ? "waiting_for_berth" : reason;
+                currentTrip.WaitReason = TripWaitReason;
+                return started;
             }
 
             PrepareAndDepart();
@@ -309,10 +421,16 @@ namespace AsteroidColony
             OperationalState = ShuttleOperationalState.LoadingOrBoarding;
             currentTrip.State = ShuttleTripState.LoadingOrBoarding;
             bool allReady = true;
+            bool hasLiveRequest = false;
             for (int index = 0; index < currentTrip.Requests.Count; index++)
             {
                 ShuttleTransportRequest request = currentTrip.Requests[index];
-                if (!request.IsPayloadReady || request.IsTerminal)
+                if (request == null || request.IsTerminal)
+                    continue;
+                hasLiveRequest = true;
+                if (request.IsPhysicallyTransferred)
+                    continue;
+                if (!request.IsPayloadReady)
                 {
                     allReady = false;
                     continue;
@@ -335,9 +453,14 @@ namespace AsteroidColony
                     if (payload == null || !payload.TryLoad(this, request))
                         allReady = false;
                 }
-
                 if (!request.IsPhysicallyTransferred)
                     allReady = false;
+            }
+
+            if (!hasLiveRequest)
+            {
+                CompleteEmptyTrip();
+                return;
             }
 
             if (!allReady)
@@ -350,28 +473,38 @@ namespace AsteroidColony
 
             if (!voyage.TryRequestVoyage(currentTrip.Destination.DockingPort, out string departureReason))
             {
+                TripWaitReason = string.IsNullOrWhiteSpace(departureReason)
+                    ? "waiting_for_berth" : departureReason;
                 LogTripDiagnostic("departure rejected; trip=" + currentTrip.Id +
                     ", reason=" + departureReason +
                     ", currentDock=" + (CurrentDock != null ? CurrentDock.name : "none") +
                     ", destinationDock=" + (currentTrip.Destination.DockingPort != null
                         ? currentTrip.Destination.DockingPort.name : "none"));
-                currentTrip.State = ShuttleTripState.Blocked;
-                OperationalState = ShuttleOperationalState.Blocked;
+                currentTrip.WaitReason = TripWaitReason;
+                currentTrip.State = ShuttleTripState.LoadingOrBoarding;
+                OperationalState = ShuttleOperationalState.LoadingOrBoarding;
                 return;
             }
 
+            TripWaitReason = string.Empty;
+            currentTrip.WaitReason = string.Empty;
             currentTrip.State = ShuttleTripState.InTransit;
             ShuttleDiagnosticLog.Record("voyage_departure_accepted",
                 "trip=" + currentTrip.Id + ", pilot=" + (Pilot != null ? Pilot.name : "none"));
             OperationalState = ShuttleOperationalState.InTransit;
             for (int index = 0; index < currentTrip.Requests.Count; index++)
-                currentTrip.Requests[index].SetState(ShuttleTransportRequestState.InTransit);
+            {
+                ShuttleTransportRequest request = currentTrip.Requests[index];
+                if (request != null && !request.IsTerminal)
+                    request.SetState(ShuttleTransportRequestState.InTransit);
+            }
         }
 
         private void CompleteTripAtDestination()
         {
             OperationalState = ShuttleOperationalState.UnloadingOrDisembarking;
             currentTrip.State = ShuttleTripState.UnloadingOrDisembarking;
+            bool waitingForPassengerDisembark = false;
             for (int index = boardedActors.Count - 1; index >= 0; index--)
             {
                 BoardedActorState actor = boardedActors[index];
@@ -380,27 +513,100 @@ namespace AsteroidColony
                     continue;
                 if (!DisembarkActor(actor, currentTrip.Destination.TransferAnchor))
                 {
-                    currentTrip.State = ShuttleTripState.Blocked;
-                    OperationalState = ShuttleOperationalState.Blocked;
+                    waitingForPassengerDisembark = true;
                     LogTripDiagnostic("disembark blocked by missing destination NavMesh; trip=" +
                         currentTrip.Id + ", actor=" + actor.Actor.name);
-                    return;
+                    continue;
                 }
                 boardedActors.RemoveAt(index);
             }
 
+            bool allRequestsAccepted = true;
+            bool recoveryRequired = false;
             for (int index = 0; index < currentTrip.Requests.Count; index++)
             {
                 ShuttleTransportRequest request = currentTrip.Requests[index];
+                if (request == null || request.IsTerminal)
+                    continue;
                 if (request.PayloadType == ShuttlePayloadType.Freight)
                 {
                     IShuttleTransportPayload payload = request.Payload as IShuttleTransportPayload;
-                    payload?.OnShuttleArrived(this, request);
+                    if (payload == null)
+                    {
+                        request.SetState(ShuttleTransportRequestState.Blocked);
+                        allRequestsAccepted = false;
+                        recoveryRequired = true;
+                        continue;
+                    }
+
+                    ShuttlePayloadArrivalResult result = payload.OnShuttleArrived(this, request);
+                    if (result == ShuttlePayloadArrivalResult.Completed)
+                        request.Complete();
+                    else if (result == ShuttlePayloadArrivalResult.RetryableWait)
+                    {
+                        request.SetState(ShuttleTransportRequestState.UnloadingOrDisembarking);
+                        allRequestsAccepted = false;
+                    }
+                    else
+                    {
+                        request.SetState(ShuttleTransportRequestState.Blocked);
+                        allRequestsAccepted = false;
+                        recoveryRequired = true;
+                    }
                 }
-                if (!request.IsTerminal)
-                    request.Complete();
+                else
+                {
+                    if (HasBoardedActorForRequest(request))
+                    {
+                        request.SetState(ShuttleTransportRequestState.UnloadingOrDisembarking);
+                        allRequestsAccepted = false;
+                    }
+                    else
+                    {
+                        request.Complete();
+                    }
+                }
             }
 
+            if (waitingForPassengerDisembark)
+                allRequestsAccepted = false;
+
+            if (!allRequestsAccepted)
+            {
+                currentTrip.State = recoveryRequired
+                    ? ShuttleTripState.Blocked
+                    : ShuttleTripState.UnloadingOrDisembarking;
+                OperationalState = recoveryRequired
+                    ? ShuttleOperationalState.Blocked
+                    : ShuttleOperationalState.UnloadingOrDisembarking;
+                LogTripDiagnostic("destination payload acceptance waiting; trip=" + currentTrip.Id +
+                    ", recoveryRequired=" + recoveryRequired);
+                return;
+            }
+
+            ShuttleManager.Instance?.NotifyTripCompleted(currentTrip);
+            pilotService?.NotifyTripCompleted(this);
+            currentTrip = null;
+            activeOrigin = null;
+            OperationalState = ShuttleOperationalState.Idle;
+        }
+
+        private bool HasBoardedActorForRequest(ShuttleTransportRequest request)
+        {
+            for (int index = 0; index < boardedActors.Count; index++)
+            {
+                BoardedActorState actor = boardedActors[index];
+                if (actor != null && !actor.IsPilot && actor.Request == request &&
+                    actor.Request.Destination == currentTrip.Destination)
+                    return true;
+            }
+            return false;
+        }
+
+        private void CompleteEmptyTrip()
+        {
+            if (currentTrip == null)
+                return;
             ShuttleManager.Instance?.NotifyTripCompleted(currentTrip);
             pilotService?.NotifyTripCompleted(this);
             currentTrip = null;
@@ -495,21 +701,96 @@ namespace AsteroidColony
             return true;
         }
 
-        private void DetachAllBoardedActors()
+        private void PauseTripForProviderDisable()
         {
-            for (int index = boardedActors.Count - 1; index >= 0; index--)
+            if (currentTrip == null || currentTrip.State == ShuttleTripState.Completed ||
+                currentTrip.State == ShuttleTripState.Cancelled)
+                return;
+            pausedFromState = currentTrip.State;
+            currentTrip.State = ShuttleTripState.Paused;
+            currentTrip.WaitReason = "provider_disabled";
+            TripWaitReason = currentTrip.WaitReason;
+            OperationalState = ShuttleOperationalState.Paused;
+            for (int index = 0; index < currentTrip.Requests.Count; index++)
             {
-                BoardedActorState state = boardedActors[index];
-                if (state?.Actor == null)
-                    continue;
-                Vector3 lastPosition = state.Actor.transform.position;
-                RestoreNavigationAt(state, lastPosition);
-                SetPresentationVisible(state, true);
-                ShuttleDiagnosticLog.Record("boarded_actor_released_with_shuttle_disabled",
-                    "actor=" + state.Actor.name + ", pilot=" + state.IsPilot +
-                    ", position=" + lastPosition);
+                ShuttleTransportRequest request = currentTrip.Requests[index];
+                if (request != null && !request.IsTerminal)
+                {
+                    request.WaitReason = currentTrip.WaitReason;
+                    request.SetState(ShuttleTransportRequestState.Paused);
+                }
             }
-            boardedActors.Clear();
+            ShuttleDiagnosticLog.Record("active_trip_paused_shuttle_disabled",
+                "trip=" + currentTrip.Id + ", shuttle=" + StableId);
+        }
+
+        private void ResumePausedTrip()
+        {
+            if (currentTrip == null || currentTrip.State != ShuttleTripState.Paused || voyage == null)
+                return;
+
+            if (pausedFromState == ShuttleTripState.Repositioning)
+            {
+                currentTrip.State = ShuttleTripState.Repositioning;
+                OperationalState = ShuttleOperationalState.Repositioning;
+                SetLiveRequestState(ShuttleTransportRequestState.Assigned);
+            }
+            else if (voyage.Phase != ShuttleVoyagePhase.Docked)
+            {
+                currentTrip.State = ShuttleTripState.InTransit;
+                OperationalState = ShuttleOperationalState.InTransit;
+                SetLiveRequestState(ShuttleTransportRequestState.InTransit);
+            }
+            else if (CurrentDock == currentTrip.Destination.DockingPort &&
+                     HasTransferredRequest(currentTrip))
+            {
+                currentTrip.State = ShuttleTripState.UnloadingOrDisembarking;
+                OperationalState = ShuttleOperationalState.UnloadingOrDisembarking;
+                SetLiveRequestState(ShuttleTransportRequestState.UnloadingOrDisembarking);
+            }
+            else if (CurrentDock == activeOrigin?.DockingPort)
+            {
+                currentTrip.State = ShuttleTripState.LoadingOrBoarding;
+                OperationalState = ShuttleOperationalState.LoadingOrBoarding;
+                SetLiveRequestState(ShuttleTransportRequestState.LoadingOrBoarding);
+            }
+            else
+            {
+                currentTrip.State = ShuttleTripState.Repositioning;
+                OperationalState = ShuttleOperationalState.Repositioning;
+                SetLiveRequestState(ShuttleTransportRequestState.Assigned);
+            }
+
+            currentTrip.WaitReason = string.Empty;
+            TripWaitReason = string.Empty;
+            ShuttleDiagnosticLog.Record("active_trip_resumed_shuttle_enabled",
+                "trip=" + currentTrip.Id + ", shuttle=" + StableId +
+                ", state=" + currentTrip.State + ", dock=" +
+                (CurrentDock != null ? CurrentDock.name : "none"));
+        }
+
+        private void SetLiveRequestState(ShuttleTransportRequestState state)
+        {
+            if (currentTrip == null)
+                return;
+            for (int index = 0; index < currentTrip.Requests.Count; index++)
+            {
+                ShuttleTransportRequest request = currentTrip.Requests[index];
+                if (request == null || request.IsTerminal)
+                    continue;
+                request.WaitReason = string.Empty;
+                request.SetState(state);
+            }
+        }
+
+        private static bool HasTransferredRequest(ShuttleTrip trip)
+        {
+            if (trip == null)
+                return false;
+            for (int index = 0; index < trip.Requests.Count; index++)
+                if (trip.Requests[index] != null && trip.Requests[index].IsPhysicallyTransferred)
+                    return true;
+            return false;
         }
 
         private void RestoreNavigationAt(BoardedActorState state, Vector3 worldPosition)
@@ -611,21 +892,25 @@ namespace AsteroidColony
             return count;
         }
 
-        private void BlockTripForLostShuttle()
+        private void BlockTripForLostShuttle(string reason)
         {
             if (currentTrip == null || currentTrip.State == ShuttleTripState.Completed ||
                 currentTrip.State == ShuttleTripState.Cancelled)
                 return;
             currentTrip.State = ShuttleTripState.Blocked;
+            currentTrip.WaitReason = reason;
             for (int index = 0; index < currentTrip.Requests.Count; index++)
             {
                 ShuttleTransportRequest request = currentTrip.Requests[index];
                 if (request != null && !request.IsTerminal)
+                {
+                    request.WaitReason = reason;
                     request.SetState(ShuttleTransportRequestState.Blocked);
+                }
             }
             OperationalState = ShuttleOperationalState.Blocked;
-            ShuttleDiagnosticLog.Record("active_trip_blocked_shuttle_disabled",
-                "trip=" + currentTrip.Id + ", shuttle=" + StableId);
+            ShuttleDiagnosticLog.Record("active_trip_recovery_required",
+                "trip=" + currentTrip.Id + ", shuttle=" + StableId + ", reason=" + reason);
         }
 
         private bool TryEnsurePilot()

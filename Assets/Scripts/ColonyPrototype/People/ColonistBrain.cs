@@ -766,20 +766,31 @@ namespace AsteroidColony
             out WorkExecutionLease lease)
         {
             lease = null;
-            if (workplace == null || owner == null || state != ColonistBrainState.Working ||
-                workStopRequested || activeWorkExecutionLease != null && activeWorkExecutionLease.IsActive ||
-                stats.IsCriticallyHungry || !HasCurrentWorkObligation() ||
-                WorkforceManager.Instance == null || identity == null ||
-                !WorkforceManager.Instance.TryGetCurrentDuty(
-                    identity, SimulationManager.Instance.CurrentGameHour, out WorkAssignment assignment) ||
-                assignment.Workplace != workplace)
-            {
+            if (owner == null || !CanAcquireWorkExecution(workplace))
                 return false;
-            }
 
             lease = new WorkExecutionLease(identity, workplace, owner);
             activeWorkExecutionLease = lease;
             return true;
+        }
+
+        /// <summary>
+        /// Side-effect-free counterpart to TryAcquireWorkExecution. Providers use
+        /// the same predicate while quoting so a quote cannot select a worker the
+        /// Brain will immediately reject during acceptance.
+        /// </summary>
+        public bool CanAcquireWorkExecution(WorkplaceComponent workplace)
+        {
+            return workplace != null && state == ColonistBrainState.Working &&
+                   !workStopRequested &&
+                   (activeWorkExecutionLease == null || !activeWorkExecutionLease.IsActive) &&
+                   stats != null && !stats.IsCriticallyHungry && HasCurrentWorkObligation() &&
+                   WorkforceManager.Instance != null && identity != null &&
+                   SimulationManager.Instance != null &&
+                   WorkforceManager.Instance.TryGetCurrentDuty(
+                       identity, SimulationManager.Instance.CurrentGameHour,
+                       out WorkAssignment assignment) &&
+                   assignment.Workplace == workplace;
         }
 
         private void RequestWorkStop(WorkReleaseReason reason)

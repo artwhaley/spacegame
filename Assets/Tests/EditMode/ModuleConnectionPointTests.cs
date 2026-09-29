@@ -147,4 +147,48 @@ namespace AsteroidColony.Tests
             return root;
         }
     }
+
+    public sealed class ModuleRegionGraphTests
+    {
+        [Test]
+        public void ConnectingAndRemovingBridgeMergesAndSplitsRegions()
+        {
+            ModuleRegionGraph graph = new ModuleRegionGraph();
+            graph.RegisterModule("module-a");
+            graph.RegisterModule("module-b");
+            graph.RegisterModule("module-c");
+
+            graph.SetConnection("module-a", "module-b", true);
+
+            Assert.That(graph.TryGetRegion("module-a", out int first), Is.True);
+            Assert.That(graph.TryGetRegion("module-b", out int second), Is.True);
+            Assert.That(first, Is.EqualTo(second));
+            Assert.That(graph.TryGetRegion("module-c", out int isolated), Is.True);
+            Assert.That(isolated, Is.Not.EqualTo(first));
+
+            graph.SetConnection("module-a", "module-b", false);
+
+            Assert.That(graph.TryGetRegion("module-a", out first), Is.True);
+            Assert.That(graph.TryGetRegion("module-b", out second), Is.True);
+            Assert.That(first, Is.Not.EqualTo(second));
+        }
+
+        [Test]
+        public void RemovingModuleRemovesItsConnectionsAndMembership()
+        {
+            ModuleRegionGraph graph = new ModuleRegionGraph();
+            graph.RegisterModule("module-a");
+            graph.RegisterModule("module-b");
+            graph.SetConnection("module-a", "module-b", true);
+
+            graph.UnregisterModule("module-b");
+
+            Assert.That(graph.TryGetRegion("module-b", out _), Is.False);
+            Assert.That(graph.TryGetRegion("module-a", out _), Is.True);
+            graph.RegisterModule("module-b");
+            Assert.That(graph.TryGetRegion("module-a", out int first), Is.True);
+            Assert.That(graph.TryGetRegion("module-b", out int second), Is.True);
+            Assert.That(first, Is.Not.EqualTo(second));
+        }
+    }
 }

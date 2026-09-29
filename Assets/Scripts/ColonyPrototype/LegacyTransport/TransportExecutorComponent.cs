@@ -285,7 +285,7 @@ namespace AsteroidColony
                 return true;
 
             float amount = Mathf.Min(cargo,
-                CurrentContract.destinationInventory.GetFreeCapacity(CurrentContract.resource));
+                CurrentContract.destinationInventory.FreeCapacity);
             if (amount <= QuantityEpsilon)
                 return false;
 

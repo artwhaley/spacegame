@@ -10,7 +10,9 @@ namespace AsteroidColony
         public ResourceDefinition resource;
         public float onHand;
         [NonSerialized] public float reserved;
-        public float capacity;
+        // Kept hidden so older scene/prefab data can migrate once to the shared
+        // InventoryComponent capacity. This value is never used as a live bin limit.
+        [HideInInspector] public float capacity;
 
         [NonSerialized] private float available;
 
@@ -27,25 +29,33 @@ namespace AsteroidColony
                         Debug.LogError($"Inventory entry {resource.name} has invalid discrete OnHand quantity.");
                     if (!ResourceQuantityRules.TryNormalize(resource, reserved, out reserved))
                         Debug.LogError($"Inventory entry {resource.name} has invalid discrete Reserved quantity.");
-                    if (!ResourceQuantityRules.TryNormalize(resource, capacity, out capacity))
-                        Debug.LogError($"Inventory entry {resource.name} has invalid discrete Capacity quantity.");
                 }
 
                 onHand = Mathf.Max(0f, onHand);
-                capacity = Mathf.Max(0f, capacity);
-                if (onHand > capacity)
-                    onHand = capacity;
                 reserved = Mathf.Clamp(reserved, 0f, onHand);
                 available = Mathf.Max(0f, onHand - reserved);
                 return;
             }
 
             onHand = Mathf.Max(0f, onHand);
-            capacity = Mathf.Max(0f, capacity);
-            if (onHand > capacity)
-                onHand = capacity;
             reserved = Mathf.Clamp(reserved, 0f, onHand);
             available = Mathf.Max(0f, onHand - reserved);
+        }
+
+        internal float LegacyCapacity => capacity;
+        internal void ClearLegacyCapacity() => capacity = 0f;
+
+        internal InventoryEntry CreateSnapshot()
+        {
+            InventoryEntry snapshot = new InventoryEntry
+            {
+                resource = resource,
+                onHand = onHand,
+                reserved = reserved,
+                capacity = capacity
+            };
+            snapshot.Refresh();
+            return snapshot;
         }
     }
 
@@ -59,17 +69,32 @@ namespace AsteroidColony
     {
         private static readonly List<InventoryComponent> knownInventories = new List<InventoryComponent>();
         [SerializeField] private List<InventoryEntry> entries = new List<InventoryEntry>();
+        [SerializeField, Min(0f)] private float capacity;
+        [SerializeField, HideInInspector] private bool sharedCapacityInitialized;
         [NonSerialized] private List<InventoryReservationToken> ownedReservations =
             new List<InventoryReservationToken>();
         [NonSerialized] private Dictionary<ResourceDefinition, float> legacyReservations =
             new Dictionary<ResourceDefinition, float>();
 
-        public IReadOnlyList<InventoryEntry> Entries => entries;
+        /// <summary>Read-only snapshots. Editing a snapshot never edits owned stock.</summary>
+        public IReadOnlyList<InventoryEntry> Entries => CreateSnapshots();
         public static IReadOnlyList<InventoryComponent> Inventories => knownInventories;
         public event Action<InventoryComponent, ResourceDefinition> OnChanged;
+        public float UsedCapacity => CalculateUsedCapacity();
+        public float FreeCapacity
+        {
+            get => Mathf.Max(0f, capacity - UsedCapacity);
+        }
+
+        public float Capacity
+        {
+            get => capacity;
+        }
 
         private void OnEnable()
         {
+            MigrateSharedCapacityIfNeeded();
+            EnsureCapacityCoversStock();
             EnsureReservationLedgers();
             ReconcileAllReservations();
             if (!knownInventories.Contains(this))
@@ -83,37 +108,57 @@ namespace AsteroidColony
 
         public InventoryEntry GetEntry(ResourceDefinition resource)
         {
+            InventoryEntry entry = FindEntry(resource);
+            return entry != null ? entry.CreateSnapshot() : null;
+        }
+
+        private InventoryEntry FindEntry(ResourceDefinition resource)
+        {
+            if (entries == null)
+                return null;
             for (int i = 0; i < entries.Count; i++)
                 if (entries[i].resource == resource)
                     return entries[i];
             return null;
         }
 
-        /// <summary>Sets an inventory slot's capacity while preserving its current stock.</summary>
+        private List<InventoryEntry> CreateSnapshots()
+        {
+            List<InventoryEntry> snapshots = new List<InventoryEntry>(entries != null ? entries.Count : 0);
+            if (entries == null)
+                return snapshots;
+            for (int i = 0; i < entries.Count; i++)
+                if (entries[i] != null)
+                    snapshots.Add(entries[i].CreateSnapshot());
+            return snapshots;
+        }
+
+        /// <summary>Sets the total shared capacity while preserving all current stock.</summary>
+        public bool SetCapacity(float newCapacity)
+        {
+            if (float.IsNaN(newCapacity) || float.IsInfinity(newCapacity) || newCapacity < 0f)
+                return false;
+
+            MigrateSharedCapacityIfNeeded();
+            if (newCapacity + ResourceQuantityRules.WholeNumberEpsilon < UsedCapacity)
+                return false;
+
+            capacity = newCapacity;
+            sharedCapacityInitialized = true;
+            return true;
+        }
+
+        /// <summary>Compatibility overload; capacity is inventory-wide, not resource-specific.</summary>
         public bool SetCapacity(ResourceDefinition resource, float capacity)
         {
-            if (!TryNormalizeMutation(resource, capacity, out float normalized))
-                return false;
-
-            InventoryEntry entry = GetOrCreate(resource);
-            if (entry == null)
-                return false;
-
-            if (normalized + ResourceQuantityRules.WholeNumberEpsilon < entry.onHand)
-                return false;
-
-            entry.capacity = normalized;
-            ReconcileReservations(resource, entry);
-            entry.Refresh();
-            OnChanged?.Invoke(this, resource);
-            return true;
+            return resource != null && SetCapacity(capacity);
         }
 
         private InventoryEntry GetOrCreate(ResourceDefinition resource)
         {
             if (resource == null)
                 return null;
-            InventoryEntry entry = GetEntry(resource);
+            InventoryEntry entry = FindEntry(resource);
             if (entry == null)
             {
                 entry = new InventoryEntry { resource = resource };
@@ -124,7 +169,7 @@ namespace AsteroidColony
 
         public float GetOnHand(ResourceDefinition resource)
         {
-            InventoryEntry entry = GetEntry(resource);
+            InventoryEntry entry = FindEntry(resource);
             if (entry != null)
                 ReconcileReservations(resource, entry);
             return entry != null ? entry.onHand : 0f;
@@ -132,7 +177,7 @@ namespace AsteroidColony
 
         public float GetAvailable(ResourceDefinition resource)
         {
-            InventoryEntry entry = GetEntry(resource);
+            InventoryEntry entry = FindEntry(resource);
             if (entry == null)
                 return 0f;
             ReconcileReservations(resource, entry);
@@ -141,7 +186,7 @@ namespace AsteroidColony
 
         public float GetReserved(ResourceDefinition resource)
         {
-            InventoryEntry entry = GetEntry(resource);
+            InventoryEntry entry = FindEntry(resource);
             if (entry != null)
                 ReconcileReservations(resource, entry);
             return entry != null ? entry.reserved : 0f;
@@ -149,19 +194,12 @@ namespace AsteroidColony
 
         public float GetFreeCapacity(ResourceDefinition resource)
         {
-            InventoryEntry entry = GetEntry(resource);
-            if (entry == null)
-                return 0f;
-            entry.Refresh();
-            return Mathf.Max(0f, entry.capacity - entry.onHand);
+            return resource != null ? FreeCapacity : 0f;
         }
 
         public float GetCapacity(ResourceDefinition resource)
         {
-            InventoryEntry entry = GetEntry(resource);
-            if (entry != null)
-                entry.Refresh();
-            return entry != null ? entry.capacity : 0f;
+            return resource != null ? Capacity : 0f;
         }
 
         /// <summary>Adds stock up to capacity. Returns the amount actually added.</summary>
@@ -173,7 +211,7 @@ namespace AsteroidColony
             if (entry == null)
                 return 0f;
             entry.Refresh();
-            float space = Mathf.Max(0f, entry.capacity - entry.onHand);
+            float space = FreeCapacity;
             float added = Mathf.Min(normalized, space);
             if (resource.IsDiscrete)
                 added = Mathf.Floor(added + ResourceQuantityRules.WholeNumberEpsilon);
@@ -188,7 +226,140 @@ namespace AsteroidColony
         {
             if (!TryNormalizeMutation(resource, amount, out float normalized))
                 return false;
-            return GetFreeCapacity(resource) >= Mathf.Max(0f, normalized);
+            return FreeCapacity >= Mathf.Max(0f, normalized);
+        }
+
+        /// <summary>
+        /// Atomically applies a recipe transformation. Inputs consume only unclaimed stock;
+        /// all outputs fit against the net shared-capacity change before any quantity changes.
+        /// </summary>
+        public bool TryApplyRecipe(
+            IReadOnlyList<ResourceAmount> inputs,
+            IReadOnlyList<ResourceAmount> outputs,
+            float scale,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (float.IsNaN(scale) || float.IsInfinity(scale) || scale < 0f)
+            {
+                reason = "recipe scale must be finite and nonnegative";
+                return false;
+            }
+
+            Dictionary<ResourceDefinition, float> inputTotals = new Dictionary<ResourceDefinition, float>();
+            Dictionary<ResourceDefinition, float> outputTotals = new Dictionary<ResourceDefinition, float>();
+            if (!TryAccumulateRecipeAmounts(inputs, scale, inputTotals, out reason) ||
+                !TryAccumulateRecipeAmounts(outputs, scale, outputTotals, out reason))
+                return false;
+
+            float consumedTotal = 0f;
+            foreach (KeyValuePair<ResourceDefinition, float> input in inputTotals)
+            {
+                if (GetAvailable(input.Key) + ResourceQuantityRules.WholeNumberEpsilon < input.Value)
+                {
+                    reason = "recipe input unavailable for " + input.Key.name;
+                    return false;
+                }
+                consumedTotal += input.Value;
+            }
+
+            float producedTotal = 0f;
+            foreach (KeyValuePair<ResourceDefinition, float> output in outputTotals)
+                producedTotal += output.Value;
+            if (UsedCapacity - consumedTotal + producedTotal >
+                Capacity + ResourceQuantityRules.WholeNumberEpsilon)
+            {
+                reason = "recipe outputs exceed shared inventory capacity after input consumption";
+                return false;
+            }
+
+            Dictionary<ResourceDefinition, InventoryEntry> affectedEntries =
+                new Dictionary<ResourceDefinition, InventoryEntry>();
+            foreach (KeyValuePair<ResourceDefinition, float> input in inputTotals)
+            {
+                InventoryEntry entry = FindEntry(input.Key);
+                if (entry == null)
+                {
+                    reason = "recipe input entry disappeared for " + input.Key.name;
+                    return false;
+                }
+                affectedEntries[input.Key] = entry;
+            }
+            foreach (KeyValuePair<ResourceDefinition, float> output in outputTotals)
+            {
+                InventoryEntry entry = GetOrCreate(output.Key);
+                if (entry == null)
+                {
+                    reason = "recipe output entry could not be created for " + output.Key.name;
+                    return false;
+                }
+                affectedEntries[output.Key] = entry;
+            }
+
+            HashSet<ResourceDefinition> changed = new HashSet<ResourceDefinition>();
+            foreach (KeyValuePair<ResourceDefinition, float> input in inputTotals)
+            {
+                InventoryEntry entry = affectedEntries[input.Key];
+                entry.onHand -= input.Value;
+                changed.Add(input.Key);
+            }
+            foreach (KeyValuePair<ResourceDefinition, float> output in outputTotals)
+            {
+                InventoryEntry entry = affectedEntries[output.Key];
+                entry.onHand += output.Value;
+                changed.Add(output.Key);
+            }
+
+            foreach (ResourceDefinition resource in changed)
+            {
+                InventoryEntry entry = affectedEntries[resource];
+                ReconcileReservations(resource, entry);
+                entry.Refresh();
+            }
+            foreach (ResourceDefinition resource in changed)
+                OnChanged?.Invoke(this, resource);
+            return true;
+        }
+
+        private static bool TryAccumulateRecipeAmounts(
+            IReadOnlyList<ResourceAmount> amounts,
+            float scale,
+            Dictionary<ResourceDefinition, float> totals,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (amounts == null)
+                return true;
+
+            for (int index = 0; index < amounts.Count; index++)
+            {
+                ResourceAmount entry = amounts[index];
+                float amount = entry.amount * scale;
+                if (entry.resource == null || float.IsNaN(amount) || float.IsInfinity(amount) || amount < 0f)
+                {
+                    reason = "recipe contains an invalid resource amount";
+                    return false;
+                }
+                if (amount <= ResourceQuantityRules.WholeNumberEpsilon)
+                    continue;
+                totals.TryGetValue(entry.resource, out float existing);
+                totals[entry.resource] = existing + amount;
+            }
+
+            List<ResourceDefinition> resources = new List<ResourceDefinition>(totals.Keys);
+            for (int index = 0; index < resources.Count; index++)
+            {
+                ResourceDefinition resource = resources[index];
+                float amount = totals[resource];
+                if (!ResourceQuantityRules.TryNormalize(resource, amount, out float normalized) ||
+                    Mathf.Abs(normalized - amount) > ResourceQuantityRules.WholeNumberEpsilon)
+                {
+                    reason = "recipe quantity is invalid for " + resource.name;
+                    return false;
+                }
+                totals[resource] = normalized;
+            }
+            return true;
         }
 
         /// <summary>
@@ -199,7 +370,7 @@ namespace AsteroidColony
         {
             if (!TryNormalizeMutation(resource, amount, out float normalized) || normalized <= 0f)
                 return 0f;
-            InventoryEntry entry = GetEntry(resource);
+            InventoryEntry entry = FindEntry(resource);
             if (entry == null || entry.onHand <= 0f)
                 return 0f;
             ReconcileReservations(resource, entry);
@@ -237,7 +408,7 @@ namespace AsteroidColony
         {
             if (!TryNormalizeMutation(resource, amount, out float normalized) || normalized <= 0f)
                 return;
-            InventoryEntry entry = GetEntry(resource);
+            InventoryEntry entry = FindEntry(resource);
             if (entry == null)
                 return;
             entry.Refresh();
@@ -254,7 +425,7 @@ namespace AsteroidColony
         {
             if (!TryNormalizeMutation(resource, amount, out float normalized) || normalized <= 0f)
                 return 0f;
-            InventoryEntry entry = GetEntry(resource);
+            InventoryEntry entry = FindEntry(resource);
             if (entry == null)
                 return 0f;
             ReconcileReservations(resource, entry);
@@ -304,7 +475,7 @@ namespace AsteroidColony
             if (!Owns(token) || !token.IsActive)
                 return 0f;
 
-            InventoryEntry entry = GetEntry(token.Resource);
+            InventoryEntry entry = FindEntry(token.Resource);
             if (entry == null)
             {
                 token.Invalidate();
@@ -319,6 +490,60 @@ namespace AsteroidColony
             entry.Refresh();
             OnChanged?.Invoke(this, token.Resource);
             return released;
+        }
+
+        /// <summary>Consumes only stock still owned by this token, exactly once.</summary>
+        public bool ConsumeOwned(InventoryReservationToken token, float amount)
+        {
+            if (!Owns(token) || !token.IsActive ||
+                !TryNormalizeMutation(token.Resource, amount, out float normalized) ||
+                normalized <= 0f)
+                return false;
+
+            InventoryEntry entry = FindEntry(token.Resource);
+            if (entry == null)
+                return false;
+            ReconcileReservations(token.Resource, entry);
+            if (!token.IsActive || token.Remaining + ResourceQuantityRules.WholeNumberEpsilon < normalized ||
+                entry.onHand + ResourceQuantityRules.WholeNumberEpsilon < normalized)
+                return false;
+
+            token.Reduce(normalized);
+            entry.onHand = Mathf.Max(0f, entry.onHand - normalized);
+            if (token.Remaining <= ResourceQuantityRules.WholeNumberEpsilon)
+                token.Invalidate();
+            ReconcileReservations(token.Resource, entry);
+            entry.Refresh();
+            OnChanged?.Invoke(this, token.Resource);
+            return true;
+        }
+
+        /// <summary>
+        /// Combines two reservations owned by this inventory into one logical claim.
+        /// The incoming token is invalidated; physical stock is unchanged.
+        /// </summary>
+        public bool MergeOwnedReservations(
+            InventoryReservationToken aggregate,
+            InventoryReservationToken incoming)
+        {
+            if (aggregate == null || incoming == null || aggregate == incoming ||
+                !Owns(aggregate) || !Owns(incoming) || !aggregate.IsActive ||
+                !incoming.IsActive || aggregate.Resource != incoming.Resource)
+            {
+                return false;
+            }
+
+            InventoryEntry entry = FindEntry(aggregate.Resource);
+            if (entry == null)
+                return false;
+
+            aggregate.Increase(incoming.Remaining);
+            incoming.Invalidate();
+            ownedReservations.Remove(incoming);
+            ReconcileReservations(aggregate.Resource, entry);
+            entry.Refresh();
+            OnChanged?.Invoke(this, aggregate.Resource);
+            return true;
         }
 
         /// <summary>
@@ -362,7 +587,7 @@ namespace AsteroidColony
                 return 0f;
             }
 
-            InventoryEntry sourceEntry = GetEntry(token.Resource);
+            InventoryEntry sourceEntry = FindEntry(token.Resource);
             if (sourceEntry == null)
                 return 0f;
             InventoryEntry destinationEntry = destination.GetOrCreate(token.Resource);
@@ -375,7 +600,7 @@ namespace AsteroidColony
                 normalized,
                 Mathf.Min(token.Remaining,
                     Mathf.Min(sourceEntry.onHand,
-                        destinationEntry.capacity - destinationEntry.onHand)));
+                        destination.FreeCapacity)));
             if (token.Resource.IsDiscrete)
                 transfer = Mathf.Floor(transfer + ResourceQuantityRules.WholeNumberEpsilon);
             if (transfer <= 0f ||
@@ -420,7 +645,7 @@ namespace AsteroidColony
                 return 0f;
             }
 
-            InventoryEntry sourceEntry = GetEntry(resource);
+            InventoryEntry sourceEntry = FindEntry(resource);
             if (sourceEntry == null)
                 return 0f;
             InventoryEntry destinationEntry = destination.GetOrCreate(resource);
@@ -429,7 +654,7 @@ namespace AsteroidColony
             float transfer = Mathf.Min(
                 normalized,
                 Mathf.Min(sourceEntry.Available,
-                    destinationEntry.capacity - destinationEntry.onHand));
+                    destination.FreeCapacity));
             if (resource.IsDiscrete)
                 transfer = Mathf.Floor(transfer + ResourceQuantityRules.WholeNumberEpsilon);
             if (transfer <= 0f)
@@ -553,12 +778,69 @@ namespace AsteroidColony
 
         private void OnValidate()
         {
+            MigrateSharedCapacityIfNeeded();
+            EnsureCapacityCoversStock();
             for (int i = 0; i < entries.Count; i++)
                 if (entries[i] != null)
                 {
                     entries[i].reserved = 0f;
                     entries[i].Refresh();
                 }
+        }
+
+        private void MigrateSharedCapacityIfNeeded()
+        {
+            if (sharedCapacityInitialized)
+                return;
+
+            float largestLegacyCapacity = 0f;
+            float totalOnHand = 0f;
+            if (entries != null)
+            {
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    InventoryEntry entry = entries[i];
+                    if (entry == null)
+                        continue;
+                    entry.Refresh();
+                    largestLegacyCapacity = Mathf.Max(largestLegacyCapacity, entry.LegacyCapacity);
+                    totalOnHand += entry.onHand;
+                }
+            }
+
+            if (capacity <= 0f && largestLegacyCapacity <= 0f && totalOnHand <= 0f)
+                return;
+
+            // Legacy capacity was per resource. Preserve the largest authored bin,
+            // never sum those bins; total current stock still has to fit physically.
+            capacity = Mathf.Max(capacity, Mathf.Max(largestLegacyCapacity, totalOnHand));
+            if (entries != null)
+                for (int i = 0; i < entries.Count; i++)
+                    if (entries[i] != null)
+                        entries[i].ClearLegacyCapacity();
+            sharedCapacityInitialized = true;
+        }
+
+        private float CalculateUsedCapacity()
+        {
+            float total = 0f;
+            if (entries == null)
+                return total;
+            for (int i = 0; i < entries.Count; i++)
+                if (entries[i] != null)
+                    total += Mathf.Max(0f, entries[i].onHand);
+            return total;
+        }
+
+        private void EnsureCapacityCoversStock()
+        {
+            float used = CalculateUsedCapacity();
+            if (capacity + ResourceQuantityRules.WholeNumberEpsilon >= used)
+                return;
+
+            Debug.LogWarning($"{name}: shared inventory capacity {capacity:0.###} is below " +
+                $"authored stock {used:0.###}; capacity was expanded during initialization to preserve stock.", this);
+            capacity = used;
         }
 
         private static bool TryNormalizeMutation(ResourceDefinition resource, float amount, out float normalized)
@@ -594,6 +876,11 @@ namespace AsteroidColony
         internal void Reduce(float amount)
         {
             Remaining = Mathf.Max(0f, Remaining - Mathf.Max(0f, amount));
+        }
+
+        internal void Increase(float amount)
+        {
+            Remaining += Mathf.Max(0f, amount);
         }
 
         internal void Invalidate()

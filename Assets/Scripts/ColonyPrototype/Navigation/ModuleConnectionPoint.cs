@@ -6,6 +6,230 @@ using UnityEngine.AI;
 
 namespace AsteroidColony
 {
+    /// <summary>Small graph model used to derive contiguous walking regions.</summary>
+    public sealed class ModuleRegionGraph
+    {
+        private readonly HashSet<string> modules = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> connections = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> regions =
+            new Dictionary<string, int>(StringComparer.Ordinal);
+        private bool dirty = true;
+
+        public int Revision { get; private set; }
+        public int ModuleCount => modules.Count;
+
+        public void Clear()
+        {
+            modules.Clear();
+            connections.Clear();
+            regions.Clear();
+            dirty = true;
+            Revision = 0;
+        }
+
+        public void RegisterModule(string moduleId)
+        {
+            if (!string.IsNullOrWhiteSpace(moduleId) && modules.Add(moduleId))
+                MarkChanged();
+        }
+
+        public void UnregisterModule(string moduleId)
+        {
+            if (string.IsNullOrWhiteSpace(moduleId) || !modules.Remove(moduleId))
+                return;
+            connections.RemoveWhere(edge => EdgeContains(edge, moduleId));
+            MarkChanged();
+        }
+
+        public void SetConnection(string firstModuleId, string secondModuleId, bool connected)
+        {
+            if (string.IsNullOrWhiteSpace(firstModuleId) ||
+                string.IsNullOrWhiteSpace(secondModuleId) ||
+                string.Equals(firstModuleId, secondModuleId, StringComparison.Ordinal))
+                return;
+            string edge = MakeEdge(firstModuleId, secondModuleId);
+            bool changed = connected ? connections.Add(edge) : connections.Remove(edge);
+            if (!changed)
+                return;
+            if (connected)
+            {
+                modules.Add(firstModuleId);
+                modules.Add(secondModuleId);
+            }
+            MarkChanged();
+        }
+
+        public bool TryGetRegion(string moduleId, out int region)
+        {
+            EnsureRegions();
+            return regions.TryGetValue(moduleId, out region);
+        }
+
+        public void NotifyNavigationRebuilt() => MarkChanged();
+
+        private void MarkChanged()
+        {
+            Revision++;
+            dirty = true;
+        }
+
+        private void EnsureRegions()
+        {
+            if (!dirty)
+                return;
+            regions.Clear();
+            List<string> orderedModules = new List<string>(modules);
+            orderedModules.Sort(StringComparer.Ordinal);
+            HashSet<string> visited = new HashSet<string>(StringComparer.Ordinal);
+            Queue<string> pending = new Queue<string>();
+            int regionId = 0;
+            for (int index = 0; index < orderedModules.Count; index++)
+            {
+                string root = orderedModules[index];
+                if (!visited.Add(root))
+                    continue;
+                pending.Enqueue(root);
+                while (pending.Count > 0)
+                {
+                    string current = pending.Dequeue();
+                    regions[current] = regionId;
+                    foreach (string edge in connections)
+                    {
+                        string neighbor = EdgeOther(edge, current);
+                        if (neighbor != null && modules.Contains(neighbor) && visited.Add(neighbor))
+                            pending.Enqueue(neighbor);
+                    }
+                }
+                regionId++;
+            }
+            dirty = false;
+        }
+
+        private static string MakeEdge(string a, string b) =>
+            string.CompareOrdinal(a, b) <= 0 ? a + "|" + b : b + "|" + a;
+
+        private static bool EdgeContains(string edge, string id) =>
+            edge.StartsWith(id + "|", StringComparison.Ordinal) ||
+            edge.EndsWith("|" + id, StringComparison.Ordinal);
+
+        private static string EdgeOther(string edge, string id)
+        {
+            int separator = edge.IndexOf('|');
+            if (separator < 0)
+                return null;
+            string first = edge.Substring(0, separator);
+            string second = edge.Substring(separator + 1);
+            if (string.Equals(first, id, StringComparison.Ordinal))
+                return second;
+            return string.Equals(second, id, StringComparison.Ordinal) ? first : null;
+        }
+    }
+
+    /// <summary>
+    /// Derived runtime view of which authored module surfaces are connected by
+    /// walking links. ModuleConnectionPoint remains the owner of link creation.
+    /// Region values are transient diagnostics and are never saved to gameplay data.
+    /// </summary>
+    public static class ModuleNavigationTopology
+    {
+        private static readonly Dictionary<string, NavMeshSurface> modules =
+            new Dictionary<string, NavMeshSurface>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, int> moduleReferenceCounts =
+            new Dictionary<string, int>(StringComparer.Ordinal);
+        private static readonly ModuleRegionGraph graph = new ModuleRegionGraph();
+
+        public static int Revision => graph.Revision;
+        public static int ModuleCount => modules.Count;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void Reset()
+        {
+            modules.Clear();
+            moduleReferenceCounts.Clear();
+            graph.Clear();
+        }
+
+        internal static void RegisterPoint(NavMeshSurface surface)
+        {
+            if (!Application.isPlaying || surface == null)
+                return;
+            string id = surface.GetEntityId().ToString();
+            modules[id] = surface;
+            moduleReferenceCounts.TryGetValue(id, out int count);
+            moduleReferenceCounts[id] = count + 1;
+            graph.RegisterModule(id);
+        }
+
+        internal static void UnregisterPoint(NavMeshSurface surface)
+        {
+            if (!Application.isPlaying || surface == null)
+                return;
+            string id = surface.GetEntityId().ToString();
+            if (!moduleReferenceCounts.TryGetValue(id, out int count))
+                return;
+            if (count > 1)
+            {
+                moduleReferenceCounts[id] = count - 1;
+                return;
+            }
+            moduleReferenceCounts.Remove(id);
+            modules.Remove(id);
+            graph.UnregisterModule(id);
+        }
+
+        internal static void SetConnection(
+            NavMeshSurface first,
+            NavMeshSurface second,
+            bool connected)
+        {
+            if (!Application.isPlaying || first == null || second == null || first == second)
+                return;
+            string a = first.GetEntityId().ToString();
+            string b = second.GetEntityId().ToString();
+            graph.SetConnection(a, b, connected);
+            if (connected)
+            {
+                modules[a] = first;
+                modules[b] = second;
+            }
+        }
+
+        /// <summary>Call after a runtime NavMesh rebuild changes walkability.</summary>
+        public static void NotifyNavigationRebuilt()
+        {
+            if (Application.isPlaying)
+            {
+                ModuleConnectionPoint.RefreshConnectionReadiness();
+                graph.NotifyNavigationRebuilt();
+            }
+        }
+
+        /// <summary>Resolves a region from an anchor under its owning module surface.</summary>
+        public static bool TryGetRegion(Transform anchor, out int region)
+        {
+            region = -1;
+            if (anchor == null)
+                return false;
+            NavMeshSurface surface = anchor.GetComponentInParent<NavMeshSurface>(true);
+            if (surface == null)
+                return false;
+            string id = surface.GetEntityId().ToString();
+            if (!modules.ContainsKey(id))
+                return false;
+            return graph.TryGetRegion(id, out region);
+        }
+
+        /// <summary>Returns whether two registered anchors share a walking region.</summary>
+        public static bool AreInSameRegion(Transform first, Transform second)
+        {
+            if (!TryGetRegion(first, out int firstRegion) ||
+                !TryGetRegion(second, out int secondRegion))
+                return true; // Unknown membership must not fabricate a disconnection.
+            return firstRegion == secondRegion;
+        }
+
+    }
+
     // The static registry is intentionally scene-local at runtime; the subsystem
     // reset below also covers play sessions with domain reload disabled.
     /// <summary>
@@ -50,7 +274,20 @@ namespace AsteroidColony
         public NavMeshSurface OwnerSurface
         {
             get { return ownerSurface; }
-            set { ownerSurface = value; }
+            set
+            {
+                if (ownerSurface == value)
+                    return;
+                NavMeshSurface previous = ownerSurface;
+                bool registered = s_RegisteredPoints.Contains(this);
+                if (connection != null)
+                    Disconnect();
+                if (registered)
+                    ModuleNavigationTopology.UnregisterPoint(previous);
+                ownerSurface = value;
+                if (registered)
+                    ModuleNavigationTopology.RegisterPoint(ownerSurface);
+            }
         }
 
         /// <summary>The point inside this module where a link should meet the NavMesh.</summary>
@@ -116,6 +353,7 @@ namespace AsteroidColony
         {
             ResolveOwnerSurface(false);
             Register(this);
+            ModuleNavigationTopology.RegisterPoint(ownerSurface);
         }
 
         private void Start()
@@ -222,6 +460,39 @@ namespace AsteroidColony
                 ", connected=" + connectedCount + ".");
 
             return connectedCount;
+        }
+
+        /// <summary>
+        /// Rebuilds links after a runtime builder relocates a module. The builder
+        /// calls this once after applying transforms, rather than asking logistics
+        /// to infer changed station geometry.
+        /// </summary>
+        public static int NotifyModuleMoved(Transform moduleRoot)
+        {
+            if (moduleRoot == null)
+                return 0;
+            for (int index = 0; index < s_RegisteredPoints.Count; index++)
+            {
+                ModuleConnectionPoint point = s_RegisteredPoints[index];
+                if (point != null && (point.transform == moduleRoot ||
+                    point.transform.IsChildOf(moduleRoot)))
+                    point.Disconnect();
+            }
+            ModuleNavigationTopology.NotifyNavigationRebuilt();
+            return DiscoverAndConnect();
+        }
+
+        /// <summary>
+        /// Called by a runtime module builder after a new module has been placed
+        /// and its navigation data is ready. OnEnable only registers the module;
+        /// it does not discover links while a builder may still be positioning it.
+        /// </summary>
+        public static int NotifyModuleAdded(Transform moduleRoot)
+        {
+            if (moduleRoot == null)
+                return 0;
+            ModuleNavigationTopology.NotifyNavigationRebuilt();
+            return DiscoverAndConnect();
         }
 
         /// <summary>Removes this point's connection and destroys its owned runtime link.</summary>
@@ -337,7 +608,8 @@ namespace AsteroidColony
 
         private static void Unregister(ModuleConnectionPoint point)
         {
-            s_RegisteredPoints.Remove(point);
+            if (point != null && s_RegisteredPoints.Remove(point))
+                ModuleNavigationTopology.UnregisterPoint(point.ownerSurface);
         }
 
         private static void PruneRegistration()
@@ -419,24 +691,27 @@ namespace AsteroidColony
 
             NavMeshPath connectionPath = new NavMeshPath();
             NavMeshQueryFilter filter = CreateWalkableFilter(a.ownerSurface.agentTypeID);
-            if (!NavMesh.CalculatePath(aHit.position, bHit.position, filter, connectionPath) ||
-                connectionPath.status != NavMeshPathStatus.PathComplete)
+            bool navigationReady = NavMesh.CalculatePath(
+                    aHit.position, bHit.position, filter, connectionPath) &&
+                connectionPath.status == NavMeshPathStatus.PathComplete;
+            if (!navigationReady)
             {
                 Debug.LogWarning(
                     "Created a NavMeshLink between " + a.name + " and " + b.name +
-                    ", but the link endpoints still do not produce a complete path. " +
-                    "Check that the two module bakes meet at this doorway.",
+                    ", but the link is not yet walkable. The topology registry will keep " +
+                    "these modules separate until a complete path is available.",
                     a);
             }
 
-            Connection newConnection = new Connection(a, b, link, linkObject);
+            Connection newConnection = new Connection(a, b, link, linkObject, navigationReady);
             a.connection = newConnection;
             b.connection = newConnection;
             s_Connections.Add(newConnection);
+            ModuleNavigationTopology.SetConnection(a.ownerSurface, b.ownerSurface, navigationReady);
 
             LogConnectionGeometry(a, b, "created");
             if (Application.isPlaying)
-                a.StartCoroutine(LogConnectionNextFrame(a, b));
+                a.StartCoroutine(LogConnectionNextFrame(a, b, newConnection));
 
             Debug.Log(
                 "[B2Nav] Module connection link created: " + a.GetStableHierarchyKey() +
@@ -444,6 +719,7 @@ namespace AsteroidColony
                 "; linkObject=" + linkObject.name +
                 "; linkEnabled=" + link.enabled +
                 "; activated=" + link.activated +
+                "; topologyReady=" + navigationReady +
                 "; endpointPathStatus=" + connectionPath.status +
                 "; endpointPathCorners=" + connectionPath.corners.Length + ".",
                 link);
@@ -451,11 +727,20 @@ namespace AsteroidColony
         }
 
         private static System.Collections.IEnumerator LogConnectionNextFrame(
-            ModuleConnectionPoint a, ModuleConnectionPoint b)
+            ModuleConnectionPoint a, ModuleConnectionPoint b, Connection connection)
         {
             yield return null;
             if (a != null && b != null && a.CurrentPartner == b)
+            {
+                connection.RefreshReadiness();
                 LogConnectionGeometry(a, b, "next-frame");
+            }
+        }
+
+        internal static void RefreshConnectionReadiness()
+        {
+            for (int index = 0; index < s_Connections.Count; index++)
+                s_Connections[index]?.RefreshReadiness();
         }
 
         private static void LogConnectionGeometry(ModuleConnectionPoint a,
@@ -576,17 +861,20 @@ namespace AsteroidColony
             private readonly NavMeshLink link;
             private readonly GameObject linkObject;
             private bool disposed;
+            private bool navigationReady;
 
             public Connection(
                 ModuleConnectionPoint a,
                 ModuleConnectionPoint b,
                 NavMeshLink link,
-                GameObject linkObject)
+                GameObject linkObject,
+                bool navigationReady)
             {
                 this.a = a;
                 this.b = b;
                 this.link = link;
                 this.linkObject = linkObject;
+                this.navigationReady = navigationReady;
             }
 
             public NavMeshLink Link
@@ -597,6 +885,21 @@ namespace AsteroidColony
             public bool IsDisposed
             {
                 get { return disposed; }
+            }
+
+            public bool RefreshReadiness()
+            {
+                bool ready = !disposed && a != null && b != null && link != null &&
+                    link.isActiveAndEnabled && link.activated && HasCompletePath(a, b);
+                if (ready != navigationReady)
+                {
+                    navigationReady = ready;
+                    ModuleNavigationTopology.SetConnection(
+                        a != null ? a.ownerSurface : null,
+                        b != null ? b.ownerSurface : null,
+                        navigationReady);
+                }
+                return navigationReady;
             }
 
             public ModuleConnectionPoint Other(ModuleConnectionPoint point)
@@ -614,6 +917,10 @@ namespace AsteroidColony
                     return;
 
                 disposed = true;
+                ModuleNavigationTopology.SetConnection(
+                    a != null ? a.ownerSurface : null,
+                    b != null ? b.ownerSurface : null,
+                    false);
                 if (a != null && a.connection == this)
                     a.connection = null;
                 if (b != null && b.connection == this)
@@ -627,6 +934,28 @@ namespace AsteroidColony
                     else
                         UnityEngine.Object.DestroyImmediate(linkObject);
                 }
+            }
+
+            private static bool HasCompletePath(
+                ModuleConnectionPoint first,
+                ModuleConnectionPoint second)
+            {
+                if (first == null || second == null || first.ownerSurface == null ||
+                    second.ownerSurface == null || first.walkAnchor == null ||
+                    second.walkAnchor == null ||
+                    first.ownerSurface.agentTypeID != second.ownerSurface.agentTypeID)
+                    return false;
+
+                NavMeshQueryFilter filter = CreateWalkableFilter(first.ownerSurface.agentTypeID);
+                if (!NavMesh.SamplePosition(first.walkAnchor.position, out NavMeshHit firstHit,
+                        WalkAnchorSnapDistance, filter) ||
+                    !NavMesh.SamplePosition(second.walkAnchor.position, out NavMeshHit secondHit,
+                        WalkAnchorSnapDistance, filter))
+                    return false;
+
+                NavMeshPath path = new NavMeshPath();
+                return NavMesh.CalculatePath(firstHit.position, secondHit.position, filter, path) &&
+                    path.status == NavMeshPathStatus.PathComplete;
             }
         }
 

@@ -59,6 +59,8 @@ namespace AsteroidColony
         FreightRouteFailed,
         WorkReleasedBeforePickup,
         StageReservationFailed,
-        DemandPublicationExpired
+        DemandPublicationExpired,
+        ExecutorPermanentlyUnavailable,
+        AcceptedCargoMissing
     }
 }

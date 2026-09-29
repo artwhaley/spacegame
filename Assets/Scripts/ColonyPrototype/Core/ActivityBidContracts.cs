@@ -152,6 +152,7 @@ namespace AsteroidColony
         public float Amount { get; }
         public float HungerRecovery { get; }
         public float DurationGameHours { get; }
+        public InventoryReservationToken InventoryReservation { get; internal set; }
         public bool Completed { get; internal set; }
         public bool Reserved { get; internal set; }
         public bool Consumed { get; internal set; }
